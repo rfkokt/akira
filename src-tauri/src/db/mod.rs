@@ -19,6 +19,91 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     conn.execute("ALTER TABLE engines ADD COLUMN model TEXT DEFAULT ''", [])
         .ok(); // Ignore error if column already exists
 
+    // Migration: Handle tasks table schema change
+    // Check if old table exists with project_id column
+    let has_project_id: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'project_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if has_project_id {
+        // Old table exists, need to migrate
+        // Rename old table
+        conn.execute("ALTER TABLE tasks RENAME TO tasks_old", [])?;
+
+        // Create new table with correct schema
+        conn.execute(
+            "CREATE TABLE tasks (
+                id              TEXT PRIMARY KEY,
+                title           TEXT NOT NULL,
+                description     TEXT,
+                status          TEXT NOT NULL DEFAULT 'todo',
+                priority        TEXT DEFAULT 'medium',
+                file_path       TEXT,
+                workspace_id    TEXT,
+                created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        // Copy data from old table, converting project_id to workspace_id
+        conn.execute(
+            "INSERT INTO tasks (id, title, description, status, priority, file_path, workspace_id, created_at, updated_at)
+             SELECT id, title, description, status, priority, file_path, project_id, created_at, updated_at FROM tasks_old",
+            [],
+        ).ok();
+
+        // Drop old table
+        conn.execute("DROP TABLE tasks_old", [])?;
+    }
+
+    // Migration: Handle project_configs table schema change
+    let has_project_id_config: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('project_configs') WHERE name = 'project_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if has_project_id_config {
+        // Old table exists, need to migrate
+        conn.execute(
+            "ALTER TABLE project_configs RENAME TO project_configs_old",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE project_configs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                workspace_id    TEXT NOT NULL UNIQUE,
+                md_persona      TEXT,
+                md_tech_stack   TEXT,
+                md_rules        TEXT,
+                md_tone         TEXT,
+                created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "INSERT INTO project_configs (id, workspace_id, md_persona, md_tech_stack, md_rules, md_tone, created_at, updated_at)
+             SELECT id, project_id, md_persona, md_tech_stack, md_rules, md_tone, created_at, updated_at FROM project_configs_old",
+            [],
+        ).ok();
+
+        conn.execute("DROP TABLE project_configs_old", [])?;
+    }
+
     Ok(())
 }
 
