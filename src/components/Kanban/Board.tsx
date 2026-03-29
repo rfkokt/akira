@@ -8,6 +8,7 @@ import { dbService } from '@/lib/db'
 import { TaskImporter } from './TaskImporter'
 import { TaskChatBox } from '@/components/Chat/TaskChatBox'
 import { DiffViewer } from '@/components/DiffViewer/DiffViewer'
+import { DescriptionWithFileTag } from '@/components/DescriptionWithFileTag'
 import {
   DndContext,
   DragEndEvent,
@@ -836,6 +837,17 @@ export function KanbanBoard() {
     fetchTasks()
   }, [fetchTasks])
 
+  useEffect(() => {
+    if (!showAddModal) {
+      setNewTask({
+        title: '',
+        description: '',
+        priority: 'medium',
+        status: 'todo',
+      })
+    }
+  }, [showAddModal])
+
   const getTasksByStatus = (status: Task['status']) =>
     tasks.filter((task) => task.status === status)
 
@@ -1104,13 +1116,13 @@ export function KanbanBoard() {
               <div>
                 <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">
                   Description
+                  <span className="text-neutral-600 ml-1">(type @ to tag files)</span>
                 </label>
-                <textarea
+                <DescriptionWithFileTag
                   value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                  className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist resize-none"
+                  onChange={(desc) => setNewTask({ ...newTask, description: desc })}
+                  workspacePath={activeWorkspace?.folder_path}
                   rows={3}
-                  placeholder="Enter task description..."
                 />
               </div>
 
