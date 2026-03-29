@@ -49,6 +49,8 @@ interface AIChatState {
   runAITask: (taskId: string, taskTitle: string, taskDescription?: string) => Promise<void>;
   retryTask: (taskId: string) => Promise<void>;
   sendMessage: (taskId: string, content: string) => Promise<void>;
+  sendSimpleMessage: (taskId: string, prompt: string) => Promise<string>;
+  stopMessage: (taskId: string) => Promise<void>;
   clearMessages: (taskId: string) => void;
   getMessages: (taskId: string) => ChatMessage[];
   getTaskState: (taskId: string) => AITaskState;
@@ -788,6 +790,157 @@ Please respond helpfully and concisely.`;
 
     } catch (error) {
       console.error('Error sending message:', error);
+    }
+  },
+
+  sendSimpleMessage: async (taskId: string, prompt: string): Promise<string> => {
+    const { messages } = get();
+    const timestamp = Date.now();
+    
+    const userMessage: ChatMessage = {
+      id: `msg-${timestamp}`,
+      taskId,
+      role: 'user',
+      content: prompt,
+      timestamp,
+    };
+    
+    set({
+      messages: {
+        ...messages,
+        [taskId]: [...(messages[taskId] || []), userMessage],
+      },
+    });
+
+    const engine = useEngineStore.getState().activeEngine;
+    if (!engine) return '';
+
+    const aiMessageId = `msg-${Date.now()}-ai`;
+    const aiMessage: ChatMessage = {
+      id: aiMessageId,
+      taskId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    };
+
+    set({
+      messages: {
+        ...get().messages,
+        [taskId]: [...(get().messages[taskId] || []), aiMessage],
+      },
+    });
+
+    let responseContent = '';
+
+    try {
+      const { listen } = await import('@tauri-apps/api/event');
+      
+      let unlisten: (() => void) | null = null;
+      
+      unlisten = await listen('cli-output', (event: { payload: { line: string; is_error: boolean } }) => {
+        const { messages } = get();
+        const taskMessages = messages[taskId] || [];
+        const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
+        
+        let displayLine = event.payload.line;
+        
+        if (engine.alias === 'opencode') {
+          try {
+            const json = JSON.parse(event.payload.line);
+            if (json.type === 'text' && json.part?.text) {
+              displayLine = json.part.text;
+            } else if (json.type === 'step_start') {
+              displayLine = `[${json.part?.type || 'step'}] Thinking...`;
+            } else if (json.type === 'tool_use') {
+              const toolName = json.part?.tool || 'unknown';
+              displayLine = `[Tool: ${toolName}]`;
+            } else if (json.type === 'step_finish') {
+              const tokens = json.tokens?.total || 0;
+              displayLine = `\n--- Step completed: ${tokens} tokens ---`;
+            } else {
+              displayLine = '';
+            }
+          } catch (e) {
+            // Not JSON, use as-is
+          }
+        }
+        
+        if (displayLine) {
+          responseContent += displayLine + '\n';
+        }
+
+        if (aiMsgIndex >= 0 && displayLine) {
+          const updatedMessages = [...taskMessages];
+          updatedMessages[aiMsgIndex] = {
+            ...updatedMessages[aiMsgIndex],
+            content: updatedMessages[aiMsgIndex].content + displayLine + '\n',
+          };
+
+          set({
+            messages: {
+              ...messages,
+              [taskId]: updatedMessages,
+            },
+          });
+        }
+      });
+
+      const workspace = useWorkspaceStore.getState().activeWorkspace;
+      const cwd = workspace?.folder_path || null;
+
+      let args: string[];
+      let actualPrompt: string;
+      
+      if (engine.alias === 'opencode') {
+        const workingDir = cwd || process.cwd?.() || '.';
+        args = ['run', '--format', 'json', '--dir', workingDir, prompt];
+        actualPrompt = '';
+      } else {
+        args = engine.args.split(' ').filter(Boolean);
+        actualPrompt = prompt;
+      }
+
+      await invoke('run_cli', {
+        binary: engine.binary_path,
+        args: args,
+        prompt: actualPrompt,
+        cwd: cwd,
+      });
+
+      // Cleanup after a short delay
+      setTimeout(() => {
+        if (unlisten) unlisten();
+      }, 500);
+
+    } catch (error) {
+      console.error('Error sending simple message:', error);
+    }
+
+    return responseContent;
+  },
+
+  stopMessage: async (taskId: string) => {
+    try {
+      await invoke('stop_cli');
+      
+      const { messages } = get();
+      const taskMessages = messages[taskId] || [];
+      
+      if (taskMessages.length > 0) {
+        const lastMsg = taskMessages[taskMessages.length - 1];
+        if (lastMsg.role === 'assistant' && lastMsg.content === '') {
+          const updatedMessages = taskMessages.slice(0, -1);
+          set({
+            messages: {
+              ...messages,
+              [taskId]: updatedMessages,
+            },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error stopping CLI:', error);
     }
   },
 

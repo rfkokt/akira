@@ -9,6 +9,7 @@ import { TaskImporter } from './TaskImporter'
 import { TaskChatBox } from '@/components/Chat/TaskChatBox'
 import { DiffViewer } from '@/components/DiffViewer/DiffViewer'
 import { DescriptionWithFileTag } from '@/components/DescriptionWithFileTag'
+import { TaskCreatorChat } from './TaskCreatorChat'
 import {
   DndContext,
   DragEndEvent,
@@ -599,18 +600,18 @@ function TaskCard({
       {...attributes}
       {...(isAIWorking ? {} : listeners)}
       onClick={handleClick}
-      className={`group rounded-md p-3 transition-colors border border-transparent hover:border-white/10 relative ${
+      className={`group rounded-lg p-4 transition-colors border border-transparent hover:border-white/10 relative ${
         isAIWorking 
           ? 'bg-yellow-500/5 border-yellow-500/20 cursor-not-allowed' 
           : 'bg-[#2d2d2d] hover:bg-[#3c3c3c] cursor-grab active:cursor-grabbing'
       }`}
     >
-      <div className="flex items-start justify-between gap-2 mb-1.5">
+      <div className="flex items-start justify-between gap-2 mb-2">
         <span className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(task.priority)} font-geist`}>
           {task.priority}
         </span>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {/* Action buttons based on status */}
           {task.status === 'todo' && (
             <button
@@ -700,11 +701,11 @@ function TaskCard({
           )}
         </div>
       </div>
-      <h3 className="text-sm font-medium text-neutral-200 font-geist mb-1">
+      <h3 className="text-sm font-medium text-neutral-200 font-geist mb-2 leading-snug">
         {task.title}
       </h3>
       {task.description && (
-        <p className="text-xs text-neutral-500 font-geist line-clamp-2">
+        <p className="text-xs text-neutral-500 font-geist line-clamp-3 leading-relaxed">
           {task.description}
         </p>
       )}
@@ -751,11 +752,13 @@ function KanbanColumn({
   tasks,
   children,
   onAddTask,
+  onImport,
 }: {
   column: ColumnType
   tasks: Task[]
   children: React.ReactNode
   onAddTask?: () => void
+  onImport?: () => void
 }) {
   const { setNodeRef } = useSortable({
     id: column.id,
@@ -768,10 +771,10 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="bg-[#252526] rounded-md flex flex-col max-h-[calc(100vh-280px)]"
+      className="bg-[#252526] rounded-lg flex flex-col w-[320px] shrink-0 h-full overflow-hidden"
     >
       {/* Column Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/5 shrink-0">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${column.color}`} />
           <span className="text-xs font-medium text-neutral-300 font-geist">
@@ -781,23 +784,50 @@ function KanbanColumn({
             {tasks.length}
           </span>
         </div>
-        <button className="p-1 rounded text-neutral-500 hover:text-white hover:bg-white/5 transition-colors">
-          <MoreHorizontal className="w-3.5 h-3.5" />
-        </button>
+        
+        {/* TODO Column Actions */}
+        {column.id === 'todo' && (
+          <div className="flex items-center gap-1">
+            {onImport && (
+              <button
+                onClick={onImport}
+                className="p-1.5 rounded text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
+                title="Import Tasks"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+            )}
+            {onAddTask && (
+              <button
+                onClick={onAddTask}
+                className="p-1.5 rounded text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
+                title="Add Task"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+        
+        {column.id !== 'todo' && (
+          <button className="p-1 rounded text-neutral-500 hover:text-white hover:bg-white/5 transition-colors">
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Tasks */}
-      <div className="flex-1 p-2 space-y-2 min-h-[200px]">
+      <div className="flex-1 min-h-0 p-4 space-y-4 overflow-y-auto">
         {children}
       </div>
 
       {/* Add Task Button - Only show for TODO column */}
-      {column.id === 'todo' && (
+      {column.id === 'todo' && onAddTask && (
         <button 
           onClick={onAddTask}
-          className="mx-2 mb-2 flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium text-neutral-500 hover:text-neutral-300 hover:bg-white/5 transition-colors font-geist"
+          className="mx-4 mb-4 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium text-neutral-500 hover:text-neutral-300 hover:bg-white/5 transition-colors font-geist shrink-0 border border-dashed border-white/10 hover:border-white/20"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-4 h-4" />
           Add task
         </button>
       )}
@@ -806,7 +836,7 @@ function KanbanColumn({
 }
 
 export function KanbanBoard() {
-  const { tasks, fetchTasks, moveTask, createTask, deleteTask, isLoading } = useTaskStore()
+  const { tasks, fetchTasks, moveTask, createTask, deleteTask } = useTaskStore()
   const aiChatStore = useAIChatStore()
   const { enqueueTask, retryTask, taskStates } = aiChatStore
   const { activeWorkspace } = useWorkspaceStore()
@@ -1007,39 +1037,28 @@ export function KanbanBoard() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold text-white font-geist">Board</h2>
-          {isLoading && <span className="text-xs text-neutral-500 font-geist">Loading...</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-neutral-300 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist border border-white/10"
-          >
-            <Upload className="w-4 h-4" />
-            <span>Import</span>
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] rounded-md transition-colors font-geist"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Task</span>
-          </button>
-        </div>
+    <div className="flex gap-4 h-full">
+      {/* Task Creator Panel - Left Sidebar (Fixed, no scroll) */}
+      <div className="w-[280px] shrink-0 h-full">
+        <TaskCreatorChat />
       </div>
 
-      {/* Kanban Board with DnD */}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+      {/* Kanban Board Area (Scrollable) */}
+      <div className="flex-1 min-w-0 h-full overflow-auto">
+        {/* Kanban Columns with DnD */}
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="flex gap-5 pb-4 min-w-max">
           {columns.map((column) => {
             const columnTasks = getTasksByStatus(column.id)
 
             return (
-              <KanbanColumn key={column.id} column={column} tasks={columnTasks} onAddTask={() => setShowAddModal(true)}>
+              <KanbanColumn 
+                key={column.id} 
+                column={column} 
+                tasks={columnTasks} 
+                onAddTask={() => setShowAddModal(true)}
+                onImport={() => setShowImportModal(true)}
+              >
                 <SortableContext
                   items={columnTasks.map((t) => t.id)}
                   strategy={verticalListSortingStrategy}
@@ -1064,27 +1083,27 @@ export function KanbanBoard() {
               </KanbanColumn>
             )
           })}
-        </div>
+          </div>
 
-        <DragOverlay dropAnimation={dropAnimation}>
-          {activeTask ? (
-            <div className="bg-[#3c3c3c] rounded-md p-3 border border-white/20 shadow-xl opacity-90 rotate-2">
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <span
-                  className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(activeTask.priority)} font-geist`}
-                >
-                  {activeTask.priority}
-                </span>
+          <DragOverlay dropAnimation={dropAnimation}>
+            {activeTask ? (
+              <div className="bg-[#3c3c3c] rounded-md p-3 border border-white/20 shadow-xl opacity-90 rotate-2">
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <span
+                    className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(activeTask.priority)} font-geist`}
+                  >
+                    {activeTask.priority}
+                  </span>
+                </div>
+                <h3 className="text-sm font-medium text-neutral-200 font-geist mb-1">
+                  {activeTask.title}
+                </h3>
               </div>
-              <h3 className="text-sm font-medium text-neutral-200 font-geist mb-1">
-                {activeTask.title}
-              </h3>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
 
-      {/* Add Task Modal */}
+        {/* Add Task Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-[#252526] rounded-lg border border-white/10 w-full max-w-md shadow-2xl">
@@ -1237,6 +1256,7 @@ export function KanbanBoard() {
           onRetry={handleRetry}
         />
       )}
+      </div>
     </div>
   )
 }

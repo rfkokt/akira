@@ -104,21 +104,7 @@ function App() {
   const renderMainContent = () => {
     switch (currentPage) {
       case 'tasks':
-        return (
-          <>
-            <div className="max-w-4xl mb-6">
-              <div className="mb-6">
-                <h1 className="text-xl font-semibold text-white tracking-tight font-geist">
-                  AI-Native Task & Workflow Manager
-                </h1>
-                <p className="mt-1 text-xs text-neutral-500 font-geist">
-                  Manage your tasks with AI-powered workflows
-                </p>
-              </div>
-            </div>
-            <KanbanBoard />
-          </>
-        )
+        return <KanbanBoard />
       
       case 'files':
         return (
