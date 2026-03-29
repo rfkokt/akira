@@ -293,9 +293,9 @@ function TaskDetailModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden">
+      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${getStatusColor(task.status)}`} />
             <h3 className="text-sm font-semibold text-white font-geist">Task Details</h3>
@@ -309,7 +309,7 @@ function TaskDetailModal({
         </div>
 
         {/* Content */}
-        <div className="p-4 space-y-4 overflow-y-auto">
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
           {/* Title */}
           <div>
             <label className="block text-[10px] text-neutral-500 font-geist mb-1">Title</label>
@@ -421,7 +421,7 @@ function TaskDetailModal({
         </div>
 
         {/* Actions */}
-        <div className="px-4 py-3 border-t border-white/5 bg-[#252526]">
+        <div className="px-4 py-3 border-t border-white/5 bg-[#252526] shrink-0">
           <div className="flex items-center justify-between">
             {/* Left: Delete Button */}
             <div>
@@ -1199,6 +1199,8 @@ export function KanbanBoard() {
         isOpen={!!diffTask}
         onClose={() => setDiffTask(null)}
         workspacePath={activeWorkspace?.folder_path}
+        taskState={diffTask ? taskStates[diffTask.id] : null}
+        prBranch={diffTask?.pr_branch}
         onDiscard={() => {
           if (diffTask) {
             useTaskStore.getState().moveTask(diffTask.id, 'todo')
@@ -1243,6 +1245,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   const [remoteName, setRemoteName] = useState('origin')
   const [tag, setTag] = useState('')
   const [tagType, setTagType] = useState<'patch' | 'minor' | 'major'>('patch')
+  const [createTag, setCreateTag] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
@@ -1252,6 +1255,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   const prBranch = taskState?.prBranch || null
   const [isPRCreated, setIsPRCreated] = useState(!!taskState?.prBranch)
   const { activeWorkspace } = useWorkspaceStore()
+  const [singleMerge, setSingleMerge] = useState(true) // Single merge mode - only merge to target
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
@@ -1270,9 +1274,14 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
     
     const fetchGitInfo = async () => {
       try {
-        const branchResult = await runGit(['branch', '--show-current'])
-        if (branchResult.success) {
-          setCurrentBranch(branchResult.output.trim())
+        // If there's a PR branch, use it as current branch
+        if (taskState?.prBranch) {
+          setCurrentBranch(taskState.prBranch)
+        } else {
+          const branchResult = await runGit(['branch', '--show-current'])
+          if (branchResult.success) {
+            setCurrentBranch(branchResult.output.trim())
+          }
         }
 
         const remoteResult = await runGit(['remote'])
@@ -1296,17 +1305,38 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           else if (allBranches.length > 0) setTargetBranch(allBranches[0])
         }
 
-        const diffResult = await invoke<{ changed_files: string[] }>('git_get_diff', { 
-          cwd: activeWorkspace.folder_path 
-        })
-        if (diffResult?.changed_files?.length > 0) {
-          setChangedFiles(diffResult.changed_files)
-        } else {
-          const stagedResult = await invoke<{ changed_files: string[] }>('git_get_staged_diff', { 
+        // Get changed files - from PR diff if PR exists, otherwise from local
+        let files: string[] = []
+        if (prBranch) {
+          // Fetch files from PR diff
+          try {
+            const prDiffResult = await invoke<{ changed_files: string[]; diff: string }>('git_get_pr_diff', { 
+              cwd: activeWorkspace.folder_path,
+              branch: prBranch
+            })
+            if (prDiffResult?.changed_files?.length > 0) {
+              files = prDiffResult.changed_files
+            }
+          } catch (e) {
+            console.log('[GitPushFlow] Failed to get PR diff:', e)
+          }
+        }
+        
+        // Fallback to local diff if no PR files
+        if (files.length === 0) {
+          const diffResult = await invoke<{ changed_files: string[] }>('git_get_diff', { 
             cwd: activeWorkspace.folder_path 
           })
-          setChangedFiles(stagedResult?.changed_files || [])
+          if (diffResult?.changed_files?.length > 0) {
+            files = diffResult.changed_files
+          } else {
+            const stagedResult = await invoke<{ changed_files: string[] }>('git_get_staged_diff', { 
+              cwd: activeWorkspace.folder_path 
+            })
+            files = stagedResult?.changed_files || []
+          }
         }
+        setChangedFiles(files)
 
         const currentTag = await getCurrentTag()
         setTag(calculateNextTag(currentTag, tagType))
@@ -1329,9 +1359,29 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   }
 
   const getCurrentTag = async (): Promise<string | null> => {
-    const result = await runGit(['tag', '--list', 'alpha.*', '--sort=-v:refname'])
+    // Get latest tag from target branch
+    const result = await runGit(['ls-remote', '--tags', remoteName, targetBranch])
     if (result.success && result.output.trim()) {
-      return result.output.trim().split('\n')[0]
+      const tags = result.output.trim().split('\n')
+        .map(line => line.split('refs/tags/')[1])
+        .filter(tag => tag && tag.startsWith('alpha.'))
+        .sort((a, b) => {
+          const aMatch = a.match(/alpha\.(\d+)\.(\d+)\.(\d+)/)
+          const bMatch = b.match(/alpha\.(\d+)\.(\d+)\.(\d+)/)
+          if (!aMatch || !bMatch) return 0
+          const aVer = [aMatch[1], aMatch[2], aMatch[3]].map(Number)
+          const bVer = [bMatch[1], bMatch[2], bMatch[3]].map(Number)
+          for (let i = 0; i < 3; i++) {
+            if (aVer[i] !== bVer[i]) return bVer[i] - aVer[i]
+          }
+          return 0
+        })
+      if (tags.length > 0) return tags[0]
+    }
+    // Fallback: local tags
+    const localResult = await runGit(['tag', '--list', 'alpha.*', '--sort=-v:refname'])
+    if (localResult.success && localResult.output.trim()) {
+      return localResult.output.trim().split('\n')[0]
     }
     return null
   }
@@ -1364,60 +1414,15 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
     
     setIsGenerating(true)
     try {
-      const filesList = changedFiles.slice(0, 30).join('\n')
-      const prompt = `Generate a commit message for these changes.
-
-## Commit Message Rules (Conventional Commits)
-
-Format: <type>[scope]: <description>
-
-Types:
-- feat: new feature
-- fix: bug fix
-- docs: documentation
-- style: formatting (no logic change)
-- refactor: code refactoring
-- perf: performance improvement
-- test: tests
-- chore: minor changes (config, build tools)
-
-Rules:
-1. Use scope when relevant: feat(auth):, fix(api):, refactor(ui):
-2. Description: explain WHAT changed, be specific
-3. Max 72 characters for the first line
-4. No generic messages like "update", "fix bug", "changes"
-
-Changed files:
-${filesList}
-${changedFiles.length > 30 ? `\n... and ${changedFiles.length - 30} more files` : ''}
-
-Respond with ONLY the commit message, nothing else. Example: feat(ui): add user profile card component`
-
-      const { listen } = await import('@tauri-apps/api/event')
-      let output = ''
-      
-      const unlistenOutput = await listen('cli-output', (event: { payload: { line: string } }) => {
-        output += event.payload.line + '\n'
-      })
-      
-      const completionPromise = new Promise<{ success: boolean; error_message?: string }>((resolve) => {
-        listen('cli-complete', (event: { payload: { success: boolean; error_message?: string } }) => {
-          resolve(event.payload)
-          unlistenOutput()
-        })
-      })
-
-      await invoke('run_cli', {
-        binary: engine.binary_path,
-        args: engine.args.split(' ').filter(Boolean),
-        prompt: prompt,
+      // Use Tauri backend command for faster response
+      const result = await invoke<{ message: string; success: boolean }>('generate_commit_message', {
+        model: engine.model || 'llama3.2',
+        files: changedFiles,
         cwd: activeWorkspace.folder_path,
       })
 
-      const result = await completionPromise
-
-      if (result.success && output) {
-        let generatedMsg = output.trim().split('\n')[0]
+      if (result.success && result.message) {
+        let generatedMsg = result.message.trim()
         if (generatedMsg.length > 72) {
           generatedMsg = generatedMsg.substring(0, 69) + '...'
         }
@@ -1430,6 +1435,10 @@ Respond with ONLY the commit message, nothing else. Example: feat(ui): add user 
       }
     } catch (err) {
       console.error('Failed to generate commit message:', err)
+      // Fallback to manual message
+      if (changedFiles.length > 0) {
+        setCommitMsg(`feat: update ${changedFiles.length} files`)
+      }
     } finally {
       setIsGenerating(false)
     }
@@ -1532,9 +1541,9 @@ Respond with ONLY the commit message, nothing else. Example: feat(ui): add user 
     const branchLabel = prBranch ? `PR branch (${prBranch})` : `current branch (${currentBranch})`
 
     try {
-      addLog(`Starting double merge workflow using ${branchLabel}...`)
+      addLog(`Starting ${singleMerge ? 'single' : 'double'} merge workflow using ${branchLabel}...`)
 
-      // Step 1: Merge to rdev
+      // Step 1: Merge to target branch (e.g., rdev)
       addLog(`Merging to ${targetBranch}...`)
       const merge1Result = await runGit(['checkout', targetBranch])
       if (!merge1Result.success) throw new Error(`checkout ${targetBranch} failed: ${merge1Result.output}`)
@@ -1550,40 +1559,43 @@ Respond with ONLY the commit message, nothing else. Example: feat(ui): add user 
       if (!push1Result.success) throw new Error(`push ${targetBranch} failed: ${push1Result.output}`)
       addLog(`✓ Pushed ${targetBranch}`)
 
-      // Step 2: Detect main branch and merge
-      const mainBranch = remoteBranches.find(b => 
-        b.includes('main') || b.includes('master') || b.includes('production')
-      ) || 'development'
-      
-      addLog(`Merging to ${mainBranch}...`)
-      const checkoutDevResult = await runGit(['checkout', mainBranch])
-      if (!checkoutDevResult.success) throw new Error(`checkout ${mainBranch} failed: ${checkoutDevResult.output}`)
-      
-      const pullDevResult = await runGit(['pull', remoteName, mainBranch])
-      if (!pullDevResult.success) addLog(`Pull warning: ${pullDevResult.output}`)
-      
-      const mergeDevResult = await runGit(['merge', targetBranch, '--no-ff', '-m', `Merge ${targetBranch} into ${mainBranch}`])
-      if (!mergeDevResult.success) throw new Error(`merge to ${mainBranch} failed: ${mergeDevResult.output}`)
-      addLog(`✓ Merged into ${mainBranch}`)
+      // Step 2: Only do second merge if not single merge mode
+      if (!singleMerge) {
+        const mainBranch = remoteBranches.find(b => 
+          b.includes('main') || b.includes('master') || b.includes('production')
+        ) || 'development'
+        
+        addLog(`Merging to ${mainBranch}...`)
+        const checkoutDevResult = await runGit(['checkout', mainBranch])
+        if (!checkoutDevResult.success) throw new Error(`checkout ${mainBranch} failed: ${checkoutDevResult.output}`)
+        
+        const pullDevResult = await runGit(['pull', remoteName, mainBranch])
+        if (!pullDevResult.success) addLog(`Pull warning: ${pullDevResult.output}`)
+        
+        const mergeDevResult = await runGit(['merge', targetBranch, '--no-ff', '-m', `Merge ${targetBranch} into ${mainBranch}`])
+        if (!mergeDevResult.success) throw new Error(`merge to ${mainBranch} failed: ${mergeDevResult.output}`)
+        addLog(`✓ Merged into ${mainBranch}`)
 
-      // Create tag
-      const calculatedTag = calculateNextTag(await getCurrentTag(), tagType)
-      addLog(`Creating tag: ${calculatedTag}`)
-      const tagResult = await runGit(['tag', '-a', calculatedTag, '-m', `Release ${calculatedTag}`])
-      if (!tagResult.success) throw new Error(`tag failed: ${tagResult.output}`)
-      addLog(`✓ Tag created: ${calculatedTag}`)
+        addLog(`Pushing ${mainBranch}...`)
+        const pushDevResult = await runGit(['push', remoteName, mainBranch])
+        if (!pushDevResult.success) throw new Error(`push ${mainBranch} failed: ${pushDevResult.output}`)
+        addLog(`✓ Pushed ${mainBranch}`)
+      }
 
-      // Push everything
-      addLog(`Pushing ${mainBranch} and tags...`)
-      const pushDevResult = await runGit(['push', remoteName, mainBranch])
-      if (!pushDevResult.success) throw new Error(`push ${mainBranch} failed: ${pushDevResult.output}`)
-      
-      const pushTagsResult = await runGit(['push', remoteName, '--tags'])
-      if (!pushTagsResult.success) addLog(`Push tags warning: ${pushTagsResult.output}`)
-      
-      addLog('✓ Pushed development and tags')
-      addLog(`✓ Version: ${calculatedTag}`)
-      addLog('✓ Double merge completed! Close this modal when ready.')
+      // Create tag only if checkbox is checked
+      if (createTag) {
+        const calculatedTag = calculateNextTag(await getCurrentTag(), tagType)
+        addLog(`Creating tag: ${calculatedTag}`)
+        const tagResult = await runGit(['tag', '-a', calculatedTag, '-m', `Release ${calculatedTag}`])
+        if (!tagResult.success) throw new Error(`tag failed: ${tagResult.output}`)
+        addLog(`✓ Tag created: ${calculatedTag}`)
+
+        const pushTagsResult = await runGit(['push', remoteName, '--tags'])
+        if (!pushTagsResult.success) addLog(`Push tags warning: ${pushTagsResult.output}`)
+        addLog(`✓ Tags pushed`)
+        addLog(`✓ Version: ${calculatedTag}`)
+      }
+      addLog(createTag ? `✓ ${singleMerge ? 'Merge' : 'Double merge'} and tag completed!` : `✓ ${singleMerge ? 'Merge' : 'Double merge'} completed!`)
       setLoading(false)
 
     } catch (err) {
@@ -1623,22 +1635,38 @@ Respond with ONLY the commit message, nothing else. Example: feat(ui): add user 
           )}
 
           {/* Branch Info */}
-          <div className="flex items-center gap-4 text-xs">
-            <div className="flex-1">
-              <span className="text-neutral-500">Current:</span>
-              <span className="ml-2 text-white font-mono">{currentBranch || '...'}</span>
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-neutral-500 shrink-0 w-14">Current:</span>
+              <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={currentBranch}>
+                {currentBranch || '...'}
+              </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-neutral-500">Target:</span>
+              <span className="text-neutral-500 shrink-0 w-14">Target:</span>
               <select
                 value={targetBranch}
                 onChange={(e) => setTargetBranch(e.target.value)}
-                className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10"
+                className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10 flex-1"
               >
                 {remoteBranches.map(b => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </select>
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="text-[10px] text-neutral-500 font-geist">Double merge</span>
+                <input
+                  type="checkbox"
+                  checked={!singleMerge}
+                  onChange={(e) => setSingleMerge(!e.target.checked)}
+                  className="w-4 h-4 rounded border-neutral-500 bg-[#3c3c3c] text-[#0e639c] focus:ring-[#0e639c]"
+                />
+              </label>
+              <span className="text-[10px] text-yellow-500 font-geist">
+                {!singleMerge ? 'Merge to target + main' : 'Merge to target only'}
+              </span>
             </div>
           </div>
 
@@ -1694,19 +1722,31 @@ Respond with ONLY the commit message, nothing else. Example: feat(ui): add user 
           </div>
 
           {/* Version Tag */}
-          <div>
-            <label className="block text-xs text-neutral-400 font-geist mb-1">Version Tag</label>
+          <div className={createTag ? '' : 'opacity-50'}>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs text-neutral-400 font-geist">Version Tag</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createTag}
+                  onChange={(e) => setCreateTag(e.target.checked)}
+                  className="w-4 h-4 rounded border-neutral-500 bg-[#3c3c3c] text-[#0e639c] focus:ring-[#0e639c]"
+                />
+                <span className="text-xs text-neutral-400 font-geist">Create tag after merge</span>
+              </label>
+            </div>
             <div className="flex gap-2">
               <div className="flex gap-1">
                 {(['patch', 'minor', 'major'] as const).map(type => (
                   <button
                     key={type}
                     onClick={() => setTagType(type)}
+                    disabled={!createTag}
                     className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
                       tagType === type 
                         ? 'bg-[#0e639c] text-white' 
                         : 'bg-[#3c3c3c] text-neutral-400 hover:text-white'
-                    }`}
+                    } ${!createTag ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {type}
                   </button>
@@ -1717,7 +1757,7 @@ Respond with ONLY the commit message, nothing else. Example: feat(ui): add user 
                 value={tag}
                 onChange={(e) => setTag(e.target.value)}
                 className="flex-1 px-3 py-1 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist font-mono"
-                disabled={loading}
+                disabled={loading || !createTag}
               />
             </div>
           </div>

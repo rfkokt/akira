@@ -387,19 +387,42 @@ Start working on this now.`;
         if (engine.alias === 'opencode') {
           try {
             const json = JSON.parse(event.payload.line);
+            console.log('[AI] Opencode event type:', json.type);
+            
             // Extract text from different event types
             if (json.type === 'text' && json.part?.text) {
               displayLine = json.part.text;
             } else if (json.type === 'step_start') {
-              displayLine = `[${json.part?.type || 'step'}]`;
-            } else if (json.type === 'tool') {
-              displayLine = `[Tool: ${json.part?.tool || 'unknown'}] ${json.part?.state?.description || ''}`;
+              displayLine = `[${json.part?.type || 'step'}] Thinking...`;
+            } else if (json.type === 'tool_use') {
+              const toolState = json.part?.state;
+              const toolName = json.part?.tool || 'unknown';
+              let toolInfo = `[Tool: ${toolName}]`;
+              if (toolState?.input?.filePath) {
+                toolInfo += ` ${toolState.input.filePath}`;
+              } else if (toolState?.input?.pattern) {
+                toolInfo += ` ${toolState.input.pattern}`;
+              } else if (toolState?.input) {
+                toolInfo += ` ${JSON.stringify(toolState.input).substring(0, 100)}`;
+              }
+              if (toolState?.output) {
+                const output = typeof toolState.output === 'string' 
+                  ? toolState.output.substring(0, 200) 
+                  : JSON.stringify(toolState.output).substring(0, 200);
+                toolInfo += `\n  → ${output}`;
+              }
+              displayLine = toolInfo;
             } else if (json.type === 'step_finish') {
-              displayLine = `\n--- Completed in ${json.tokens?.total || 0} tokens ---`;
+              const tokens = json.tokens?.total || 0;
+              const cost = json.cost ? ` ($${json.cost.toFixed(6)})` : '';
+              displayLine = `\n--- Step completed: ${tokens} tokens${cost} ---`;
+            } else if (json.type === 'error') {
+              displayLine = `❌ Error: ${json.message || 'Unknown error'}`;
             } else {
-              displayLine = ''; // Skip other events
+              displayLine = ''; // Skip other events (heartbeat, etc.)
             }
-          } catch {
+          } catch (e) {
+            console.log('[AI] JSON parse error:', e);
             // Not JSON, use as-is
           }
         }
@@ -458,9 +481,11 @@ Start working on this now.`;
       const workspace = useWorkspaceStore.getState().activeWorkspace;
       const cwd = workspace?.folder_path || null;
 
+      console.log('[AI] Workspace:', workspace);
       console.log('[AI] Invoking run_cli with binary:', engine.binary_path);
       console.log('[AI] Engine alias:', engine.alias);
-      console.log('[AI] Base args:', engine.args.split(' ').filter(Boolean));
+      console.log('[AI] Binary path:', engine.binary_path);
+      console.log('[AI] Base args from engine config:', engine.args);
       console.log('[AI] CWD:', cwd);
 
       // Special handling for opencode - needs prompt as argument, not stdin
@@ -473,8 +498,8 @@ Start working on this now.`;
         const workingDir = cwd || process.cwd?.() || '.';
         args = ['run', '--format', 'json', '--dir', workingDir, prompt];
         actualPrompt = ''; // Don't write to stdin
-        console.log('[AI] Opencode mode');
-        console.log('[AI] Args:', args);
+        console.log('[AI] Opencode mode - final args:', args);
+        console.log('[AI] Full command would be:', engine.binary_path, args.join(' '));
       } else {
         // For other engines: write prompt to stdin
         args = engine.args.split(' ').filter(Boolean);
@@ -796,9 +821,21 @@ Please respond helpfully and concisely.`;
       });
     };
 
+    const slugify = (text: string): string => {
+      return text
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 50);
+    };
+
     try {
       const timestamp = Date.now();
-      const branchName = `task-${taskId.slice(0, 8)}-${timestamp}`;
+      const shortId = taskId.slice(0, 8);
+      const slugifiedTitle = slugify(taskTitle);
+      const branchName = `task/${slugifiedTitle}-${shortId}`;
       const commitMsg = `feat: ${taskTitle}`;
 
       const currentBranch = await runGit(['branch', '--show-current']);
@@ -845,6 +882,18 @@ Please respond helpfully and concisely.`;
       }
 
       await runGit(['checkout', currentBranchName]);
+
+      // Save PR info to database
+      try {
+        await invoke('update_task_pr_info', {
+          id: taskId,
+          prBranch: branchName,
+          prUrl: prUrl || null,
+          remote: remoteName || null,
+        });
+      } catch (e) {
+        console.error('Failed to save PR info to database:', e);
+      }
 
       set({
         taskStates: {

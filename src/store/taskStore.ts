@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type { Task, CreateTaskRequest } from '@/types';
 import { dbService } from '@/lib/db';
+import { useAIChatStore } from './aiChatStore';
 
 interface TaskState {
   tasks: Task[];
@@ -45,6 +46,34 @@ export const useTaskStore = create<TaskState>()(
         try {
           const tasks = await dbService.getTasksByWorkspace(targetWorkspaceId);
           set({ tasks, isLoading: false });
+          
+          // Sync PR info to AI chat store
+          const aiStore = useAIChatStore.getState();
+          tasks.forEach(task => {
+            if (task.pr_branch) {
+              const existingState = aiStore.taskStates[task.id];
+              if (!existingState?.prBranch) {
+                useAIChatStore.setState({
+                  taskStates: {
+                    ...aiStore.taskStates,
+                    [task.id]: {
+                      status: 'idle',
+                      startTime: null,
+                      endTime: null,
+                      errorMessage: null,
+                      lastResponse: null,
+                      queuePosition: null,
+                      currentFile: null,
+                      filesModified: [],
+                      prBranch: task.pr_branch,
+                      prUrl: task.pr_url || undefined,
+                      prCreatedAt: task.pr_created_at ? new Date(task.pr_created_at).getTime() : undefined,
+                    }
+                  }
+                });
+              }
+            }
+          });
         } catch (error) {
           set({ error: String(error), isLoading: false });
         }

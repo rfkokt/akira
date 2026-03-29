@@ -63,6 +63,12 @@ fn delete_task(state: tauri::State<AppState>, id: String) -> Result<(), String> 
     queries::delete_task(&conn, &id).map_err(|e: rusqlite::Error| e.to_string())
 }
 
+#[tauri::command]
+fn update_task_pr_info(state: tauri::State<AppState>, id: String, pr_branch: String, pr_url: Option<String>, remote: Option<String>) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::update_task_pr_info(&conn, &id, &pr_branch, pr_url.as_deref(), remote.as_deref()).map_err(|e: rusqlite::Error| e.to_string())
+}
+
 // ============== Engine Commands ==============
 
 #[tauri::command]
@@ -95,6 +101,100 @@ fn seed_default_engines(state: tauri::State<AppState>) -> Result<Vec<Engine>, St
     db::seed_default_engines(&conn).map_err(|e| e.to_string())?;
     // Return all engines after seeding
     queries::get_all_engines(&conn).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+// ============== AI Commands ==============
+
+#[derive(Debug, Serialize)]
+struct GenerateCommitResponse {
+    message: String,
+    success: bool,
+}
+
+/// Generate commit message using Ollama API
+#[tauri::command]
+async fn generate_commit_message(
+    model: String,
+    files: Vec<String>,
+    cwd: String,
+) -> Result<GenerateCommitResponse, String> {
+    let files_list = files.iter().take(30).map(|s| s.as_str()).collect::<Vec<_>>().join("\n");
+    let more_count = if files.len() > 30 { files.len() - 30 } else { 0 };
+    
+    let prompt = format!(r#"Generate a commit message for these changes.
+
+## Commit Message Rules (Conventional Commits)
+
+Format: <type>[scope]: <description>
+
+Types:
+- feat: new feature
+- fix: bug fix
+- docs: documentation
+- style: formatting (no logic change)
+- refactor: code refactoring
+- perf: performance improvement
+- test: tests
+- chore: minor changes (config, build tools)
+
+Rules:
+1. Use scope when relevant: feat(auth):, fix(api):, refactor(ui):
+2. Description: explain WHAT changed, be specific
+3. Max 72 characters for the first line
+4. No generic messages like "update", "fix bug", "changes"
+
+Changed files:
+{}
+{}
+
+Respond with ONLY the commit message, nothing else. Example: feat(ui): add user profile card component"#, 
+        files_list,
+        if more_count > 0 { format!("\n... and {} more files", more_count) } else { String::new() }
+    );
+
+    let client = reqwest::Client::new();
+    
+    let request_body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "stream": false
+    });
+
+    let response = client
+        .post("http://localhost:11434/api/generate")
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to Ollama: {}. Make sure Ollama is running (ollama serve)", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Ollama API error: {}", response.status()));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let message = response_json["response"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .split('\n')
+        .next()
+        .unwrap_or("")
+        .to_string();
+
+    if message.is_empty() {
+        return Err("Empty response from AI".to_string());
+    }
+
+    Ok(GenerateCommitResponse {
+        message,
+        success: true,
+    })
 }
 
 // ============== CLI Runner Commands ==============
@@ -875,6 +975,150 @@ fn git_get_staged_diff(cwd: String) -> Result<GitDiffResult, String> {
 }
 
 #[derive(Debug, Serialize)]
+struct PRDiffResult {
+    diff: String,
+    has_changes: bool,
+    changed_files: Vec<String>,
+}
+
+fn parse_diff_output(diff: &str) -> (bool, Vec<String>) {
+    let has_changes = !diff.trim().is_empty();
+    let changed_files: Vec<String> = diff
+        .lines()
+        .filter(|line| line.starts_with("diff --git"))
+        .filter_map(|line| {
+            line.trim_start_matches("diff --git ")
+                .split_whitespace()
+                .next()
+                .map(|s| s.to_string())
+        })
+        .filter(|f| !f.is_empty())
+        .collect();
+    (has_changes, changed_files)
+}
+
+/// Get diff for a PR/MR by comparing branch with its base branch
+#[tauri::command]
+fn git_get_pr_diff(cwd: String, branch: String) -> Result<PRDiffResult, String> {
+    // Get the remote name dynamically
+    let remote_output = Command::new("git")
+        .args(&["remote"])
+        .current_dir(&cwd)
+        .output();
+    
+    let remote_name = if remote_output.is_ok() && remote_output.as_ref().unwrap().status.success() {
+        String::from_utf8_lossy(&remote_output.as_ref().unwrap().stdout)
+            .trim()
+            .split_whitespace()
+            .next()
+            .unwrap_or("origin")
+            .to_string()
+    } else {
+        "origin".to_string()
+    };
+    
+    // Find the base branch (usually rdev, development, main)
+    let base_branches = ["rdev", "development", "dev", "main", "master"];
+    let mut base_branch = "main".to_string();
+    
+    for bp in &base_branches {
+        let check = Command::new("git")
+            .args(&["rev-parse", &format!("{}/{}", remote_name, bp)])
+            .current_dir(&cwd)
+            .output();
+        
+        if check.is_ok() && check.as_ref().unwrap().status.success() {
+            base_branch = bp.to_string();
+            break;
+        }
+    }
+    
+    let remote_branch = format!("{}/{}", remote_name, branch);
+    let remote_base = format!("{}/{}", remote_name, base_branch);
+    
+    // Try git log first - it's faster as it doesn't need fetch
+    // Check if we can get diff using log (only works if base branch is ancestor)
+    let log_output = Command::new("git")
+        .args(&["log", "--oneline", "-1", &format!("{}/{}", remote_name, branch)])
+        .current_dir(&cwd)
+        .output();
+    
+    let diff_from;
+    
+    if log_output.is_ok() && log_output.as_ref().unwrap().status.success() {
+        // Branch exists on remote, try using git log -p for diff
+        // This avoids the slow fetch
+        let log_diff = Command::new("git")
+            .args(&["log", "-p", &format!("{}..{}", base_branch, branch), "--color=never"])
+            .current_dir(&cwd)
+            .output();
+        
+        if log_diff.is_ok() && log_diff.as_ref().unwrap().status.success() {
+            let log_diff_output = String::from_utf8_lossy(&log_diff.as_ref().unwrap().stdout).to_string();
+            if !log_diff_output.trim().is_empty() {
+                diff_from = log_diff_output;
+            } else {
+                // Try merge-base approach
+                diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch)?;
+            }
+        } else {
+            // Fallback to merge-base approach
+            diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch)?;
+        }
+    } else {
+        // Branch not available locally, need to fetch
+        let _ = Command::new("git")
+            .args(&["fetch", &remote_name, &branch])
+            .current_dir(&cwd)
+            .output();
+        
+        diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch)?;
+    }
+    
+    let (has_changes, changed_files) = parse_diff_output(&diff_from);
+    
+    Ok(PRDiffResult {
+        diff: diff_from,
+        has_changes,
+        changed_files,
+    })
+}
+
+fn get_diff_via_merge_base(cwd: &str, base_branch: &str, remote_branch: &str) -> Result<String, String> {
+    // Find common ancestor using git merge-base
+    let merge_base_output = Command::new("git")
+        .args(&["merge-base", base_branch, remote_branch])
+        .current_dir(cwd)
+        .output();
+    
+    if merge_base_output.is_ok() && merge_base_output.as_ref().unwrap().status.success() {
+        let merge_base = String::from_utf8_lossy(&merge_base_output.as_ref().unwrap().stdout)
+            .trim()
+            .to_string();
+        
+        if !merge_base.is_empty() {
+            // Get diff from merge-base to branch tip
+            let diff_output = Command::new("git")
+                .args(&["diff", &merge_base, remote_branch, "--color=never"])
+                .current_dir(cwd)
+                .output()
+                .map_err(|e| format!("Failed to get diff: {}", e))?;
+            
+            return Ok(String::from_utf8_lossy(&diff_output.stdout).to_string());
+        }
+    }
+    
+    // Fallback: diff between base and branch
+    let diff_output = Command::new("git")
+        .args(&["diff", base_branch, remote_branch, "--color=never"])
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| format!("Failed to get diff: {}", e))?;
+    
+    Ok(String::from_utf8_lossy(&diff_output.stdout).to_string())
+}
+
+#[derive(Debug, Serialize)]
 struct ShellCommandResult {
     success: bool,
     output: String,
@@ -943,6 +1187,7 @@ fn main() {
             get_tasks_by_workspace,
             update_task_status,
             delete_task,
+            update_task_pr_info,
             create_engine,
             get_all_engines,
             update_engine_enabled,
@@ -970,7 +1215,9 @@ fn main() {
             git_create_branch,
             git_get_diff,
             git_get_staged_diff,
+            git_get_pr_diff,
             run_shell_command,
+            generate_commit_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

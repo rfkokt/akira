@@ -12,6 +12,10 @@ pub struct Task {
     pub priority: String,
     pub file_path: Option<String>,
     pub workspace_id: Option<String>,
+    pub pr_branch: Option<String>,
+    pub pr_url: Option<String>,
+    pub pr_created_at: Option<String>,
+    pub remote: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -48,7 +52,7 @@ pub fn create_task(conn: &Connection, task: &CreateTaskRequest) -> Result<Task> 
 
 pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, created_at, updated_at 
          FROM tasks WHERE id = ?1"
     )?;
 
@@ -61,8 +65,12 @@ pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
             priority: row.get(4)?,
             file_path: row.get(5)?,
             workspace_id: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+            pr_branch: row.get(7)?,
+            pr_url: row.get(8)?,
+            pr_created_at: row.get(9)?,
+            remote: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     });
 
@@ -75,7 +83,7 @@ pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
 
 pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, created_at, updated_at 
          FROM tasks WHERE status = ?1 ORDER BY created_at DESC"
     )?;
 
@@ -88,8 +96,12 @@ pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>>
             priority: row.get(4)?,
             file_path: row.get(5)?,
             workspace_id: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+            pr_branch: row.get(7)?,
+            pr_url: row.get(8)?,
+            pr_created_at: row.get(9)?,
+            remote: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     })?;
 
@@ -98,7 +110,7 @@ pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>>
 
 pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, created_at, updated_at 
          FROM tasks ORDER BY created_at DESC"
     )?;
 
@@ -111,8 +123,12 @@ pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
             priority: row.get(4)?,
             file_path: row.get(5)?,
             workspace_id: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+            pr_branch: row.get(7)?,
+            pr_url: row.get(8)?,
+            pr_created_at: row.get(9)?,
+            remote: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     })?;
 
@@ -121,7 +137,7 @@ pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
 
 pub fn get_tasks_by_workspace(conn: &Connection, workspace_id: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, created_at, updated_at 
          FROM tasks WHERE workspace_id = ?1 ORDER BY created_at DESC"
     )?;
 
@@ -134,8 +150,12 @@ pub fn get_tasks_by_workspace(conn: &Connection, workspace_id: &str) -> Result<V
             priority: row.get(4)?,
             file_path: row.get(5)?,
             workspace_id: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+            pr_branch: row.get(7)?,
+            pr_url: row.get(8)?,
+            pr_created_at: row.get(9)?,
+            remote: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     })?;
 
@@ -146,6 +166,20 @@ pub fn update_task_status(conn: &Connection, id: &str, status: &str) -> Result<(
     conn.execute(
         "UPDATE tasks SET status = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
         [status, id],
+    )?;
+    Ok(())
+}
+
+pub fn update_task_pr_info(
+    conn: &Connection,
+    id: &str,
+    pr_branch: &str,
+    pr_url: Option<&str>,
+    remote: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET pr_branch = ?1, pr_url = ?2, remote = ?3, pr_created_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?4",
+        params![pr_branch, pr_url, remote, id],
     )?;
     Ok(())
 }

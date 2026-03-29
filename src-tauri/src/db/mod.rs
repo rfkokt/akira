@@ -63,6 +63,36 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute("DROP TABLE tasks_old", [])?;
     }
 
+    // Migration: Add PR columns to tasks table
+    let has_pr_branch: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'pr_branch'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !has_pr_branch {
+        conn.execute("ALTER TABLE tasks ADD COLUMN pr_branch TEXT", [])?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN pr_url TEXT", [])?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN pr_created_at DATETIME", [])?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN remote TEXT", [])?;
+    }
+
+    let has_remote: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'remote'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !has_remote {
+        conn.execute("ALTER TABLE tasks ADD COLUMN remote TEXT", [])?;
+    }
+
     // Migration: Handle project_configs table schema change
     let has_project_id_config: bool = conn
         .query_row(
@@ -131,6 +161,10 @@ fn create_tables(conn: &Connection) -> Result<()> {
             priority        TEXT DEFAULT 'medium',
             file_path       TEXT,
             workspace_id    TEXT,
+            pr_branch       TEXT,
+            pr_url          TEXT,
+            pr_created_at   DATETIME,
+            remote          TEXT,
             created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
@@ -269,7 +303,12 @@ pub fn seed_default_engines(conn: &Connection) -> Result<()> {
             "claude-3-5-sonnet-20241022",
             "--dangerously-skip-permissions",
         ),
-        ("opencode", "opencode", "", "--format json run"),
+        (
+            "opencode",
+            "/Users/rifkioktapratama/.opencode/bin/opencode",
+            "",
+            "--format json run",
+        ),
     ];
 
     for (alias, binary, model, args) in defaults {

@@ -7,6 +7,10 @@ export interface Task {
   priority: 'low' | 'medium' | 'high';
   file_path: string | null;
   workspace_id: string | null;
+  pr_branch: string | null;
+  pr_url: string | null;
+  pr_created_at: string | null;
+  remote: string | null;
   created_at: string;
   updated_at: string;
 }
