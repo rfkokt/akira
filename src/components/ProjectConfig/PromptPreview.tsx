@@ -1,0 +1,126 @@
+import { X, Copy, Check } from 'lucide-react';
+import { useConfigStore } from '@/store/configStore';
+import { useState, useCallback } from 'react';
+
+interface PromptPreviewProps {
+  onClose: () => void;
+}
+
+export function PromptPreview({ onClose }: PromptPreviewProps) {
+  const { getSystemPrompt, config } = useConfigStore();
+  const [copied, setCopied] = useState(false);
+  
+  const systemPrompt = getSystemPrompt();
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(systemPrompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }, [systemPrompt]);
+
+  // Parse sections for better display
+  const sections = systemPrompt.split('\n\n---\n\n').filter(Boolean);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-[700px] max-h-[80vh] bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#252526]">
+          <div>
+            <h3 className="text-sm font-semibold text-white font-geist">
+              System Prompt Preview
+            </h3>
+            <p className="text-[10px] text-neutral-500 font-geist mt-0.5">
+              This is the full prompt that will be sent to AI
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-green-400" />
+                  <span className="text-green-400">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={onClose}
+              className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-4 space-y-4">
+          {sections.length === 0 ? (
+            <div className="text-center py-8 text-neutral-500">
+              <p className="text-sm font-geist">No configuration yet</p>
+              <p className="text-xs font-geist mt-1">
+                Configure Persona, Tech Stack, Rules, and Tone first
+              </p>
+            </div>
+          ) : (
+            sections.map((section, index) => (
+              <div key={index} className="bg-[#252526] rounded border border-white/5 overflow-hidden">
+                <div className="px-3 py-2 bg-[#2d2d2d] border-b border-white/5">
+                  <span className="text-[10px] font-medium text-neutral-400 font-geist uppercase tracking-wide">
+                    Section {index + 1}
+                  </span>
+                </div>
+                <pre className="p-3 text-xs text-neutral-300 font-geist whitespace-pre-wrap overflow-x-auto">
+                  {section}
+                </pre>
+              </div>
+            ))
+          )}
+          
+          {/* Full Prompt */}
+          {sections.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-medium text-neutral-400 font-geist uppercase tracking-wide">
+                  Full Prompt
+                </span>
+                <span className="text-[10px] text-neutral-500 font-geist">
+                  {systemPrompt.length} characters
+                </span>
+              </div>
+              <pre className="p-3 text-xs text-neutral-300 font-geist whitespace-pre-wrap bg-[#252526] rounded border border-white/5 overflow-x-auto max-h-[300px]">
+                {systemPrompt}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-white/5 bg-[#252526] flex items-center justify-between">
+          <div className="text-[10px] text-neutral-500 font-geist">
+            Project: {config?.project_name || 'Unnamed'}
+          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] rounded-md transition-colors font-geist"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

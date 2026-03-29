@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* VS Code Dark Theme Colors */
+    --vscode-bg: #1e1e1e;
+    --vscode-sidebar: #252526;
+    --vscode-activitybar: #333333;
+    --vscode-titlebar: #2d2d2d;
+    --vscode-panel: #1e1e1e;
+    --vscode-input: #3c3c3c;
+    --vscode-border: #5a5a5a;
+    --vscode-accent: #0e639c;
+    --vscode-accent-hover: #1177bb;
+    --vscode-text: #cccccc;
+    --vscode-text-inactive: #858585;
+    --vscode-selection: #264f78;
+    
+    --background: 0 0% 12%;
+    --foreground: 0 0% 80%;
+    --card: 0 0% 15%;
+    --card-foreground: 'hsl(var(--card-foreground))',
+    --popover: 0 0% 15%;
+    --popover-foreground: 0 0% 80%;
+    --primary: 207 84% 34%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 20%;
+    --secondary-foreground: 0 0% 80%;
+    --muted: 0 0% 20%;
+    --muted-foreground: 0 0% 52%;
+    --accent: 0 0% 20%;
+    --accent-foreground: 0 0% 80%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 20%;
+    --input: 0 0% 24%;
+    --ring: 207 84% 34%;
+    --radius: 0.25rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html, body, #root {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: transparent !important;
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+  }
+  
+  body {
+    @apply text-[#cccccc] antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* VS Code-like Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Selection */
+::selection {
+  background: #264f78;
+}
+
+/* Focus styles */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 1px solid #0e639c;
+  outline-offset: -1px;
+}
+
+/* Input styles */
+input, textarea, select {
+  font-family: inherit;
+}
+
+/* Button reset */
+button {
+  font-family: inherit;
+}
+
+/* Utility classes */
+@layer utilities {
+  .text-vscode {
+    color: #cccccc;
+  }
+  
+  .text-vscode-inactive {
+    color: #858585;
+  }
+  
+  .bg-vscode {
+    background-color: #1e1e1e;
+  }
+  
+  .bg-vscode-sidebar {
+    background-color: #252526;
+  }
+  
+  .bg-vscode-input {
+    background-color: #3c3c3c;
+  }
+  
+  .border-vscode {
+    border-color: #5a5a5a;
+  }
+  
+  .accent-vscode {
+    background-color: #0e639c;
+  }
+  
+  .accent-vscode-hover:hover {
+    background-color: #1177bb;
+  }
+}
