@@ -21,6 +21,9 @@ export const dbService = {
   updateTaskPRInfo: (id: string, prBranch: string, prUrl: string | null, remote: string | null) => 
     invoke<void>('update_task_pr_info', { id, prBranch, prUrl, remote }),
   
+  updateTaskMergeInfo: (id: string, isMerged: boolean, mergeSourceBranch: string | null) =>
+    invoke<void>('update_task_merge_info', { id, isMerged, mergeSourceBranch }),
+  
   deleteTask: (id: string) => 
     invoke<void>('delete_task', { id }),
 

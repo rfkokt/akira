@@ -4,6 +4,7 @@ import { useTaskStore, useAIChatStore, useWorkspaceStore, useEngineStore } from 
 import type { AITaskState } from '@/store/aiChatStore'
 import { invoke } from '@tauri-apps/api/core'
 import type { Task } from '@/types'
+import { dbService } from '@/lib/db'
 import { TaskImporter } from './TaskImporter'
 import { TaskChatBox } from '@/components/Chat/TaskChatBox'
 import { DiffViewer } from '@/components/DiffViewer/DiffViewer'
@@ -1254,6 +1255,8 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   const [prUrl, setPrUrl] = useState<string | null>(taskState?.prUrl || null)
   const prBranch = taskState?.prBranch || null
   const [isPRCreated, setIsPRCreated] = useState(!!taskState?.prBranch)
+  const [isMerged, setIsMerged] = useState(taskState?.isMerged || false) // Track if PR has been merged
+  const [mergeSourceBranch, setMergeSourceBranch] = useState(taskState?.mergeSourceBranch || '') // Branch to merge from
   const { activeWorkspace } = useWorkspaceStore()
   const [singleMerge, setSingleMerge] = useState(true) // Single merge mode - only merge to target
 
@@ -1536,12 +1539,25 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
     setError(null)
     setLogs([])
 
-    // Use PR branch if available (from autoCreatePR), otherwise use currentBranch
-    const branchToMerge = prBranch || currentBranch
-    const branchLabel = prBranch ? `PR branch (${prBranch})` : `current branch (${currentBranch})`
+    // Determine which branch to merge from:
+    // - If already merged: use mergeSourceBranch (e.g., rdev)
+    // - If PR created: use PR branch
+    // - Otherwise: use currentBranch
+    let branchToMerge: string
+    
+    if (isMerged && mergeSourceBranch) {
+      branchToMerge = mergeSourceBranch
+      addLog(`Merging from: source branch (${mergeSourceBranch})`)
+    } else if (prBranch) {
+      branchToMerge = prBranch
+      addLog(`Merging from: PR branch (${prBranch})`)
+    } else {
+      branchToMerge = currentBranch
+      addLog(`Merging from: current branch (${currentBranch})`)
+    }
 
     try {
-      addLog(`Starting ${singleMerge ? 'single' : 'double'} merge workflow using ${branchLabel}...`)
+      addLog(`Starting ${singleMerge ? 'single' : 'double'} merge: ${branchToMerge} → ${targetBranch}...`)
 
       // Step 1: Merge to target branch (e.g., rdev)
       addLog(`Merging to ${targetBranch}...`)
@@ -1596,6 +1612,29 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
         addLog(`✓ Version: ${calculatedTag}`)
       }
       addLog(createTag ? `✓ ${singleMerge ? 'Merge' : 'Double merge'} and tag completed!` : `✓ ${singleMerge ? 'Merge' : 'Double merge'} completed!`)
+      
+      // After successful merge, update state
+      if (isPRCreated) {
+        setIsMerged(true)
+        setIsPRCreated(false) // PR is now merged
+        
+        // Save merge state to database
+        try {
+          await dbService.updateTaskMergeInfo(task.id, true, prBranch || null)
+          addLog(`✓ Merge state saved to database`)
+        } catch (e) {
+          console.error('Failed to save merge state to database:', e)
+        }
+      }
+      
+      // Checkout to target branch after merge
+      const checkoutBack = await runGit(['checkout', targetBranch])
+      if (checkoutBack.success) {
+        setCurrentBranch(targetBranch)
+        setMergeSourceBranch(targetBranch) // Source for next merge is now the target
+        addLog(`✓ Switched to ${targetBranch}`)
+      }
+      
       setLoading(false)
 
     } catch (err) {
@@ -1617,7 +1656,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
 
         <div className="p-4 space-y-4 flex-1 overflow-y-auto">
           {/* PR Created Banner */}
-          {isPRCreated && prBranch && (
+          {isPRCreated && prBranch && !isMerged && (
             <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
               <div className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-green-500" />
@@ -1634,40 +1673,99 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
             </div>
           )}
 
+          {/* Merged Banner */}
+          {isMerged && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-blue-500" />
+                <span className="text-xs text-blue-400 font-geist font-medium">PR Merged</span>
+              </div>
+              <p className="text-[10px] text-neutral-400 font-geist mt-1">
+                {prBranch} → {targetBranch}
+              </p>
+              <p className="text-[10px] text-blue-400 font-geist mt-1">
+                ✓ Branch {targetBranch} sekarang mengandung perubahan task ini
+              </p>
+            </div>
+          )}
+
           {/* Branch Info */}
           <div className="space-y-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-neutral-500 shrink-0 w-14">Current:</span>
-              <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={currentBranch}>
-                {currentBranch || '...'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-neutral-500 shrink-0 w-14">Target:</span>
-              <select
-                value={targetBranch}
-                onChange={(e) => setTargetBranch(e.target.value)}
-                className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10 flex-1"
-              >
-                {remoteBranches.map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center justify-end gap-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <span className="text-[10px] text-neutral-500 font-geist">Double merge</span>
-                <input
-                  type="checkbox"
-                  checked={!singleMerge}
-                  onChange={(e) => setSingleMerge(!e.target.checked)}
-                  className="w-4 h-4 rounded border-neutral-500 bg-[#3c3c3c] text-[#0e639c] focus:ring-[#0e639c]"
-                />
-              </label>
-              <span className="text-[10px] text-yellow-500 font-geist">
-                {!singleMerge ? 'Merge to target + main' : 'Merge to target only'}
-              </span>
-            </div>
+            {isMerged ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-500 shrink-0 w-14">Source:</span>
+                  <select
+                    value={mergeSourceBranch}
+                    onChange={(e) => setMergeSourceBranch(e.target.value)}
+                    className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10 flex-1"
+                  >
+                    {remoteBranches.filter(b => b !== targetBranch).map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-500 shrink-0 w-14">Target:</span>
+                  <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={targetBranch}>
+                    {targetBranch}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-500 shrink-0 w-14">Branch:</span>
+                  <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={currentBranch}>
+                    {currentBranch}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const branchResult = await runGit(['branch', '--show-current'])
+                      if (branchResult.success) {
+                        setCurrentBranch(branchResult.output.trim())
+                        setMergeSourceBranch(branchResult.output.trim())
+                      }
+                    }}
+                    className="text-[10px] text-[#0e639c] hover:text-[#1177bb] px-2 py-1"
+                  >
+                    ↻ Refresh
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-500 shrink-0 w-14">Current:</span>
+                  <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={currentBranch}>
+                    {currentBranch || '...'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-neutral-500 shrink-0 w-14">Target:</span>
+                  <select
+                    value={targetBranch}
+                    onChange={(e) => setTargetBranch(e.target.value)}
+                    className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10 flex-1"
+                  >
+                    {remoteBranches.map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <span className="text-[10px] text-neutral-500 font-geist">Double merge</span>
+                    <input
+                      type="checkbox"
+                      checked={!singleMerge}
+                      onChange={(e) => setSingleMerge(!e.target.checked)}
+                      className="w-4 h-4 rounded border-neutral-500 bg-[#3c3c3c] text-[#0e639c] focus:ring-[#0e639c]"
+                    />
+                  </label>
+                  <span className="text-[10px] text-yellow-500 font-geist">
+                    {!singleMerge ? 'Merge to target + main' : 'Merge to target only'}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Changed Files */}

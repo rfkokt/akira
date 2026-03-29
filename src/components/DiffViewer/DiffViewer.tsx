@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, FileCode, Copy, Check, ChevronDown, ChevronRight, Loader2, Plus, Minus, FileText, GitBranch, AlertCircle, Eye, EyeOff, RefreshCw, Clock } from 'lucide-react';
+import { X, Copy, Check, ChevronDown, ChevronRight, Loader2, Plus, Minus, FileText, GitBranch, AlertCircle, Eye, EyeOff, RefreshCw, Clock } from 'lucide-react';
 import type { Task } from '@/types';
 import type { AITaskState } from '@/store/aiChatStore';
 
@@ -200,10 +200,8 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
   const parseDiff = (content: string) => {
     const files: FileChange[] = [];
     const fileRegex = /diff --git a\/(.+?) b\/(.+)/g;
-    const hunkRegex = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/g;
 
     let match;
-    let lastIndex = 0;
     const fileMatches: { path: string; start: number; end: number }[] = [];
 
     while ((match = fileRegex.exec(content)) !== null) {

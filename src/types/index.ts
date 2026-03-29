@@ -11,6 +11,9 @@ export interface Task {
   pr_url: string | null;
   pr_created_at: string | null;
   remote: string | null;
+  is_merged: boolean;
+  merge_source_branch: string | null;
+  merged_at: string | null;
   created_at: string;
   updated_at: string;
 }

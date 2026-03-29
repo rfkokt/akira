@@ -47,12 +47,12 @@ export const useTaskStore = create<TaskState>()(
           const tasks = await dbService.getTasksByWorkspace(targetWorkspaceId);
           set({ tasks, isLoading: false });
           
-          // Sync PR info to AI chat store
+          // Sync PR and merge info to AI chat store
           const aiStore = useAIChatStore.getState();
           tasks.forEach(task => {
-            if (task.pr_branch) {
+            if (task.pr_branch || task.is_merged) {
               const existingState = aiStore.taskStates[task.id];
-              if (!existingState?.prBranch) {
+              if (!existingState?.prBranch && !existingState?.isMerged) {
                 useAIChatStore.setState({
                   taskStates: {
                     ...aiStore.taskStates,
@@ -65,9 +65,11 @@ export const useTaskStore = create<TaskState>()(
                       queuePosition: null,
                       currentFile: null,
                       filesModified: [],
-                      prBranch: task.pr_branch,
+                      prBranch: task.pr_branch || undefined,
                       prUrl: task.pr_url || undefined,
                       prCreatedAt: task.pr_created_at ? new Date(task.pr_created_at).getTime() : undefined,
+                      isMerged: task.is_merged,
+                      mergeSourceBranch: task.merge_source_branch || undefined,
                     }
                   }
                 });

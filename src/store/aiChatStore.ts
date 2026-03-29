@@ -26,6 +26,8 @@ export interface AITaskState {
   prBranch?: string;
   prUrl?: string;
   prCreatedAt?: number;
+  isMerged?: boolean;
+  mergeSourceBranch?: string;
 }
 
 interface TaskQueueItem {

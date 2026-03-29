@@ -69,6 +69,12 @@ fn update_task_pr_info(state: tauri::State<AppState>, id: String, pr_branch: Str
     queries::update_task_pr_info(&conn, &id, &pr_branch, pr_url.as_deref(), remote.as_deref()).map_err(|e: rusqlite::Error| e.to_string())
 }
 
+#[tauri::command]
+fn update_task_merge_info(state: tauri::State<AppState>, id: String, is_merged: bool, merge_source_branch: Option<String>) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::update_task_merge_info(&conn, &id, is_merged, merge_source_branch.as_deref()).map_err(|e: rusqlite::Error| e.to_string())
+}
+
 // ============== Engine Commands ==============
 
 #[tauri::command]
@@ -116,7 +122,7 @@ struct GenerateCommitResponse {
 async fn generate_commit_message(
     model: String,
     files: Vec<String>,
-    cwd: String,
+    _cwd: String,
 ) -> Result<GenerateCommitResponse, String> {
     let files_list = files.iter().take(30).map(|s| s.as_str()).collect::<Vec<_>>().join("\n");
     let more_count = if files.len() > 30 { files.len() - 30 } else { 0 };
@@ -1034,7 +1040,6 @@ fn git_get_pr_diff(cwd: String, branch: String) -> Result<PRDiffResult, String> 
     }
     
     let remote_branch = format!("{}/{}", remote_name, branch);
-    let remote_base = format!("{}/{}", remote_name, base_branch);
     
     // Try git log first - it's faster as it doesn't need fetch
     // Check if we can get diff using log (only works if base branch is ancestor)
@@ -1188,6 +1193,7 @@ fn main() {
             update_task_status,
             delete_task,
             update_task_pr_info,
+            update_task_merge_info,
             create_engine,
             get_all_engines,
             update_engine_enabled,

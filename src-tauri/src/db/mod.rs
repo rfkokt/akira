@@ -93,6 +93,25 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute("ALTER TABLE tasks ADD COLUMN remote TEXT", [])?;
     }
 
+    // Migration: Add merge columns to tasks table
+    let has_is_merged: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'is_merged'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !has_is_merged {
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN is_merged INTEGER DEFAULT 0",
+            [],
+        )?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN merge_source_branch TEXT", [])?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN merged_at DATETIME", [])?;
+    }
+
     // Migration: Handle project_configs table schema change
     let has_project_id_config: bool = conn
         .query_row(
@@ -154,19 +173,22 @@ fn create_tables(conn: &Connection) -> Result<()> {
     // Tasks table - Kanban board (updated: workspace_id instead of project_id)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tasks (
-            id              TEXT PRIMARY KEY,
-            title           TEXT NOT NULL,
-            description     TEXT,
-            status          TEXT NOT NULL DEFAULT 'todo',
-            priority        TEXT DEFAULT 'medium',
-            file_path       TEXT,
-            workspace_id    TEXT,
-            pr_branch       TEXT,
-            pr_url          TEXT,
-            pr_created_at   DATETIME,
-            remote          TEXT,
-            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            id                  TEXT PRIMARY KEY,
+            title               TEXT NOT NULL,
+            description         TEXT,
+            status              TEXT NOT NULL DEFAULT 'todo',
+            priority            TEXT DEFAULT 'medium',
+            file_path           TEXT,
+            workspace_id        TEXT,
+            pr_branch           TEXT,
+            pr_url              TEXT,
+            pr_created_at       DATETIME,
+            remote              TEXT,
+            is_merged           INTEGER DEFAULT 0,
+            merge_source_branch TEXT,
+            merged_at           DATETIME,
+            created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
         )",
         [],
