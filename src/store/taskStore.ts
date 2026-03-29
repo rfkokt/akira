@@ -51,9 +51,18 @@ export const useTaskStore = create<TaskState>()(
       },
 
       createTask: async (taskData) => {
+        const { currentWorkspaceId } = get();
+        if (!currentWorkspaceId) {
+          set({ error: 'No workspace selected', isLoading: false });
+          return;
+        }
+        
         set({ isLoading: true, error: null });
         try {
-          await dbService.createTask(taskData);
+          await dbService.createTask({
+            ...taskData,
+            workspace_id: currentWorkspaceId,
+          });
           await get().fetchTasks();
         } catch (error) {
           set({ error: String(error), isLoading: false });
@@ -61,10 +70,20 @@ export const useTaskStore = create<TaskState>()(
       },
 
       moveTask: async (id, status) => {
+        const { currentWorkspaceId } = get();
+        if (!currentWorkspaceId) {
+          console.error('Cannot move task: no workspace selected');
+          return;
+        }
+        
         try {
+          console.log('Moving task:', id, 'to status:', status);
           await dbService.updateTaskStatus(id, status);
-          await get().fetchTasks();
+          console.log('Task moved, refreshing...');
+          await get().fetchTasks(currentWorkspaceId);
+          console.log('Tasks refreshed');
         } catch (error) {
+          console.error('Move task error:', error);
           set({ error: String(error) });
         }
       },

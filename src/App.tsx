@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch } from 'lucide-react'
+import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight } from 'lucide-react'
 import { useEngineStore, useWorkspaceStore, useTaskStore } from '@/store'
 import { SettingsModal } from '@/components/SettingsModal'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
@@ -9,12 +8,11 @@ import { ConfigPanel } from './components/ProjectConfig/ConfigPanel'
 import { KanbanBoard } from './components/Kanban/Board'
 import { ChatBox } from './components/Chat/ChatBox'
 import { FileTree } from './components/Editor/FileTree'
+import { GitBranchSelector } from './components/Git/GitBranchSelector'
 
 type PageView = 'tasks' | 'files' | 'config' | 'git';
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState('')
-  const [name, setName] = useState('')
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
@@ -50,18 +48,20 @@ function App() {
       await fetchEngines()
     }
     loadEngines()
-  }, [fetchEngines])
+  }, [])
 
   // Auto-seed defaults when engines are empty (run once after initial fetch)
+  const hasSeeded = useRef(false)
   useEffect(() => {
     const autoSeed = async () => {
-      if (engines.length === 0 && !isLoading) {
+      if (!hasSeeded.current && engines.length === 0 && !isLoading) {
+        hasSeeded.current = true
         console.log('No engines found, seeding defaults...')
         await seedDefaultEngines()
       }
     }
     autoSeed()
-  }, [engines.length, isLoading, seedDefaultEngines])
+  }, [engines.length, isLoading])
 
   useEffect(() => {
     const handleClickOutside = () => setShowEngineDropdown(false)
@@ -70,15 +70,6 @@ function App() {
       return () => window.removeEventListener('click', handleClickOutside)
     }
   }, [showEngineDropdown])
-
-  async function greet() {
-    try {
-      const msg = await invoke('greet', { name })
-      setGreetMsg(msg as string)
-    } catch (e) {
-      console.error('Greet failed:', e)
-    }
-  }
 
   const handleDrag = () => {
     const appWindow = getCurrentWindow()
@@ -101,27 +92,6 @@ function App() {
                 <p className="mt-1 text-xs text-neutral-500 font-geist">
                   Manage your tasks with AI-powered workflows
                 </p>
-              </div>
-
-              <div className="bg-[#252526] rounded border border-white/5 p-3 mb-6">
-                <div className="flex items-center gap-3">
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.currentTarget.value)}
-                    placeholder="Enter your name..."
-                    className="flex-1 max-w-xs px-2.5 py-1.5 rounded text-xs bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
-                  />
-                  <button
-                    type="button"
-                    onClick={greet}
-                    className="px-3 py-1.5 rounded text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] transition-colors font-geist"
-                  >
-                    Greet
-                  </button>
-                </div>
-                {greetMsg && (
-                  <p className="mt-2 text-xs text-neutral-300 font-geist">{greetMsg}</p>
-                )}
               </div>
             </div>
             <KanbanBoard />
@@ -242,9 +212,27 @@ function App() {
         {/* Left: Spacer untuk traffic lights native */}
         <div className="w-[80px] shrink-0 relative z-0" />
         
-        {/* Center: Title (draggable) */}
-        <div className="flex-1 flex items-center justify-center relative z-0 pointer-events-none">
-          <span className="text-xs font-medium text-neutral-500 font-geist select-none">Akira</span>
+        {/* Center: Workspace Indicator */}
+        <div className="flex-1 flex items-center justify-center relative z-0">
+          {activeWorkspace ? (
+            <div className="flex items-center gap-3 pointer-events-auto">
+              <div className="flex items-center gap-2 pointer-events-none">
+                <Folder className="w-3.5 h-3.5 text-[#dcb67a]" />
+                <span className="text-xs font-medium text-white font-geist select-none">
+                  {activeWorkspace.name}
+                </span>
+                <span className="text-[10px] text-neutral-600 font-geist select-none">
+                  {activeWorkspace.folder_path.split('/').slice(-2).join('/')}
+                </span>
+              </div>
+              {/* Git Branch Selector */}
+              <div className="pointer-events-auto" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+                <GitBranchSelector workspacePath={activeWorkspace.folder_path} />
+              </div>
+            </div>
+          ) : (
+            <span className="text-xs font-medium text-neutral-500 font-geist select-none pointer-events-none">Akira</span>
+          )}
         </div>
         
         {/* Right: Engine & Settings */}
@@ -306,8 +294,22 @@ function App() {
             )}
           </div>
           
+          {/* Switch Workspace */}
+          {activeWorkspace && (
+            <button
+              onClick={() => setShowWelcome(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist"
+              title="Switch Workspace"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Switch</span>
+            </button>
+          )}
+
+          <div className="w-px h-3.5 bg-white/10" />
+
           {/* Settings */}
-          <button 
+          <button
             onClick={() => setShowSettings(true)}
             className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
           >

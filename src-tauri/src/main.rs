@@ -7,10 +7,9 @@ use std::sync::{Mutex, Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Manager, Emitter};
 use serde::Serialize;
-use std::path::Path;
 
 mod db;
-use db::queries::{self, CreateEngineRequest, CreateTaskRequest, Engine, Task, ProjectConfig, Workspace};
+use db::queries::{self, CreateEngineRequest, CreateTaskRequest, Engine, Task};
 
 // Global state with database and running process
 pub struct AppState {
@@ -718,6 +717,159 @@ fn save_project_config(
         .map_err(|e| e.to_string())
 }
 
+// ============== Git Commands ==============
+
+#[derive(Debug, Serialize)]
+struct GitBranchInfo {
+    current: String,
+    branches: Vec<String>,
+}
+
+/// Get current git branch and list all branches
+#[tauri::command]
+fn git_get_branches(cwd: String) -> Result<GitBranchInfo, String> {
+    // Get current branch
+    let current_output = Command::new("git")
+        .args(&["branch", "--show-current"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to get current branch: {}", e))?;
+    
+    let current = String::from_utf8_lossy(&current_output.stdout)
+        .trim()
+        .to_string();
+    
+    // Get all branches
+    let branches_output = Command::new("git")
+        .args(&["branch", "-a"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to list branches: {}", e))?;
+    
+    let branches_str = String::from_utf8_lossy(&branches_output.stdout);
+    let branches: Vec<String> = branches_str
+        .lines()
+        .map(|line| {
+            // Remove leading spaces, asterisks, and "remotes/" prefix
+            line.trim()
+                .trim_start_matches('*')
+                .trim()
+                .trim_start_matches("remotes/origin/")
+                .to_string()
+        })
+        .filter(|b| !b.is_empty())
+        .collect::<std::collections::HashSet<_>>() // Remove duplicates
+        .into_iter()
+        .collect();
+    
+    Ok(GitBranchInfo { current, branches })
+}
+
+/// Checkout to a different branch
+#[tauri::command]
+fn git_checkout_branch(cwd: String, branch: String) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(&["checkout", &branch])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to checkout branch: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Git checkout failed: {}", stderr));
+    }
+    
+    Ok(())
+}
+
+/// Create and checkout a new branch
+#[tauri::command]
+fn git_create_branch(cwd: String, branch: String) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(&["checkout", "-b", &branch])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to create branch: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Git branch creation failed: {}", stderr));
+    }
+    
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct GitDiffResult {
+    diff: String,
+    has_changes: bool,
+    changed_files: Vec<String>,
+}
+
+/// Get uncommitted changes (git diff)
+#[tauri::command]
+fn git_get_diff(cwd: String) -> Result<GitDiffResult, String> {
+    let output = Command::new("git")
+        .args(&["diff", "--no-color"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to get git diff: {}", e))?;
+    
+    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    let has_changes = !diff.trim().is_empty();
+    
+    let changed_files: Vec<String> = diff
+        .lines()
+        .filter(|line| line.starts_with("diff --git"))
+        .map(|line| {
+            line.trim_start_matches("diff --git ")
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string()
+        })
+        .filter(|f| !f.is_empty())
+        .collect();
+    
+    Ok(GitDiffResult {
+        diff,
+        has_changes,
+        changed_files,
+    })
+}
+
+/// Get staged changes (git diff --cached)
+#[tauri::command]
+fn git_get_staged_diff(cwd: String) -> Result<GitDiffResult, String> {
+    let output = Command::new("git")
+        .args(&["diff", "--cached", "--no-color"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to get staged diff: {}", e))?;
+    
+    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    let has_changes = !diff.trim().is_empty();
+    
+    let changed_files: Vec<String> = diff
+        .lines()
+        .filter(|line| line.starts_with("diff --git"))
+        .map(|line| {
+            line.trim_start_matches("diff --git ")
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string()
+        })
+        .filter(|f| !f.is_empty())
+        .collect();
+    
+    Ok(GitDiffResult {
+        diff,
+        has_changes,
+        changed_files,
+    })
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -779,6 +931,11 @@ fn main() {
             delete_workspace,
             get_project_config,
             save_project_config,
+            git_get_branches,
+            git_checkout_branch,
+            git_create_branch,
+            git_get_diff,
+            git_get_staged_diff,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
