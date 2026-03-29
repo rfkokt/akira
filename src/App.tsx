@@ -1,26 +1,48 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight } from 'lucide-react'
+import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar } from 'lucide-react'
 import { useEngineStore, useWorkspaceStore, useTaskStore } from '@/store'
 import { SettingsModal } from '@/components/SettingsModal'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { ConfigPanel } from './components/ProjectConfig/ConfigPanel'
 import { KanbanBoard } from './components/Kanban/Board'
-import { ChatBox } from './components/Chat/ChatBox'
 import { FileTree } from './components/Editor/FileTree'
 import { GitBranchSelector } from './components/Git/GitBranchSelector'
+import { AssessmentScheduler } from './components/Assessment'
+import { RecoveryModal } from './components/RecoveryModal'
+import { getSavedRunningTask, useAIChatStore } from './store/aiChatStore'
 
-type PageView = 'tasks' | 'files' | 'config' | 'git';
+type PageView = 'tasks' | 'files' | 'config' | 'git' | 'assessment';
 
 function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
+  const [showRecovery, setShowRecovery] = useState(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
   const [selectedFile, setSelectedFile] = useState<string | undefined>(undefined)
   const { engines, activeEngine, setActiveEngine, fetchEngines, seedDefaultEngines, isLoading } = useEngineStore()
   const { activeWorkspace, loadActiveWorkspace, loadWorkspaces } = useWorkspaceStore()
   const { setCurrentWorkspace } = useTaskStore()
+  const { moveTask, tasks } = useTaskStore()
+  const { enqueueTask } = useAIChatStore()
+
+  // Check for saved running task on mount
+  useEffect(() => {
+    const savedTask = getSavedRunningTask()
+    if (savedTask) {
+      setShowRecovery(true)
+    }
+  }, [])
+
+  // Handle resume task
+  const handleResumeTask = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (task) {
+      await moveTask(taskId, 'in-progress')
+      await enqueueTask(task.id, task.title, task.description || undefined)
+    }
+  }
 
   // Load active workspace on mount
   useEffect(() => {
@@ -183,12 +205,16 @@ function App() {
             </div>
           </div>
         )
+
+      case 'assessment':
+        return <AssessmentScheduler />
     }
   }
 
   const menuItems = [
     { id: 'tasks' as const, icon: LayoutList, label: 'Tasks' },
     { id: 'files' as const, icon: FolderOpen, label: 'Files' },
+    { id: 'assessment' as const, icon: Calendar, label: 'Assessment' },
     { id: 'config' as const, icon: Brain, label: 'Config' },
     { id: 'git' as const, icon: GitBranch, label: 'Git' },
   ]
@@ -198,6 +224,11 @@ function App() {
       {/* Welcome Screen */}
       {showWelcome && (
         <WelcomeScreen onClose={() => setShowWelcome(false)} />
+      )}
+
+      {/* Recovery Modal */}
+      {showRecovery && (
+        <RecoveryModal onResume={handleResumeTask} onClose={() => setShowRecovery(false)} />
       )}
 
       {/* Title Bar */}
@@ -360,7 +391,6 @@ function App() {
           </main>
         </div>
       </div>
-      <ChatBox />
 
       <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </div>

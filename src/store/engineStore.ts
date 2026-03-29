@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
+import { devtools, persist } from 'zustand/middleware';
 import type { Engine, CreateEngineRequest } from '@/types';
 import { dbService } from '@/lib/db';
 
@@ -20,80 +20,86 @@ interface EngineState {
 
 export const useEngineStore = create<EngineState>()(
   devtools(
-    (set, get) => ({
-      engines: [],
-      activeEngine: null,
-      isLoading: false,
-      error: null,
+    persist(
+      (set, get) => ({
+        engines: [],
+        activeEngine: null,
+        isLoading: false,
+        error: null,
 
-      fetchEngines: async () => {
-        set({ isLoading: true, error: null });
-        try {
-          const engines = await dbService.getAllEngines();
-          set({ engines, isLoading: false });
-          
-          // Set first enabled engine as active if none selected
-          if (!get().activeEngine && engines.length > 0) {
-            const firstEnabled = engines.find(e => e.enabled);
-            if (firstEnabled) {
-              set({ activeEngine: firstEnabled });
+        fetchEngines: async () => {
+          set({ isLoading: true, error: null });
+          try {
+            const engines = await dbService.getAllEngines();
+            set({ engines, isLoading: false });
+            
+            // Set first enabled engine as active if none selected
+            if (!get().activeEngine && engines.length > 0) {
+              const firstEnabled = engines.find(e => e.enabled);
+              if (firstEnabled) {
+                set({ activeEngine: firstEnabled });
+              }
             }
+          } catch (error) {
+            set({ error: String(error), isLoading: false });
           }
-        } catch (error) {
-          set({ error: String(error), isLoading: false });
-        }
-      },
+        },
 
-      createEngine: async (engineData) => {
-        set({ isLoading: true, error: null });
-        try {
-          await dbService.createEngine(engineData);
-          await get().fetchEngines();
-        } catch (error) {
-          set({ error: String(error), isLoading: false });
-        }
-      },
+        createEngine: async (engineData) => {
+          set({ isLoading: true, error: null });
+          try {
+            await dbService.createEngine(engineData);
+            await get().fetchEngines();
+          } catch (error) {
+            set({ error: String(error), isLoading: false });
+          }
+        },
 
-      toggleEngine: async (id, enabled) => {
-        try {
-          await dbService.updateEngineEnabled(id, enabled);
-          await get().fetchEngines();
-        } catch (error) {
-          set({ error: String(error) });
-        }
-      },
+        toggleEngine: async (id, enabled) => {
+          try {
+            await dbService.updateEngineEnabled(id, enabled);
+            await get().fetchEngines();
+          } catch (error) {
+            set({ error: String(error) });
+          }
+        },
 
-      deleteEngine: async (id) => {
-        try {
-          await dbService.deleteEngine(id);
-          await get().fetchEngines();
-        } catch (error) {
-          set({ error: String(error) });
-        }
-      },
+        deleteEngine: async (id) => {
+          try {
+            await dbService.deleteEngine(id);
+            await get().fetchEngines();
+          } catch (error) {
+            set({ error: String(error) });
+          }
+        },
 
-      setActiveEngine: (engine) => {
-        set({ activeEngine: engine });
-      },
+        setActiveEngine: (engine) => {
+          set({ activeEngine: engine });
+        },
 
-      seedDefaultEngines: async () => {
-        set({ isLoading: true, error: null });
-        try {
-          const engines = await dbService.seedDefaultEngines();
-          set({ engines, isLoading: false });
-          
-          // Set first enabled engine as active if none selected
-          if (!get().activeEngine && engines.length > 0) {
-            const firstEnabled = engines.find(e => e.enabled);
-            if (firstEnabled) {
-              set({ activeEngine: firstEnabled });
+        seedDefaultEngines: async () => {
+          set({ isLoading: true, error: null });
+          try {
+            const engines = await dbService.seedDefaultEngines();
+            set({ engines, isLoading: false });
+            
+            // Set first enabled engine as active if none selected
+            if (!get().activeEngine && engines.length > 0) {
+              const firstEnabled = engines.find(e => e.enabled);
+              if (firstEnabled) {
+                set({ activeEngine: firstEnabled });
+              }
             }
+          } catch (error) {
+            set({ error: String(error), isLoading: false });
           }
-        } catch (error) {
-          set({ error: String(error), isLoading: false });
-        }
-      },
-    }),
+        },
+      }),
+      { 
+        name: 'engine-store',
+        partialize: (state) => ({ activeEngine: state.activeEngine }),
+      }
+    ),
     { name: 'engine-store' }
   )
 );

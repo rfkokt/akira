@@ -722,7 +722,8 @@ fn save_project_config(
 #[derive(Debug, Serialize)]
 struct GitBranchInfo {
     current: String,
-    branches: Vec<String>,
+    local: Vec<String>,
+    remote: Vec<String>,
 }
 
 /// Get current git branch and list all branches
@@ -739,30 +740,33 @@ fn git_get_branches(cwd: String) -> Result<GitBranchInfo, String> {
         .trim()
         .to_string();
     
-    // Get all branches
-    let branches_output = Command::new("git")
-        .args(&["branch", "-a"])
+    // Get all local branches
+    let local_output = Command::new("git")
+        .args(&["branch"])
         .current_dir(&cwd)
         .output()
-        .map_err(|e| format!("Failed to list branches: {}", e))?;
+        .map_err(|e| format!("Failed to list local branches: {}", e))?;
     
-    let branches_str = String::from_utf8_lossy(&branches_output.stdout);
-    let branches: Vec<String> = branches_str
+    let local: Vec<String> = String::from_utf8_lossy(&local_output.stdout)
         .lines()
-        .map(|line| {
-            // Remove leading spaces, asterisks, and "remotes/" prefix
-            line.trim()
-                .trim_start_matches('*')
-                .trim()
-                .trim_start_matches("remotes/origin/")
-                .to_string()
-        })
+        .map(|line| line.trim().trim_start_matches('*').trim().to_string())
         .filter(|b| !b.is_empty())
-        .collect::<std::collections::HashSet<_>>() // Remove duplicates
-        .into_iter()
         .collect();
     
-    Ok(GitBranchInfo { current, branches })
+    // Get all remote branches
+    let remote_output = Command::new("git")
+        .args(&["branch", "-r"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to list remote branches: {}", e))?;
+    
+    let remote: Vec<String> = String::from_utf8_lossy(&remote_output.stdout)
+        .lines()
+        .map(|line| line.trim().to_string())
+        .filter(|b| !b.is_empty() && !b.contains("HEAD"))
+        .collect();
+    
+    Ok(GitBranchInfo { current, local, remote })
 }
 
 /// Checkout to a different branch
@@ -870,6 +874,36 @@ fn git_get_staged_diff(cwd: String) -> Result<GitDiffResult, String> {
     })
 }
 
+#[derive(Debug, Serialize)]
+struct ShellCommandResult {
+    success: bool,
+    output: String,
+}
+
+/// Run a shell command with the given args
+#[tauri::command]
+fn run_shell_command(command: String, args: Vec<String>, cwd: String) -> Result<ShellCommandResult, String> {
+    let output = Command::new(&command)
+        .args(&args)
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to run command: {}", e))?;
+    
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    
+    let combined_output = if stderr.is_empty() {
+        stdout
+    } else {
+        format!("{}\n{}", stdout, stderr)
+    };
+    
+    Ok(ShellCommandResult {
+        success: output.status.success(),
+        output: combined_output,
+    })
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -936,6 +970,7 @@ fn main() {
             git_create_branch,
             git_get_diff,
             git_get_staged_diff,
+            run_shell_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

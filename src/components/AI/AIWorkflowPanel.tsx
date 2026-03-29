@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Bot, Play, CheckCircle, GitBranch, MessageSquare, FileDiff, X } from 'lucide-react';
 import type { Task } from '@/types';
-import { useTaskStore } from '@/store/taskStore';
 import { useEngineStore } from '@/store/engineStore';
 
 interface AIWorkflowPanelProps {

@@ -99,14 +99,7 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
         </div>
       </div>
 
-      {/* Project Name */}
-      {config?.project_name && (
-        <div className="px-3 py-1.5 border-b border-white/5">
-          <span className="text-[10px] text-neutral-500 font-geist truncate block">
-            {config.project_name}
-          </span>
-        </div>
-      )}
+
 
       {/* Tabs */}
       <div className="flex border-b border-white/5">

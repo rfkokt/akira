@@ -7,7 +7,7 @@ interface PromptPreviewProps {
 }
 
 export function PromptPreview({ onClose }: PromptPreviewProps) {
-  const { getSystemPrompt, config } = useConfigStore();
+  const { getSystemPrompt } = useConfigStore();
   const [copied, setCopied] = useState(false);
   
   const systemPrompt = getSystemPrompt();
@@ -111,7 +111,7 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
         {/* Footer */}
         <div className="px-4 py-3 border-t border-white/5 bg-[#252526] flex items-center justify-between">
           <div className="text-[10px] text-neutral-500 font-geist">
-            Project: {config?.project_name || 'Unnamed'}
+            Project: Workspace Config
           </div>
           <button
             onClick={onClose}

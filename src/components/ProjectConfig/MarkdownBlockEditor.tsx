@@ -1,6 +1,5 @@
 import { useRef, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
-import { FileText } from 'lucide-react';
 
 interface MarkdownEditorProps {
   value: string;
@@ -9,7 +8,7 @@ interface MarkdownEditorProps {
   height?: string;
 }
 
-export function MarkdownEditor({ value, onChange, placeholder, height = '100%' }: MarkdownEditorProps) {
+export function MarkdownEditor({ value, onChange, height = '100%' }: MarkdownEditorProps) {
   const editorRef = useRef<any>(null);
 
   const handleEditorDidMount = useCallback((editor: any) => {

@@ -20,16 +20,46 @@ interface DiffViewerProps {
   task: Task | null;
   isOpen: boolean;
   onClose: () => void;
+  onDiscard?: () => void;
   diffContent?: string;
   workspacePath?: string;
+  showStaged?: boolean;
 }
 
-export function DiffViewer({ task, isOpen, onClose, diffContent, workspacePath }: DiffViewerProps) {
+export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, workspacePath }: DiffViewerProps) {
   const [parsedDiff, setParsedDiff] = useState<DiffLine[]>([]);
   const [copied, setCopied] = useState(false);
   const [showUnchanged, setShowUnchanged] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [_diffType, setDiffType] = useState<'uncommitted' | 'staged'>('uncommitted');
+  const [discarding, setDiscarding] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const handleDiscard = async () => {
+    setShowDiscardConfirm(false)
+    if (!workspacePath) return
+
+    setDiscarding(true)
+    try {
+      const result = await invoke<{ success: boolean; output: string }>('run_shell_command', {
+        command: 'git',
+        args: ['checkout', '--', '.'],
+        cwd: workspacePath,
+      })
+      
+      if (result.success) {
+        onDiscard?.()
+        onClose()
+      } else {
+        setError('Failed to discard changes: ' + result.output)
+      }
+    } catch (err) {
+      setError('Failed to discard changes: ' + String(err))
+    } finally {
+      setDiscarding(false)
+    }
+  }
 
   useEffect(() => {
     if (!isOpen || !task) return;
@@ -40,23 +70,43 @@ export function DiffViewer({ task, isOpen, onClose, diffContent, workspacePath }
         return;
       }
       
-      if (workspacePath) {
-        setLoading(true);
-        setError(null);
-        try {
-          const result = await invoke<GitDiffResult>('git_get_diff', { cwd: workspacePath });
-          if (result.has_changes) {
-            parseDiff(result.diff);
+      if (!workspacePath) {
+        console.log('[DiffViewer] No workspace path provided');
+        setError('No workspace selected');
+        setParsedDiff([]);
+        return;
+      }
+      
+      console.log('[DiffViewer] Fetching diff from:', workspacePath);
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // First check unstaged changes
+        const unstagedResult = await invoke<GitDiffResult>('git_get_diff', { cwd: workspacePath });
+        console.log('[DiffViewer] Unstaged result:', unstagedResult);
+        
+        if (unstagedResult.has_changes) {
+          setDiffType('uncommitted');
+          parseDiff(unstagedResult.diff);
+        } else {
+          // Check staged changes
+          const stagedResult = await invoke<GitDiffResult>('git_get_staged_diff', { cwd: workspacePath });
+          console.log('[DiffViewer] Staged result:', stagedResult);
+          
+          if (stagedResult.has_changes) {
+            setDiffType('staged');
+            parseDiff(stagedResult.diff);
           } else {
             setParsedDiff([]);
-            setError('No uncommitted changes found');
+            setError('No uncommitted or staged changes found');
           }
-        } catch (err) {
-          setError(`Failed to get diff: ${err}`);
-          console.error('Git diff error:', err);
-        } finally {
-          setLoading(false);
         }
+      } catch (err) {
+        setError(`Failed to get diff: ${err}`);
+        console.error('Git diff error:', err);
+      } finally {
+        setLoading(false);
       }
     };
     
@@ -270,15 +320,55 @@ export function DiffViewer({ task, isOpen, onClose, diffContent, workspacePath }
                 {removed} deletions
               </span>
             </div>
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 rounded text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors"
-            >
-              Close
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDiscardConfirm(true)}
+                disabled={discarding}
+                className="px-3 py-1.5 rounded text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 font-geist transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                {discarding ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                Discard
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-1.5 rounded text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Discard Confirmation Modal */}
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80">
+          <div className="bg-[#1e1e1e] rounded-lg border border-red-500/30 shadow-2xl w-full max-w-sm">
+            <div className="p-4">
+              <h3 className="text-sm font-semibold text-red-400 font-geist mb-2">Discard Changes?</h3>
+              <p className="text-xs text-neutral-400 font-geist">
+                This will revert all uncommitted changes. This action cannot be undone.
+              </p>
+            </div>
+            <div className="px-4 py-3 border-t border-white/5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowDiscardConfirm(false)}
+                className="px-4 py-2 rounded text-xs font-medium text-neutral-400 hover:text-white font-geist transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDiscard}
+                disabled={discarding}
+                className="px-4 py-2 rounded text-xs font-medium text-white bg-red-600 hover:bg-red-700 font-geist transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                {discarding && <Loader2 className="w-3 h-3 animate-spin" />}
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

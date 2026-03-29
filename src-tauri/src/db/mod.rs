@@ -269,7 +269,7 @@ pub fn seed_default_engines(conn: &Connection) -> Result<()> {
             "claude-3-5-sonnet-20241022",
             "--dangerously-skip-permissions",
         ),
-        ("opencode", "opencode", "", ""),
+        ("opencode", "opencode", "", "--format json run"),
     ];
 
     for (alias, binary, model, args) in defaults {

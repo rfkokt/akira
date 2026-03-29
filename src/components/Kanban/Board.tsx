@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, FileDiff, MessageSquare, RefreshCw, Terminal, Sparkles, FileCode, Files, Trash2 } from 'lucide-react'
-import { useTaskStore, useAIChatStore } from '@/store'
+import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, Terminal, FileCode, Trash2, AlertTriangle, Check, Sparkles } from 'lucide-react'
+import { useTaskStore, useAIChatStore, useWorkspaceStore, useEngineStore } from '@/store'
+import type { AITaskState } from '@/store/aiChatStore'
+import { invoke } from '@tauri-apps/api/core'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'
 import { TaskChatBox } from '@/components/Chat/TaskChatBox'
@@ -45,48 +47,30 @@ interface AIActivityIndicatorProps {
 }
 
 function AIActivityIndicator({ taskId, taskState, showTerminal = false, maxHeight = 'auto' }: AIActivityIndicatorProps) {
-  const [dots, setDots] = useState('');
-  const [progress, setProgress] = useState(0);
   const aiChatStore = useAIChatStore();
-  const messages = aiChatStore.getMessages(taskId);
+  // Use state and effect for reactivity
+  const [messages, setMessages] = useState<typeof aiChatStore.messages[string]>([]);
+  
+  useEffect(() => {
+    // Initial load
+    setMessages(aiChatStore.getMessages(taskId));
+    
+    // Subscribe to updates - check every 500ms for new messages
+    const interval = setInterval(() => {
+      const newMessages = aiChatStore.getMessages(taskId);
+      if (newMessages.length !== messages.length || 
+          (newMessages.length > 0 && messages.length > 0 && 
+           newMessages[newMessages.length - 1].content !== messages[messages.length - 1]?.content)) {
+        setMessages(newMessages);
+      }
+    }, 500);
+    
+    return () => clearInterval(interval);
+  }, [taskId, aiChatStore]);
+  
   const assistantMessages = messages.filter(m => m.role === 'assistant');
   const latestOutput = assistantMessages.length > 0 ? assistantMessages[assistantMessages.length - 1].content : '';
   
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDots(prev => prev.length >= 3 ? '' : prev + '.');
-    }, 500);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Reset and animate progress bar based on status
-  useEffect(() => {
-    if (taskState?.status === 'running') {
-      setProgress(0); // Start from 0 when running
-      const interval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) return 10; // Reset for continuous animation
-          return prev + Math.random() * 10;
-        });
-      }, 800);
-      return () => clearInterval(interval);
-    } else if (taskState?.status === 'queued') {
-      setProgress(5); // Small progress for queued
-    } else {
-      setProgress(0);
-    }
-  }, [taskState?.status]);
-
-  const getStatusText = () => {
-    if (taskState?.status === 'queued') {
-      return `Waiting in queue #${taskState.queuePosition || 1}`;
-    }
-    if (taskState?.status === 'running') {
-      return 'AI is processing';
-    }
-    return 'Processing';
-  };
-
   const formatFileName = (path: string) => {
     const parts = path.split('/');
     return parts[parts.length - 1];
@@ -95,86 +79,52 @@ function AIActivityIndicator({ taskId, taskState, showTerminal = false, maxHeigh
   // Get last lines of output for preview
   const getLastOutputLines = () => {
     if (!latestOutput) return [];
-    const lines = latestOutput.split('\n').filter(line => line.trim());
-    return lines.slice(-15); // Last 15 lines for better context
+    const lines = latestOutput.split('\n');
+    return lines.slice(-20); // Last 20 lines
   };
 
   // Get current action description based on output
   const getCurrentAction = () => {
-    if (!latestOutput) return null;
-    // Look for common patterns in AI output
-    const actionPatterns = [
-      { pattern: /reading|reading file|open|reading file from/i, label: 'Reading files...' },
-      { pattern: /writing|writing file|create|updating|modifying/i, label: 'Modifying files...' },
-      { pattern: /run|executing|command|npm|node|python/i, label: 'Running commands...' },
-      { pattern: /search|find|grep/i, label: 'Searching...' },
-      { pattern: /analyzing|thinking|planning/i, label: 'Analyzing...' },
-      { pattern: /error|failed|exception/i, label: 'Error occurred' },
-    ];
+    if (!latestOutput) return 'Initializing...';
     
-    for (const { pattern, label } of actionPatterns) {
-      if (pattern.test(latestOutput)) {
-        return label;
-      }
+    const output = latestOutput.toLowerCase();
+    
+    // Check for specific actions
+    if (output.includes('write') || output.includes('create') || output.includes('modify')) {
+      return 'Writing files...';
     }
-    return 'Processing...';
+    if (output.includes('read') || output.includes('analyze') || output.includes('examine')) {
+      return 'Analyzing code...';
+    }
+    if (output.includes('run') || output.includes('execute') || output.includes('install') || output.includes('npm') || output.includes('node')) {
+      return 'Running commands...';
+    }
+    if (output.includes('error') || output.includes('failed') || output.includes('exception')) {
+      return 'Error occurred';
+    }
+    if (output.includes('complete') || output.includes('done') || output.includes('finished')) {
+      return 'Completed';
+    }
+    
+    return 'AI is working...';
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {/* Status Header */}
       <div className="flex items-center gap-2">
-        <Sparkles className="w-3 h-3 text-yellow-500 animate-pulse" />
-        <span className="text-[10px] font-medium text-yellow-400 font-geist">
-          {getStatusText()}{dots}
+        <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+        <span className="text-[11px] font-medium text-cyan-400 font-geist">
+          {getCurrentAction()}
         </span>
       </div>
       
-      {/* Progress Bar - Animated */}
-      <div className="h-1 bg-neutral-700 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500 animate-gradient-x"
-          style={{ 
-            width: `${Math.min(progress, 95)}%`,
-            transition: 'width 0.8s ease-out'
-          }}
-        />
-      </div>
-      
-      {/* Current File Being Modified */}
-      {taskState?.currentFile && (
-        <div className="flex items-start gap-1.5">
-          <FileCode className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] text-neutral-400 font-geist">
-              Currently editing:
-            </p>
-            <p className="text-[10px] text-blue-300 font-geist truncate">
-              {formatFileName(taskState.currentFile)}
-            </p>
-          </div>
-        </div>
-      )}
-      
-      {/* Files Modified Count */}
-      {taskState?.filesModified && taskState.filesModified.length > 0 && (
-        <div className="flex items-center gap-1.5">
-          <Files className="w-3 h-3 text-green-400 flex-shrink-0" />
-          <p className="text-[10px] text-green-300 font-geist">
-            {taskState.filesModified.length} file{taskState.filesModified.length !== 1 ? 's' : ''} modified
-          </p>
-        </div>
-      )}
-      
       {/* Terminal Output View */}
-      {showTerminal && taskState?.status === 'running' && (
-        <div className="mt-2">
+      {(showTerminal || taskState?.status === 'running') && (
+        <div>
           <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-1.5">
-              <Terminal className="w-3 h-3 text-neutral-500" />
-              <span className="text-[10px] text-neutral-500 font-geist">AI Terminal</span>
-            </div>
-            {taskState.currentFile && (
+            <span className="text-[10px] text-neutral-500 font-geist">Output</span>
+            {taskState?.currentFile && (
               <span className="text-[10px] text-blue-400 font-mono truncate max-w-[150px]">
                 {formatFileName(taskState.currentFile)}
               </span>
@@ -250,6 +200,56 @@ function TaskDetailModal({
 }: TaskDetailModalProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [actualGitChanges, setActualGitChanges] = useState<string[]>([])
+  const [loadingGitChanges, setLoadingGitChanges] = useState(false)
+  const { activeWorkspace } = useWorkspaceStore()
+  
+  useEffect(() => {
+    if (!isOpen || !activeWorkspace?.folder_path) return
+    
+    const stripWorkspacePath = (files: string[]): string[] => {
+      const workspacePath = activeWorkspace!.folder_path.replace(/\/$/, '')
+      return files.map(file => {
+        if (file.startsWith(workspacePath)) {
+          return file.replace(workspacePath, '').replace(/^\//, '')
+        }
+        // Also strip common prefixes like "a/resources/js/app/"
+        if (file.includes('/a/resources/js/app/')) {
+          return file.split('/a/resources/js/app/').pop() || file
+        }
+        return file
+      })
+    }
+    
+    const fetchGitChanges = async () => {
+      setLoadingGitChanges(true)
+      try {
+        const result = await invoke<{ changed_files: string[] }>('git_get_diff', { 
+          cwd: activeWorkspace.folder_path 
+        })
+        
+        if (result && 'changed_files' in result) {
+          setActualGitChanges(stripWorkspacePath(result.changed_files))
+        } else {
+          const stagedResult = await invoke<{ changed_files: string[] }>('git_get_staged_diff', { 
+            cwd: activeWorkspace.folder_path 
+          })
+          if (stagedResult && 'changed_files' in stagedResult) {
+            setActualGitChanges(stripWorkspacePath(stagedResult.changed_files))
+          } else {
+            setActualGitChanges([])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch git changes:', err)
+        setActualGitChanges([])
+      } finally {
+        setLoadingGitChanges(false)
+      }
+    }
+    
+    fetchGitChanges()
+  }, [isOpen, activeWorkspace])
   
   if (!isOpen) return null
 
@@ -355,14 +355,51 @@ function TaskDetailModal({
             </div>
           )}
 
-          {/* Files Modified */}
+          {/* Actual Git Changes in Workspace */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[10px] text-neutral-500 font-geist">Actual Workspace Changes</label>
+              {loadingGitChanges ? (
+                <Loader2 className="w-3 h-3 animate-spin text-neutral-500" />
+              ) : actualGitChanges.length > 0 ? (
+                <span className="text-[10px] text-green-400 flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  {actualGitChanges.length} file(s)
+                </span>
+              ) : (
+                <span className="text-[10px] text-neutral-500">0 files</span>
+              )}
+            </div>
+            {actualGitChanges.length > 0 ? (
+              <div className="space-y-1 max-h-32 overflow-y-auto bg-green-500/5 rounded-lg p-2">
+                {actualGitChanges.map((file, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs text-green-300 font-geist">
+                    <FileCode className="w-3 h-3 text-green-400" />
+                    <span className="truncate">{file}</span>
+                  </div>
+                ))}
+              </div>
+            ) : !loadingGitChanges && (
+              <div className="text-[10px] text-neutral-600 italic bg-neutral-500/5 rounded-lg p-2">
+                No uncommitted changes found in workspace
+              </div>
+            )}
+          </div>
+
+          {/* AI Extracted Files (may not match) */}
           {taskState?.filesModified && taskState.filesModified.length > 0 && (
-            <div>
-              <label className="block text-[10px] text-neutral-500 font-geist mb-2">Files Modified</label>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+            <div className="mt-2">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="w-3 h-3 text-yellow-500" />
+                <label className="block text-[10px] text-yellow-500 font-geist">AI Reported Files</label>
+              </div>
+              <p className="text-[9px] text-yellow-500/60 font-geist mb-2 italic">
+                These are extracted from AI output - may not match actual changes
+              </p>
+              <div className="space-y-1 max-h-24 overflow-y-auto bg-yellow-500/5 rounded-lg p-2">
                 {taskState.filesModified.map((file, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs text-neutral-300 font-geist">
-                    <FileCode className="w-3 h-3 text-blue-400" />
+                  <div key={idx} className="flex items-center gap-2 text-xs text-yellow-300 font-geist">
+                    <FileCode className="w-3 h-3 text-yellow-400" />
                     <span className="truncate">{file}</span>
                   </div>
                 ))}
@@ -462,10 +499,10 @@ function TaskDetailModal({
                       onComplete(task)
                       onClose()
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors font-geist"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-[#0e639c] text-white hover:bg-[#1177bb] transition-colors font-geist"
                   >
-                    <GitBranch className="w-3.5 h-3.5" />
-                    Push
+                    <GitMerge className="w-3.5 h-3.5" />
+                    Merge
                   </button>
                 </>
               )}
@@ -507,7 +544,6 @@ function TaskCard({
   onRetry,
   onClick,
   processingTasks,
-  isTaskStreaming,
   taskStates,
   getPriorityColor 
 }: { 
@@ -593,21 +629,6 @@ function TaskCard({
             </button>
           )}
 
-          {task.status === 'in-progress' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onOpenChat(task)
-              }}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors font-geist"
-              title={isTaskStreaming(task.id) ? "AI is working..." : "View progress"}
-            >
-              <Loader2 className={`w-3 h-3 ${isTaskStreaming(task.id) ? 'animate-spin' : ''}`} />
-              {isTaskStreaming(task.id) ? 'AI Working...' : 
-                taskStates[task.id]?.status === 'queued' ? `Queued #${taskStates[task.id]?.queuePosition}` : 'In Progress'}
-            </button>
-          )}
-
           {task.status === 'review' && (
             <>
               <button
@@ -637,8 +658,8 @@ function TaskCard({
                 }}
                 className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors font-geist"
               >
-                <GitBranch className="w-3 h-3" />
-                Push
+                <GitMerge className="w-3 h-3" />
+                Merge
               </button>
             </>
           )}
@@ -695,6 +716,29 @@ function TaskCard({
           />
         </div>
       )}
+
+      {/* PR Info Badge for Review tasks */}
+      {task.status === 'review' && taskStates[task.id]?.prBranch && (
+        <div className="mt-2 pt-2 border-t border-green-500/20">
+          <div className="flex items-center gap-1.5 text-[9px] text-green-400">
+            <GitBranch className="w-3 h-3" />
+            <span className="font-mono truncate">{taskStates[task.id].prBranch}</span>
+          </div>
+          {taskStates[task.id]?.prUrl && (
+            <div className="mt-1">
+              <a 
+                href={taskStates[task.id].prUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-[9px] text-[#0e639c] hover:text-[#1177bb] underline truncate block"
+                onClick={(e) => e.stopPropagation()}
+              >
+                View PR
+              </a>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -745,14 +789,16 @@ function KanbanColumn({
         {children}
       </div>
 
-      {/* Add Task Button */}
-      <button 
-        onClick={onAddTask}
-        className="mx-2 mb-2 flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium text-neutral-500 hover:text-neutral-300 hover:bg-white/5 transition-colors font-geist"
-      >
-        <Plus className="w-3.5 h-3.5" />
-        Add task
-      </button>
+      {/* Add Task Button - Only show for TODO column */}
+      {column.id === 'todo' && (
+        <button 
+          onClick={onAddTask}
+          className="mx-2 mb-2 flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium text-neutral-500 hover:text-neutral-300 hover:bg-white/5 transition-colors font-geist"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add task
+        </button>
+      )}
     </div>
   )
 }
@@ -761,6 +807,7 @@ export function KanbanBoard() {
   const { tasks, fetchTasks, moveTask, createTask, deleteTask, isLoading } = useTaskStore()
   const aiChatStore = useAIChatStore()
   const { enqueueTask, retryTask, taskStates } = aiChatStore
+  const { activeWorkspace } = useWorkspaceStore()
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
@@ -915,7 +962,8 @@ export function KanbanBoard() {
 
   const handleGitComplete = async () => {
     if (showGitFlow) {
-      await moveTask(showGitFlow.id, 'done')
+      // Just close the modal, keep task in Review
+      // User will manually move to Done after merging
       setShowGitFlow(null)
     }
   }
@@ -1128,7 +1176,12 @@ export function KanbanBoard() {
 
       {/* Git Push Flow Modal */}
       {showGitFlow && (
-        <GitPushFlow task={showGitFlow} onClose={() => setShowGitFlow(null)} onComplete={handleGitComplete} />
+        <GitPushFlow 
+          task={showGitFlow} 
+          taskState={taskStates[showGitFlow.id]} 
+          onClose={() => setShowGitFlow(null)} 
+          onComplete={handleGitComplete} 
+        />
       )}
 
       {/* Task Chat Box */}
@@ -1145,6 +1198,13 @@ export function KanbanBoard() {
         task={diffTask}
         isOpen={!!diffTask}
         onClose={() => setDiffTask(null)}
+        workspacePath={activeWorkspace?.folder_path}
+        onDiscard={() => {
+          if (diffTask) {
+            useTaskStore.getState().moveTask(diffTask.id, 'todo')
+            setDiffTask(null)
+          }
+        }}
       />
 
       {/* Task Detail Modal */}
@@ -1166,116 +1226,563 @@ export function KanbanBoard() {
   )
 }
 
-// Git Push Flow Component
+// Git Workflow Component
 interface GitPushFlowProps {
   task: Task
+  taskState?: AITaskState
   onClose: () => void
   onComplete: () => void
 }
 
-function GitPushFlow({ task, onClose, onComplete }: GitPushFlowProps) {
-  const [step, setStep] = useState(1)
-  const [tag, setTag] = useState('')
+function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   const [commitMsg, setCommitMsg] = useState(`feat: ${task.title}`)
+  const [changedFiles, setChangedFiles] = useState<string[]>([])
+  const [currentBranch, setCurrentBranch] = useState('')
+  const [remoteBranches, setRemoteBranches] = useState<string[]>([])
+  const [targetBranch, setTargetBranch] = useState('rdev')
+  const [remoteName, setRemoteName] = useState('origin')
+  const [tag, setTag] = useState('')
+  const [tagType, setTagType] = useState<'patch' | 'minor' | 'major'>('patch')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [logs, setLogs] = useState<string[]>([])
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [isUserEdited, setIsUserEdited] = useState(false)
+  const [prUrl, setPrUrl] = useState<string | null>(taskState?.prUrl || null)
+  const prBranch = taskState?.prBranch || null
+  const [isPRCreated, setIsPRCreated] = useState(!!taskState?.prBranch)
+  const { activeWorkspace } = useWorkspaceStore()
 
-  const steps = [
-    { id: 1, label: 'Stage Changes', description: 'Add modified files to staging area' },
-    { id: 2, label: 'Commit', description: 'Create commit with message' },
-    { id: 3, label: 'Tag', description: 'Add version tag' },
-    { id: 4, label: 'Push', description: 'Push to remote repository' },
-  ]
+  const addLog = (msg: string) => {
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
+  }
 
-  const handleNext = () => {
-    if (step < 4) {
-      setStep(step + 1)
+  const runGit = async (args: string[]): Promise<{ success: boolean; output: string }> => {
+    return invoke<{ success: boolean; output: string }>('run_shell_command', {
+      command: 'git',
+      args,
+      cwd: activeWorkspace?.folder_path || ''
+    })
+  }
+
+  useEffect(() => {
+    if (!activeWorkspace?.folder_path) return
+    
+    const fetchGitInfo = async () => {
+      try {
+        const branchResult = await runGit(['branch', '--show-current'])
+        if (branchResult.success) {
+          setCurrentBranch(branchResult.output.trim())
+        }
+
+        const remoteResult = await runGit(['remote'])
+        if (remoteResult.success && remoteResult.output.trim()) {
+          setRemoteName(remoteResult.output.trim().split('\n')[0])
+        }
+
+        const branchesResult = await invoke<{ current: string; local: string[]; remote: string[] }>('git_get_branches', { 
+          cwd: activeWorkspace.folder_path 
+        })
+        if (branchesResult?.remote) {
+          const allBranches = branchesResult.remote
+            .map(b => b.replace(/^[^/]+\//, ''))
+            .filter(b => b && !b.includes('HEAD'))
+          setRemoteBranches([...new Set(allBranches)])
+          
+          const hasRdev = allBranches.find(b => b.includes('rdev'))
+          const hasDev = allBranches.find(b => b.includes('development'))
+          if (hasRdev) setTargetBranch(hasRdev)
+          else if (hasDev) setTargetBranch(hasDev)
+          else if (allBranches.length > 0) setTargetBranch(allBranches[0])
+        }
+
+        const diffResult = await invoke<{ changed_files: string[] }>('git_get_diff', { 
+          cwd: activeWorkspace.folder_path 
+        })
+        if (diffResult?.changed_files?.length > 0) {
+          setChangedFiles(diffResult.changed_files)
+        } else {
+          const stagedResult = await invoke<{ changed_files: string[] }>('git_get_staged_diff', { 
+            cwd: activeWorkspace.folder_path 
+          })
+          setChangedFiles(stagedResult?.changed_files || [])
+        }
+
+        const currentTag = await getCurrentTag()
+        setTag(calculateNextTag(currentTag, tagType))
+      } catch (err) {
+        console.error('Failed to fetch git info:', err)
+        setChangedFiles([])
+      }
+    }
+    fetchGitInfo()
+  }, [activeWorkspace])
+
+  const cleanFilePath = (file: string): string => {
+    let cleaned = file
+    if (activeWorkspace?.folder_path) {
+      cleaned = cleaned.replace(activeWorkspace.folder_path, '')
+    }
+    cleaned = cleaned.replace(/^[a-z]\/resources\/js\/app\//i, '/')
+    cleaned = cleaned.replace(/^\//, '')
+    return cleaned
+  }
+
+  const getCurrentTag = async (): Promise<string | null> => {
+    const result = await runGit(['tag', '--list', 'alpha.*', '--sort=-v:refname'])
+    if (result.success && result.output.trim()) {
+      return result.output.trim().split('\n')[0]
+    }
+    return null
+  }
+
+  const calculateNextTag = (currentTag: string | null, type: 'patch' | 'minor' | 'major'): string => {
+    if (!currentTag) return 'alpha.0.0.1'
+    
+    const match = currentTag.match(/alpha\.(\d+)\.(\d+)\.(\d+)/)
+    if (!match) return 'alpha.0.0.1'
+    
+    let [, major, minor, patch] = match.map(Number)
+    
+    if (type === 'major') {
+      major += 1
+      minor = 0
+      patch = 0
+    } else if (type === 'minor') {
+      minor += 1
+      patch = 0
     } else {
-      onComplete()
+      patch += 1
+    }
+    
+    return `alpha.${major}.${minor}.${patch}`
+  }
+
+  const generateCommitMessage = async (isManualRegenerate = false) => {
+    const engine = useEngineStore.getState().activeEngine
+    if (!engine || !activeWorkspace?.folder_path) return
+    
+    setIsGenerating(true)
+    try {
+      const filesList = changedFiles.slice(0, 30).join('\n')
+      const prompt = `Generate a commit message for these changes.
+
+## Commit Message Rules (Conventional Commits)
+
+Format: <type>[scope]: <description>
+
+Types:
+- feat: new feature
+- fix: bug fix
+- docs: documentation
+- style: formatting (no logic change)
+- refactor: code refactoring
+- perf: performance improvement
+- test: tests
+- chore: minor changes (config, build tools)
+
+Rules:
+1. Use scope when relevant: feat(auth):, fix(api):, refactor(ui):
+2. Description: explain WHAT changed, be specific
+3. Max 72 characters for the first line
+4. No generic messages like "update", "fix bug", "changes"
+
+Changed files:
+${filesList}
+${changedFiles.length > 30 ? `\n... and ${changedFiles.length - 30} more files` : ''}
+
+Respond with ONLY the commit message, nothing else. Example: feat(ui): add user profile card component`
+
+      const { listen } = await import('@tauri-apps/api/event')
+      let output = ''
+      
+      const unlistenOutput = await listen('cli-output', (event: { payload: { line: string } }) => {
+        output += event.payload.line + '\n'
+      })
+      
+      const completionPromise = new Promise<{ success: boolean; error_message?: string }>((resolve) => {
+        listen('cli-complete', (event: { payload: { success: boolean; error_message?: string } }) => {
+          resolve(event.payload)
+          unlistenOutput()
+        })
+      })
+
+      await invoke('run_cli', {
+        binary: engine.binary_path,
+        args: engine.args.split(' ').filter(Boolean),
+        prompt: prompt,
+        cwd: activeWorkspace.folder_path,
+      })
+
+      const result = await completionPromise
+
+      if (result.success && output) {
+        let generatedMsg = output.trim().split('\n')[0]
+        if (generatedMsg.length > 72) {
+          generatedMsg = generatedMsg.substring(0, 69) + '...'
+        }
+        if (generatedMsg) {
+          setCommitMsg(generatedMsg)
+          if (!isManualRegenerate) {
+            setIsUserEdited(false)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to generate commit message:', err)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  useEffect(() => {
+    const hasEngine = !!useEngineStore.getState().activeEngine
+    if (changedFiles.length > 0 && !isUserEdited && !isGenerating && hasEngine) {
+      generateCommitMessage()
+    }
+  }, [changedFiles.length, isUserEdited, isGenerating])
+
+  // Update tag when type changes
+  useEffect(() => {
+    const updateTag = async () => {
+      const currentTag = await getCurrentTag()
+      setTag(calculateNextTag(currentTag, tagType))
+    }
+    updateTag()
+  }, [tagType])
+
+  const createPR = async () => {
+    if (!activeWorkspace?.folder_path) return
+
+    setLoading(true)
+    setError(null)
+    setLogs([])
+
+    try {
+      addLog('Starting PR workflow...')
+
+      // Step 1: Stage and commit
+      addLog('Staging changes...')
+      const addResult = await runGit(['add', '.'])
+      if (!addResult.success) throw new Error(`git add failed: ${addResult.output}`)
+      addLog('✓ Changes staged')
+
+      // Commit
+      addLog(`Creating commit: "${commitMsg}"`)
+      const commitResult = await runGit(['commit', '-m', commitMsg])
+      if (!commitResult.success) throw new Error(`git commit failed: ${commitResult.output}`)
+      addLog('✓ Commit created')
+
+      // Push branch
+      addLog(`Pushing branch: ${currentBranch}`)
+      const pushResult = await runGit(['push', '-u', remoteName, currentBranch])
+      if (!pushResult.success) throw new Error(`git push failed: ${pushResult.output}`)
+      addLog('✓ Branch pushed')
+
+      // Create PR (try GitHub CLI first, then GitLab)
+      addLog('Creating PR...')
+      
+      // Try gh CLI
+      let prResult = await runGit(['config', '--global', 'gh.prompt', 'false'])
+      if (prResult.success) {
+        // Check if gh is authenticated
+        const ghCheck = await runGit(['auth', 'status'])
+        if (ghCheck.success) {
+          const prCreateResult = await runGit([
+            'pr', 'create',
+            '--base', targetBranch,
+            '--title', commitMsg,
+            '--body', `Task: ${task.title}\n\nAutomated PR from Akira`
+          ])
+          if (prCreateResult.success) {
+            setPrUrl(prCreateResult.output.trim())
+            addLog(`✓ PR created: ${prCreateResult.output.trim()}`)
+          }
+        }
+      }
+
+      // Fallback: show manual PR instructions
+      if (!prUrl) {
+        addLog('Note: No GitHub/GitLab CLI detected')
+        addLog(`Create PR manually: ${currentBranch} → ${targetBranch}`)
+      }
+
+      addLog('✓ PR created! Click Merge when ready.')
+      setIsPRCreated(true)
+      setLoading(false)
+
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      setError(errorMsg)
+      addLog(`✗ Error: ${errorMsg}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const executeMerge = async () => {
+    if (!activeWorkspace?.folder_path) return
+
+    setLoading(true)
+    setError(null)
+    setLogs([])
+
+    // Use PR branch if available (from autoCreatePR), otherwise use currentBranch
+    const branchToMerge = prBranch || currentBranch
+    const branchLabel = prBranch ? `PR branch (${prBranch})` : `current branch (${currentBranch})`
+
+    try {
+      addLog(`Starting double merge workflow using ${branchLabel}...`)
+
+      // Step 1: Merge to rdev
+      addLog(`Merging to ${targetBranch}...`)
+      const merge1Result = await runGit(['checkout', targetBranch])
+      if (!merge1Result.success) throw new Error(`checkout ${targetBranch} failed: ${merge1Result.output}`)
+      
+      const pull1Result = await runGit(['pull', remoteName, targetBranch])
+      if (!pull1Result.success) addLog(`Pull warning: ${pull1Result.output}`)
+      
+      const mergeResult = await runGit(['merge', branchToMerge, '--no-ff', '-m', `Merge ${branchToMerge} into ${targetBranch}`])
+      if (!mergeResult.success) throw new Error(`merge to ${targetBranch} failed: ${mergeResult.output}`)
+      addLog(`✓ Merged ${branchToMerge} into ${targetBranch}`)
+
+      const push1Result = await runGit(['push', remoteName, targetBranch])
+      if (!push1Result.success) throw new Error(`push ${targetBranch} failed: ${push1Result.output}`)
+      addLog(`✓ Pushed ${targetBranch}`)
+
+      // Step 2: Detect main branch and merge
+      const mainBranch = remoteBranches.find(b => 
+        b.includes('main') || b.includes('master') || b.includes('production')
+      ) || 'development'
+      
+      addLog(`Merging to ${mainBranch}...`)
+      const checkoutDevResult = await runGit(['checkout', mainBranch])
+      if (!checkoutDevResult.success) throw new Error(`checkout ${mainBranch} failed: ${checkoutDevResult.output}`)
+      
+      const pullDevResult = await runGit(['pull', remoteName, mainBranch])
+      if (!pullDevResult.success) addLog(`Pull warning: ${pullDevResult.output}`)
+      
+      const mergeDevResult = await runGit(['merge', targetBranch, '--no-ff', '-m', `Merge ${targetBranch} into ${mainBranch}`])
+      if (!mergeDevResult.success) throw new Error(`merge to ${mainBranch} failed: ${mergeDevResult.output}`)
+      addLog(`✓ Merged into ${mainBranch}`)
+
+      // Create tag
+      const calculatedTag = calculateNextTag(await getCurrentTag(), tagType)
+      addLog(`Creating tag: ${calculatedTag}`)
+      const tagResult = await runGit(['tag', '-a', calculatedTag, '-m', `Release ${calculatedTag}`])
+      if (!tagResult.success) throw new Error(`tag failed: ${tagResult.output}`)
+      addLog(`✓ Tag created: ${calculatedTag}`)
+
+      // Push everything
+      addLog(`Pushing ${mainBranch} and tags...`)
+      const pushDevResult = await runGit(['push', remoteName, mainBranch])
+      if (!pushDevResult.success) throw new Error(`push ${mainBranch} failed: ${pushDevResult.output}`)
+      
+      const pushTagsResult = await runGit(['push', remoteName, '--tags'])
+      if (!pushTagsResult.success) addLog(`Push tags warning: ${pushTagsResult.output}`)
+      
+      addLog('✓ Pushed development and tags')
+      addLog(`✓ Version: ${calculatedTag}`)
+      addLog('✓ Double merge completed! Close this modal when ready.')
+      setLoading(false)
+
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      setError(errorMsg)
+      addLog(`✗ Error: ${errorMsg}`)
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg">
+      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
         <div className="px-4 py-3 border-b border-white/5">
-          <h3 className="text-sm font-semibold text-white font-geist">Git Workflow: Complete Task</h3>
+          <h3 className="text-sm font-semibold text-white font-geist">Git Workflow</h3>
+          <p className="text-[10px] text-neutral-500 font-geist mt-0.5">{task.title}</p>
         </div>
 
-        <div className="p-4 space-y-4">
-          {/* Progress Steps */}
-          <div className="flex items-center justify-between">
-            {steps.map((s, idx) => (
-              <div key={s.id} className="flex items-center">
-                <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-geist ${
-                    step > s.id
-                      ? 'bg-green-500 text-white'
-                      : step === s.id
-                        ? 'bg-[#0e639c] text-white'
-                        : 'bg-white/10 text-neutral-500'
-                  }`}
-                >
-                  {step > s.id ? '✓' : s.id}
-                </div>
-                {idx < steps.length - 1 && (
-                  <div className={`w-8 h-px ${step > s.id ? 'bg-green-500' : 'bg-white/10'}`} />
+        <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+          {/* PR Created Banner */}
+          {isPRCreated && prBranch && (
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-500" />
+                <span className="text-xs text-green-400 font-geist font-medium">PR Created</span>
+              </div>
+              <p className="text-[10px] text-neutral-400 font-geist mt-1">
+                Branch: <span className="text-white font-mono">{prBranch}</span>
+              </p>
+              {prUrl && (
+                <p className="text-[10px] text-[#0e639c] font-geist mt-1">
+                  {prUrl}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Branch Info */}
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex-1">
+              <span className="text-neutral-500">Current:</span>
+              <span className="ml-2 text-white font-mono">{currentBranch || '...'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-neutral-500">Target:</span>
+              <select
+                value={targetBranch}
+                onChange={(e) => setTargetBranch(e.target.value)}
+                className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10"
+              >
+                {remoteBranches.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Changed Files */}
+          <div>
+            <label className="block text-xs text-neutral-400 font-geist mb-2">
+              Files to commit ({changedFiles.length})
+            </label>
+            {changedFiles.length > 0 ? (
+              <div className="bg-[#252526] rounded-lg p-3 border border-white/5 max-h-28 overflow-y-auto">
+                {changedFiles.map((file, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs text-green-300 font-mono group">
+                    <span className="text-green-500">+</span>
+                    <span className="truncate" title={file}>{cleanFilePath(file)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-[#252526] rounded-lg p-3 border border-white/5 text-xs text-neutral-500 italic">
+                No changes to commit
+              </div>
+            )}
+          </div>
+
+          {/* Commit Message */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-neutral-400 font-geist">Commit Message</label>
+              <button
+                onClick={() => generateCommitMessage(true)}
+                disabled={isGenerating || !useEngineStore.getState().activeEngine}
+                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-[#0e639c] hover:text-[#1177bb] hover:bg-[#0e639c]/10 transition-colors disabled:opacity-50"
+              >
+                {isGenerating ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3" />
                 )}
-              </div>
-            ))}
+                Regenerate
+              </button>
+            </div>
+            <textarea
+              value={commitMsg}
+              onChange={(e) => {
+                setCommitMsg(e.target.value)
+                setIsUserEdited(true)
+              }}
+              className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist resize-none"
+              rows={2}
+              disabled={loading}
+              placeholder="Enter commit message..."
+            />
           </div>
 
-          {/* Current Step Content */}
-          <div className="bg-[#252526] rounded-lg p-4 border border-white/5">
-            <h4 className="text-sm font-medium text-white font-geist mb-1">{steps[step - 1].label}</h4>
-            <p className="text-xs text-neutral-500 font-geist mb-3">{steps[step - 1].description}</p>
-
-            {step === 2 && (
-              <div>
-                <label className="block text-xs text-neutral-400 font-geist mb-1">Commit Message</label>
-                <textarea
-                  value={commitMsg}
-                  onChange={(e) => setCommitMsg(e.target.value)}
-                  className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist resize-none"
-                  rows={2}
-                />
+          {/* Version Tag */}
+          <div>
+            <label className="block text-xs text-neutral-400 font-geist mb-1">Version Tag</label>
+            <div className="flex gap-2">
+              <div className="flex gap-1">
+                {(['patch', 'minor', 'major'] as const).map(type => (
+                  <button
+                    key={type}
+                    onClick={() => setTagType(type)}
+                    className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                      tagType === type 
+                        ? 'bg-[#0e639c] text-white' 
+                        : 'bg-[#3c3c3c] text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
               </div>
-            )}
-
-            {step === 3 && (
-              <div>
-                <label className="block text-xs text-neutral-400 font-geist mb-1">Version Tag</label>
-                <input
-                  type="text"
-                  value={tag}
-                  onChange={(e) => setTag(e.target.value)}
-                  placeholder="v1.0.0"
-                  className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
-                />
-              </div>
-            )}
-
-            {step === 4 && (
-              <div className="text-xs font-geist text-neutral-400 space-y-1">
-                <p>git add .</p>
-                <p>git commit -m "{commitMsg}"</p>
-                {tag && <p>git tag {tag}</p>}
-                <p>git push origin main {tag && '--tags'}</p>
-              </div>
-            )}
+              <input
+                type="text"
+                value={tag}
+                onChange={(e) => setTag(e.target.value)}
+                className="flex-1 px-3 py-1 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist font-mono"
+                disabled={loading}
+              />
+            </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2">
+          {/* Error */}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              <p className="text-xs text-red-400 font-geist">{error}</p>
+            </div>
+          )}
+
+          {/* Logs */}
+          {logs.length > 0 && (
+            <div>
+              <label className="block text-xs text-neutral-400 font-geist mb-1">Output</label>
+              <div className="bg-black rounded-lg p-3 border border-white/5 max-h-40 overflow-y-auto">
+                {logs.map((log, idx) => (
+                  <p key={idx} className={`text-xs font-mono ${
+                    log.includes('✓') ? 'text-green-400' : 
+                    log.includes('✗') ? 'text-red-400' : 
+                    'text-neutral-300'
+                  }`}>
+                    {log}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="px-4 py-3 border-t border-white/5 flex justify-between">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 rounded text-sm font-medium text-neutral-400 hover:text-white font-geist transition-colors disabled:opacity-50"
+          >
+            {isPRCreated ? 'Close' : 'Cancel'}
+          </button>
+          <div className="flex gap-2">
+            {!isPRCreated && (
+              <button
+                onClick={createPR}
+                disabled={loading || changedFiles.length === 0}
+                className="px-4 py-2 rounded text-sm font-medium text-white bg-[#238636] hover:bg-[#2ea043] font-geist transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <GitBranch className="w-4 h-4" />
+                )}
+                Create PR
+              </button>
+            )}
             <button
-              onClick={onClose}
-              className="px-4 py-2 rounded text-sm font-medium text-neutral-400 hover:text-white font-geist transition-colors"
+              onClick={executeMerge}
+              disabled={loading || changedFiles.length === 0}
+              className="px-4 py-2 rounded text-sm font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors disabled:opacity-50 flex items-center gap-2"
             >
-              Cancel
-            </button>
-            <button
-              onClick={handleNext}
-              className="px-4 py-2 rounded text-sm font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors"
-            >
-              {step === 4 ? 'Complete' : 'Next'}
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <GitMerge className="w-4 h-4" />
+              )}
+              Merge
             </button>
           </div>
         </div>

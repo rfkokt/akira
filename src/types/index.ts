@@ -59,3 +59,6 @@ export interface CliCompleteEvent {
   exit_code: number | null;
   error_message: string | null;
 }
+
+// Assessment types - re-exported from assessment.ts
+export * from './assessment';
