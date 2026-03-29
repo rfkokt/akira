@@ -1,69 +1,152 @@
 # Akira
 
-> **AI-Powered Task & Code Workflow Manager**
+> **AI-Powered Workspace & Task Manager**
 
-A native desktop application built with Tauri (Rust) + React that combines Kanban task management with multi-model AI chat integration.
+A native desktop application built with Tauri (Rust) + React for managing multiple coding workspaces with AI assistance. Each workspace represents a project folder with its own Kanban board, tasks, and AI chat context.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Tauri](https://img.shields.io/badge/Tauri-v2.0-blueviolet?logo=tauri)
 ![React](https://img.shields.io/badge/React-v19-61DAFB?logo=react)
 
+## 🎯 Core Concept: Workspaces
+
+**Akira** is built around the concept of **Workspaces**. Think of it like VS Code workspaces, but with AI-powered task management.
+
+### What is a Workspace?
+A workspace is a **project folder** on your computer that contains:
+- 📁 **Project Files** - Your code, configs, documentation
+- 📋 **Kanban Board** - Tasks organized in 4 columns (TODO → IN PROGRESS → REVIEW → DONE)
+- 🤖 **AI Context** - Project-specific configuration (Persona, Tech Stack, Rules, Tone)
+- 💬 **Chat History** - AI conversations, optionally organized per task
+
+### Workflow Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. CREATE WORKSPACE                                        │
+│     └─ Select a folder on your computer                     │
+│     └─ Give it a name (e.g., "My React App")                │
+│                                                             │
+│  2. SETUP PROJECT (Optional)                                │
+│     └─ Configure AI Persona (who the AI should be)          │
+│     └─ Define Tech Stack (React, Node, etc.)                │
+│     └─ Set Rules (Do's and Don'ts)                          │
+│     └─ Adjust Tone (how AI should communicate)              │
+│                                                             │
+│  3. ADD TASKS                                               │
+│     └─ Create tasks manually in Kanban board                │
+│     └─ OR import from JSON/Markdown/Excel                   │
+│                                                             │
+│  4. START CODING WITH AI                                    │
+│     └─ Select a task to set context                         │
+│     └─ Chat with AI (context-aware)                         │
+│     └─ Work on files                                        │
+│     └─ Git workflow when done                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## ✨ Features
 
-### 🤖 Multi-Model AI Integration
-- Support for multiple AI engines (Ollama, Claude, Opencode, etc.)
-- Generic CLI wrapper - use any AI tool with stdin/stdout
-- Real-time streaming output
-- Per-task chat history
+### 🏢 Multi-Workspace Support
+- Create unlimited workspaces (one per project)
+- Each workspace is tied to a specific folder
+- Switch between workspaces instantly
+- Each workspace has isolated data and context
 
-### 📋 Kanban Task Management
-- 4-column board: TODO → IN PROGRESS → REVIEW → DONE
-- Drag & drop support
-- Task priority levels
+### 📋 Kanban Task Management (Per Workspace)
+- 4-column board: **TODO → IN PROGRESS → REVIEW → DONE**
+- Drag & drop between columns
+- Task priority levels (High, Medium, Low)
 - Import tasks from JSON, Markdown, or Excel
-
-### 📁 File Explorer
-- Native file system access via Tauri
-- Tree view with file type icons
-- Select and preview files
-- (Monaco Editor integration coming soon)
+- Link tasks to specific files
 
 ### 🧠 Project Intelligence Config (PIC)
-- 4-tab configuration:
-  - **Persona**: Define AI role & expertise
-  - **Tech Stack**: Technology context
-  - **Rules**: Do & Don't guidelines
-  - **Tone**: Communication style
-- Monaco Editor for markdown editing
-- System prompt preview
+Each workspace has its own AI configuration:
+- **Persona**: Define AI role & expertise
+  - Example: "You are a senior React engineer..."
+- **Tech Stack**: Technology context
+  - Example: "Next.js 14, TypeScript, Prisma, PostgreSQL"
+- **Rules**: Do & Don't guidelines
+  - Example: "Always use async/await, never use var"
+- **Tone**: Communication style
+  - Example: "Be concise, give max 2 options"
 
-### 💾 Persistence
-- SQLite database for all data
-- Local-first architecture
-- No cloud dependency
+### 💬 Context-Aware AI Chat
+- **Global Workspace Chat**: General discussion about the project
+- **Task-Specific Chat**: Each task can have its own chat thread
+- Real-time streaming from AI engines
+- Support multiple AI engines (Ollama, Claude, Opencode, etc.)
+- Full chat history persistence
+
+### 📁 File Explorer
+- Browse project files natively
+- Tree view with file type icons
+- Select files to show AI context
+- Monaco Editor integration (coming soon)
+
+### 🔀 Git Workflow (Coming Soon)
+- Stage files
+- AI-generated commit messages
+- Auto tag versioning
+- One-click push
 
 ## 🚀 Getting Started
 
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v18+)
-- [Rust](https://rustup.rs/) (latest stable)
-- macOS (Apple Silicon optimized)
-
-### Installation
+### First Time Setup
 
 ```bash
-# Clone the repository
+# Clone and install
 git clone https://github.com/rfkokt/akira.git
 cd akira
-
-# Install dependencies
 npm install
 
-# Run in development mode
+# Run the app
 npm run tauri:dev
+```
 
-# Build for production
-npm run tauri:build
+### Creating Your First Workspace
+
+1. **Launch Akira**
+   - App opens with "Welcome" screen
+
+2. **Create New Workspace**
+   - Click "+ New Workspace" button
+   - Select a folder (e.g., your project directory)
+   - Name it (e.g., "My Web App")
+
+3. **Add Tasks**
+   - Go to Tasks tab
+   - Click "Add Task" or import from file
+   - Organize in Kanban board
+
+4. **Configure AI (Optional but Recommended)**
+   - Click Config icon (brain) in sidebar
+   - Fill Persona, Tech Stack, Rules, Tone
+   - Save configuration
+
+5. **Start Working**
+   - Select a task to set context
+   - Open chat (floating box)
+   - Ask AI for help!
+
+### Quick Workflow Example
+
+```
+Workspace: "E-commerce Dashboard"
+├── Kanban Tasks:
+│   ├── [TODO] Setup authentication
+│   ├── [IN PROGRESS] Create product API  ← Selected
+│   └── [DONE] Initialize project
+│
+├── AI Context:
+│   ├── Persona: "Senior Fullstack Dev"
+│   ├── Tech: "Next.js, Prisma, PostgreSQL"
+│   └── Rules: "Use TypeScript strictly"
+│
+└── Chat:
+    └── Task: "Create product API"
+        └── "How should I structure the product 
+            controller with proper error handling?"
 ```
 
 ## 🏗️ Tech Stack
@@ -73,30 +156,31 @@ npm run tauri:build
 | **Framework** | Tauri v2 |
 | **Frontend** | React 19 + TypeScript + Tailwind CSS |
 | **Backend** | Rust |
-| **Database** | SQLite (rusqlite) |
+| **Database** | SQLite (rusqlite) - per workspace |
 | **Editor** | Monaco Editor |
-| **State** | Zustand |
+| **State Management** | Zustand |
 | **Icons** | Lucide React |
 
 ## 📁 Project Structure
 
 ```
 akira/
-├── src/                    # React Frontend
-│   ├── components/         # UI Components
-│   │   ├── Chat/          # AI Chat components
-│   │   ├── Editor/        # File tree & editor
-│   │   ├── Kanban/        # Task board
-│   │   ├── ProjectConfig/ # PIC components
-│   │   └── layout/        # Layout components
-│   ├── store/             # Zustand stores
-│   └── styles/            # Global styles
-├── src-tauri/             # Rust Backend
+├── src/                          # React Frontend
+│   ├── components/
+│   │   ├── Workspaces/          # Workspace management
+│   │   ├── Kanban/              # Task board
+│   │   ├── Chat/                # AI chat
+│   │   ├── Editor/              # File explorer
+│   │   └── ProjectConfig/       # PIC settings
+│   ├── store/                   # Zustand stores
+│   └── App.tsx
+├── src-tauri/                    # Rust Backend
 │   ├── src/
-│   │   ├── db/           # Database layer
-│   │   └── main.rs       # Tauri commands
+│   │   ├── commands/            # Tauri commands
+│   │   ├── db/                  # Database layer
+│   │   └── main.rs
 │   └── Cargo.toml
-└── package.json
+└── README.md
 ```
 
 ## 🛠️ Development
@@ -104,81 +188,72 @@ akira/
 ### Available Scripts
 
 ```bash
-npm run dev          # Start Vite dev server
-npm run build        # Build for production
-npm run tauri:dev    # Start Tauri in dev mode
-npm run tauri:build  # Build Tauri app
+# Development
+npm run tauri:dev        # Start dev server
+
+# Production
+npm run tauri:build      # Build app for distribution
 ```
 
-### AI Engine Configuration
+### Adding AI Engines
 
-1. Open Settings (gear icon)
-2. Register your AI CLI binary:
-   - **Alias**: Display name (e.g., "Claude")
-   - **Binary Path**: Path to CLI (e.g., `/usr/local/bin/claude`)
-   - **Args**: Arguments (e.g., `--dangerously-skip-permissions`)
-3. Enable/disable engines as needed
+1. Open Settings (gear icon in header)
+2. Register CLI binaries:
+   - **Alias**: Display name
+   - **Path**: Path to CLI binary
+   - **Args**: Default arguments
 
-### Project Configuration
-
-1. Click the Config icon (brain icon) in sidebar
-2. Edit the 4 sections:
-   - Persona: Who the AI should be
-   - Tech Stack: Your project's technologies
-   - Rules: Guidelines for the AI
-   - Tone: How the AI should communicate
-3. Click Save to store in database
-4. Preview shows the combined system prompt
+Example configurations:
+- **Claude**: `/usr/local/bin/claude` with args `--dangerously-skip-permissions`
+- **Ollama**: `ollama` with args `run llama3`
 
 ## 🗺️ Roadmap
 
-### Phase 1: Core Engine ✅
+### ✅ Phase 1: Core Engine
 - [x] Tauri + React setup
-- [x] SQLite database
-- [x] Kanban board
-- [x] AI chat with streaming
-- [x] Engine management
+- [x] Multi-workspace support
+- [x] SQLite database per workspace
+- [x] AI engine management
 
-### Phase 2: Task & Context 🚧
+### 🚧 Phase 2: Task & Context
+- [x] Kanban board with 4 columns
 - [x] Task importer (JSON/Markdown/Excel)
-- [x] File tree sidebar
+- [x] File tree explorer
 - [x] Project Intelligence Config (PIC)
-- [ ] Task card binding to system prompt
+- [x] Task-specific chat
+- [ ] Task card to system prompt binding
 
-### Phase 3: Code Interaction
+### 📋 Phase 3: Code Integration
 - [ ] Monaco Editor integration
-- [ ] Diff viewer
-- [ ] Apply changes to disk
+- [ ] Diff viewer for AI suggestions
+- [ ] Auto-apply changes to files
 - [ ] Git workflow (stage/commit/tag/push)
-- [ ] Skills manager (skills.sh integration)
 
-### Phase 4: MCP & Polish
+### 🔮 Phase 4: Advanced Features
+- [ ] Skills manager (skills.sh)
 - [ ] MCP server management
-- [ ] KORLAP-X as MCP server
+- [ ] Auto-debug capabilities
 - [ ] Multi-language support
-- [ ] Auto-debug features
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Built with [Tauri](https://tauri.app/)
-- Icons by [Lucide](https://lucide.dev/)
-- Editor powered by [Monaco](https://microsoft.github.io/monaco-editor/)
-- UI inspired by VS Code
+- [Tauri](https://tauri.app/) - Native app framework
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - Code editor
+- [Lucide](https://lucide.dev/) - Beautiful icons
+- VS Code for UI inspiration
 
 ---
 
-<p align="center">Made with ❤️ and ☕</p>
+<p align="center">Made with ❤️ and ☕ for developers who love AI</p>
