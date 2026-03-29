@@ -5,22 +5,20 @@ pub mod queries;
 
 /// Initialize database with all required tables
 pub fn init_db(app_dir: &PathBuf) -> Result<Connection> {
-    let db_path = app_dir.join("korlap-x.db");
+    let db_path = app_dir.join("akira.db");
     let conn = Connection::open(db_path)?;
-    
+
     create_tables(&conn)?;
     run_migrations(&conn)?;
-    
+
     Ok(conn)
 }
 
 fn run_migrations(conn: &Connection) -> Result<()> {
     // Migration: Add model column to engines table if it doesn't exist
-    conn.execute(
-        "ALTER TABLE engines ADD COLUMN model TEXT DEFAULT ''",
-        [],
-    ).ok(); // Ignore error if column already exists
-    
+    conn.execute("ALTER TABLE engines ADD COLUMN model TEXT DEFAULT ''", [])
+        .ok(); // Ignore error if column already exists
+
     Ok(())
 }
 
@@ -133,22 +131,22 @@ fn create_tables(conn: &Connection) -> Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
         [],
     )?;
-    
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)",
         [],
     )?;
-    
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_chat_task ON chat_history(task_id)",
         [],
     )?;
-    
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_skills_project ON project_skills(project_id)",
         [],
     )?;
-    
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_mcps_project ON project_mcps(project_id)",
         [],
@@ -161,7 +159,12 @@ fn create_tables(conn: &Connection) -> Result<()> {
 pub fn seed_default_engines(conn: &Connection) -> Result<()> {
     let defaults = vec![
         ("ollama", "ollama", "llama3.2", "run"),
-        ("claude", "claude", "claude-3-5-sonnet-20241022", "--dangerously-skip-permissions"),
+        (
+            "claude",
+            "claude",
+            "claude-3-5-sonnet-20241022",
+            "--dangerously-skip-permissions",
+        ),
         ("opencode", "opencode", "", ""),
     ];
 
