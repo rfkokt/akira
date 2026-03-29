@@ -102,7 +102,6 @@ function AIActivityIndicator({ taskId, taskState, showTerminal = false, maxHeigh
   // Get current action description based on output
   const getCurrentAction = () => {
     if (!latestOutput) return null;
-    const lines = latestOutput.split('\n');
     // Look for common patterns in AI output
     const actionPatterns = [
       { pattern: /reading|reading file|open|reading file from/i, label: 'Reading files...' },
@@ -979,7 +978,7 @@ export function KanbanBoard() {
             const columnTasks = getTasksByStatus(column.id)
 
             return (
-              <KanbanColumn key={column.id} column={column} tasks={columnTasks}>
+              <KanbanColumn key={column.id} column={column} tasks={columnTasks} onAddTask={() => setShowAddModal(true)}>
                 <SortableContext
                   items={columnTasks.map((t) => t.id)}
                   strategy={verticalListSortingStrategy}
