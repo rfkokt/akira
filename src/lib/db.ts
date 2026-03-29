@@ -12,6 +12,9 @@ export const dbService = {
   getTasksByStatus: (status: string) => 
     invoke<Task[]>('get_tasks_by_status', { status }),
   
+  getTasksByWorkspace: (workspaceId: string) =>
+    invoke<Task[]>('get_tasks_by_workspace', { workspaceId }),
+  
   updateTaskStatus: (id: string, status: string) => 
     invoke<void>('update_task_status', { id, status }),
   

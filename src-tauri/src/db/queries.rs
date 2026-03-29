@@ -11,7 +11,7 @@ pub struct Task {
     pub status: String,
     pub priority: String,
     pub file_path: Option<String>,
-    pub project_id: Option<String>,
+    pub workspace_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -23,14 +23,14 @@ pub struct CreateTaskRequest {
     pub status: String,
     pub priority: String,
     pub file_path: Option<String>,
-    pub project_id: Option<String>,
+    pub workspace_id: Option<String>,
 }
 
 pub fn create_task(conn: &Connection, task: &CreateTaskRequest) -> Result<Task> {
     let id = uuid::Uuid::new_v4().to_string();
 
     conn.execute(
-        "INSERT INTO tasks (id, title, description, status, priority, file_path, project_id)
+        "INSERT INTO tasks (id, title, description, status, priority, file_path, workspace_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             &id,
@@ -39,7 +39,7 @@ pub fn create_task(conn: &Connection, task: &CreateTaskRequest) -> Result<Task> 
             &task.status,
             &task.priority,
             task.file_path.as_ref(),
-            task.project_id.as_ref(),
+            task.workspace_id.as_ref(),
         ],
     )?;
 
@@ -48,7 +48,7 @@ pub fn create_task(conn: &Connection, task: &CreateTaskRequest) -> Result<Task> 
 
 pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, project_id, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
          FROM tasks WHERE id = ?1"
     )?;
 
@@ -60,7 +60,7 @@ pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
             status: row.get(3)?,
             priority: row.get(4)?,
             file_path: row.get(5)?,
-            project_id: row.get(6)?,
+            workspace_id: row.get(6)?,
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
         })
@@ -75,7 +75,7 @@ pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
 
 pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, project_id, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
          FROM tasks WHERE status = ?1 ORDER BY created_at DESC"
     )?;
 
@@ -87,7 +87,7 @@ pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>>
             status: row.get(3)?,
             priority: row.get(4)?,
             file_path: row.get(5)?,
-            project_id: row.get(6)?,
+            workspace_id: row.get(6)?,
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
         })
@@ -98,7 +98,7 @@ pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>>
 
 pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, project_id, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
          FROM tasks ORDER BY created_at DESC"
     )?;
 
@@ -110,7 +110,30 @@ pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
             status: row.get(3)?,
             priority: row.get(4)?,
             file_path: row.get(5)?,
-            project_id: row.get(6)?,
+            workspace_id: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    })?;
+
+    tasks.collect()
+}
+
+pub fn get_tasks_by_workspace(conn: &Connection, workspace_id: &str) -> Result<Vec<Task>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, description, status, priority, file_path, workspace_id, created_at, updated_at 
+         FROM tasks WHERE workspace_id = ?1 ORDER BY created_at DESC"
+    )?;
+
+    let tasks = stmt.query_map([workspace_id], |row| {
+        Ok(Task {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            description: row.get(2)?,
+            status: row.get(3)?,
+            priority: row.get(4)?,
+            file_path: row.get(5)?,
+            workspace_id: row.get(6)?,
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
         })

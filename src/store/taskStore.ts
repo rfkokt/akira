@@ -7,9 +7,11 @@ interface TaskState {
   tasks: Task[];
   isLoading: boolean;
   error: string | null;
+  currentWorkspaceId: string | null;
   
   // Actions
-  fetchTasks: () => Promise<void>;
+  setCurrentWorkspace: (workspaceId: string | null) => void;
+  fetchTasks: (workspaceId?: string) => Promise<void>;
   createTask: (task: CreateTaskRequest) => Promise<void>;
   moveTask: (id: string, status: Task['status']) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
@@ -21,11 +23,27 @@ export const useTaskStore = create<TaskState>()(
       tasks: [],
       isLoading: false,
       error: null,
+      currentWorkspaceId: null,
 
-      fetchTasks: async () => {
+      setCurrentWorkspace: (workspaceId: string | null) => {
+        set({ currentWorkspaceId: workspaceId });
+        if (workspaceId) {
+          get().fetchTasks(workspaceId);
+        } else {
+          set({ tasks: [] });
+        }
+      },
+
+      fetchTasks: async (workspaceId?: string) => {
+        const targetWorkspaceId = workspaceId || get().currentWorkspaceId;
+        if (!targetWorkspaceId) {
+          set({ tasks: [], isLoading: false });
+          return;
+        }
+        
         set({ isLoading: true, error: null });
         try {
-          const tasks = await dbService.getAllTasks();
+          const tasks = await dbService.getTasksByWorkspace(targetWorkspaceId);
           set({ tasks, isLoading: false });
         } catch (error) {
           set({ error: String(error), isLoading: false });

@@ -47,6 +47,12 @@ fn get_tasks_by_status(state: tauri::State<AppState>, status: String) -> Result<
 }
 
 #[tauri::command]
+fn get_tasks_by_workspace(state: tauri::State<AppState>, workspace_id: String) -> Result<Vec<Task>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::get_tasks_by_workspace(&conn, &workspace_id).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
 fn update_task_status(state: tauri::State<AppState>, id: String, status: String) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     queries::update_task_status(&conn, &id, &status).map_err(|e: rusqlite::Error| e.to_string())
@@ -394,7 +400,7 @@ fn import_tasks_json(
             status: json_task.status.unwrap_or_else(|| "todo".to_string()),
             priority: json_task.priority.unwrap_or_else(|| "medium".to_string()),
             file_path: None,
-            project_id: None,
+            workspace_id: None,
         };
         
         match queries::create_task(&conn, &request) {
@@ -451,7 +457,7 @@ fn import_tasks_markdown(
                 status: status.to_string(),
                 priority: "medium".to_string(),
                 file_path: None,
-                project_id: None,
+                workspace_id: None,
             };
             
             match queries::create_task(&conn, &request) {
@@ -561,7 +567,7 @@ fn import_tasks_excel(
                 status,
                 priority,
                 file_path: None,
-                project_id: None,
+                workspace_id: None,
             };
             
             match queries::create_task(&conn, &request) {
@@ -748,6 +754,7 @@ fn main() {
             create_task,
             get_all_tasks,
             get_tasks_by_status,
+            get_tasks_by_workspace,
             update_task_status,
             delete_task,
             create_engine,

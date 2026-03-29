@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch } from 'lucide-react'
-import { useEngineStore, useWorkspaceStore } from '@/store'
+import { useEngineStore, useWorkspaceStore, useTaskStore } from '@/store'
 import { SettingsModal } from '@/components/SettingsModal'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { ConfigPanel } from './components/ProjectConfig/ConfigPanel'
@@ -22,6 +22,7 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<string | undefined>(undefined)
   const { engines, activeEngine, setActiveEngine, fetchEngines, seedDefaultEngines, isLoading } = useEngineStore()
   const { activeWorkspace, loadActiveWorkspace, loadWorkspaces } = useWorkspaceStore()
+  const { setCurrentWorkspace } = useTaskStore()
 
   // Load active workspace on mount
   useEffect(() => {
@@ -32,12 +33,16 @@ function App() {
     init()
   }, [loadActiveWorkspace, loadWorkspaces])
 
-  // Show welcome screen if no active workspace
+  // Show welcome screen if no active workspace and set current workspace for tasks
   useEffect(() => {
     if (activeWorkspace === null) {
       setShowWelcome(true)
+      setCurrentWorkspace(null)
+    } else {
+      setShowWelcome(false)
+      setCurrentWorkspace(activeWorkspace.id)
     }
-  }, [activeWorkspace])
+  }, [activeWorkspace, setCurrentWorkspace])
 
   // Fetch engines on mount, seed defaults if empty
   useEffect(() => {
@@ -128,10 +133,18 @@ function App() {
           <div className="h-full flex">
             {/* Left: File Tree */}
             <div className="w-[300px] shrink-0 border-r border-white/5">
-              <FileTree 
-                selectedPath={selectedFile}
-                onFileSelect={setSelectedFile}
-              />
+              {activeWorkspace ? (
+                <FileTree 
+                  rootPath={activeWorkspace.folder_path}
+                  rootName={activeWorkspace.name}
+                  selectedPath={selectedFile}
+                  onFileSelect={setSelectedFile}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-xs text-neutral-500 font-geist">No workspace selected</p>
+                </div>
+              )}
             </div>
             {/* Right: File Content (placeholder) */}
             <div className="flex-1 flex items-center justify-center text-neutral-500">

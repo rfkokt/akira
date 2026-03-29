@@ -6,7 +6,7 @@ export interface Task {
   status: 'todo' | 'in-progress' | 'review' | 'done';
   priority: 'low' | 'medium' | 'high';
   file_path: string | null;
-  project_id: string | null;
+  workspace_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -17,7 +17,7 @@ export interface CreateTaskRequest {
   status: 'todo' | 'in-progress' | 'review' | 'done';
   priority: 'low' | 'medium' | 'high';
   file_path?: string;
-  project_id?: string;
+  workspace_id?: string;
 }
 
 // Engine types

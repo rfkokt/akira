@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot, FolderRoot } from 'lucide-react'
+import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot } from 'lucide-react'
 
 interface FileEntry {
   name: string
@@ -15,13 +15,13 @@ interface TreeNode extends FileEntry {
 }
 
 interface FileTreeProps {
+  rootPath: string
+  rootName?: string
   onFileSelect?: (path: string) => void
   selectedPath?: string
 }
 
-export function FileTree({ onFileSelect, selectedPath }: FileTreeProps) {
-  const [projectRoot, setProjectRoot] = useState<string>('')
-  const [rootName, setRootName] = useState<string>('')
+export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: FileTreeProps) {
   const [treeData, setTreeData] = useState<TreeNode[]>([])
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
@@ -36,24 +36,23 @@ export function FileTree({ onFileSelect, selectedPath }: FileTreeProps) {
     }
   }, [])
 
-  const pickFolder = async () => {
-    try {
-      const result = await invoke<string | null>('pick_folder')
-      if (result) {
-        setProjectRoot(result)
-        // Extract project name from path
-        const name = result.split('/').pop() || result
-        setRootName(name)
-        // Load root directory
-        const entries = await loadDirectory(result)
-        setTreeData(entries.map(e => ({ ...e })))
-        // Expand root by default
-        setExpandedDirs(new Set([result]))
-      }
-    } catch (error) {
-      console.error('Failed to pick folder:', error)
+  // Load root directory when rootPath changes
+  useEffect(() => {
+    if (!rootPath) {
+      setTreeData([])
+      setExpandedDirs(new Set())
+      return
     }
-  }
+
+    const loadRoot = async () => {
+      const entries = await loadDirectory(rootPath)
+      setTreeData(entries.map(e => ({ ...e })))
+      // Expand root by default
+      setExpandedDirs(new Set([rootPath]))
+    }
+
+    loadRoot()
+  }, [rootPath, loadDirectory])
 
   const toggleDir = async (node: TreeNode) => {
     if (!node.is_dir) {
@@ -212,29 +211,15 @@ export function FileTree({ onFileSelect, selectedPath }: FileTreeProps) {
         <span className="text-xs font-medium text-neutral-400 font-geist uppercase tracking-wide">
           Explorer
         </span>
-        <button
-          onClick={pickFolder}
-          className="p-1 text-neutral-400 hover:text-white hover:bg-white/5 rounded transition-colors"
-          title="Open Folder"
-        >
-          <FolderOpen className="w-4 h-4" />
-        </button>
       </div>
 
       {/* File Tree */}
       <div className="flex-1 overflow-auto py-1">
-        {!projectRoot ? (
+        {!rootPath ? (
           <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-            <FolderRoot className="w-10 h-10 text-neutral-600 mb-3" />
-            <p className="text-xs text-neutral-500 font-geist mb-2">
-              No folder opened
+            <p className="text-xs text-neutral-500 font-geist">
+              No workspace selected
             </p>
-            <button
-              onClick={pickFolder}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] rounded transition-colors font-geist"
-            >
-              Open Folder
-            </button>
           </div>
         ) : isLoading ? (
           <div className="flex items-center justify-center h-full">
@@ -246,17 +231,17 @@ export function FileTree({ onFileSelect, selectedPath }: FileTreeProps) {
             <button
               onClick={() => {
                 const newExpanded = new Set(expandedDirs)
-                if (newExpanded.has(projectRoot)) {
-                  newExpanded.delete(projectRoot)
+                if (newExpanded.has(rootPath)) {
+                  newExpanded.delete(rootPath)
                 } else {
-                  newExpanded.add(projectRoot)
+                  newExpanded.add(rootPath)
                 }
                 setExpandedDirs(newExpanded)
               }}
               className="w-full flex items-center gap-1 px-3 py-1 text-left hover:bg-white/5 transition-colors"
             >
               <span className="text-neutral-500 w-3 flex-shrink-0">
-                {expandedDirs.has(projectRoot) ? (
+                {expandedDirs.has(rootPath) ? (
                   <ChevronDown className="w-3 h-3" />
                 ) : (
                   <ChevronRight className="w-3 h-3" />
@@ -264,12 +249,12 @@ export function FileTree({ onFileSelect, selectedPath }: FileTreeProps) {
               </span>
               <FolderOpen className="w-4 h-4 text-[#dcb67a]" />
               <span className="flex-1 truncate text-xs font-medium text-white font-geist">
-                {rootName}
+                {rootName || rootPath.split('/').pop() || rootPath}
               </span>
             </button>
             
             {/* Children */}
-            {expandedDirs.has(projectRoot) && (
+            {expandedDirs.has(rootPath) && (
               <div>
                 {treeData.map(node => renderNode(node, 0))}
               </div>
