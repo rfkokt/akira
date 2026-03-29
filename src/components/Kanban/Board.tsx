@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, FileDiff, MessageSquare, RefreshCw, Terminal, Sparkles, FileCode, Files, Trash2, Eye } from 'lucide-react'
+import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, FileDiff, MessageSquare, RefreshCw, Terminal, Sparkles, FileCode, Files, Trash2 } from 'lucide-react'
 import { useTaskStore, useAIChatStore } from '@/store'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'
