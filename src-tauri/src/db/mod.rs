@@ -23,7 +23,20 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 }
 
 fn create_tables(conn: &Connection) -> Result<()> {
-    // Tasks table - Kanban board
+    // Workspaces table - NEW
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS workspaces (
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            folder_path     TEXT NOT NULL UNIQUE,
+            is_active       INTEGER DEFAULT 0,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // Tasks table - Kanban board (updated: workspace_id instead of project_id)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS tasks (
             id              TEXT PRIMARY KEY,
@@ -32,9 +45,10 @@ fn create_tables(conn: &Connection) -> Result<()> {
             status          TEXT NOT NULL DEFAULT 'todo',
             priority        TEXT DEFAULT 'medium',
             file_path       TEXT,
-            project_id      TEXT,
+            workspace_id    TEXT,
             created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
         )",
         [],
     )?;
@@ -71,14 +85,14 @@ fn create_tables(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS project_configs (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id      TEXT NOT NULL UNIQUE,
-            project_name    TEXT NOT NULL,
+            workspace_id    TEXT NOT NULL UNIQUE,
             md_persona      TEXT,
             md_tech_stack   TEXT,
             md_rules        TEXT,
             md_tone         TEXT,
             created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
         )",
         [],
     )?;
@@ -128,12 +142,17 @@ fn create_tables(conn: &Connection) -> Result<()> {
 
     // Create indexes for performance
     conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspaces_active ON workspaces(is_active)",
+        [],
+    )?;
+
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
         [],
     )?;
 
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)",
         [],
     )?;
 

@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch } from 'lucide-react'
-import { useEngineStore } from '@/store'
+import { useEngineStore, useWorkspaceStore } from '@/store'
 import { SettingsModal } from '@/components/SettingsModal'
+import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { ConfigPanel } from './components/ProjectConfig/ConfigPanel'
 import { KanbanBoard } from './components/Kanban/Board'
 import { ChatBox } from './components/Chat/ChatBox'
@@ -16,10 +17,27 @@ function App() {
   const [name, setName] = useState('')
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
   const [selectedFile, setSelectedFile] = useState<string | undefined>(undefined)
-  const [currentProjectId, setCurrentProjectId] = useState<string>('default-project')
   const { engines, activeEngine, setActiveEngine, fetchEngines, seedDefaultEngines, isLoading } = useEngineStore()
+  const { activeWorkspace, loadActiveWorkspace, loadWorkspaces } = useWorkspaceStore()
+
+  // Load active workspace on mount
+  useEffect(() => {
+    const init = async () => {
+      await loadActiveWorkspace()
+      await loadWorkspaces()
+    }
+    init()
+  }, [loadActiveWorkspace, loadWorkspaces])
+
+  // Show welcome screen if no active workspace
+  useEffect(() => {
+    if (activeWorkspace === null) {
+      setShowWelcome(true)
+    }
+  }, [activeWorkspace])
 
   // Fetch engines on mount, seed defaults if empty
   useEffect(() => {
@@ -140,7 +158,9 @@ function App() {
           <div className="h-full flex">
             {/* Left: Config Panel */}
             <div className="w-[320px] shrink-0 border-r border-white/5">
-              <ConfigPanel projectId={currentProjectId} />
+              {activeWorkspace && (
+                <ConfigPanel projectId={activeWorkspace.id} />
+              )}
             </div>
             {/* Right: Config Info */}
             <div className="flex-1 flex items-center justify-center text-neutral-500">
@@ -192,6 +212,11 @@ function App() {
 
   return (
     <div className="h-screen w-screen bg-[#1e1e1e] text-[#cccccc] overflow-hidden flex flex-col">
+      {/* Welcome Screen */}
+      {showWelcome && (
+        <WelcomeScreen onClose={() => setShowWelcome(false)} />
+      )}
+
       {/* Title Bar */}
       <div className="h-[38px] bg-[#2d2d2d]/95 backdrop-blur border-b border-white/5 flex items-center shrink-0 relative">
         {/* Draggable background */}
@@ -206,7 +231,7 @@ function App() {
         
         {/* Center: Title (draggable) */}
         <div className="flex-1 flex items-center justify-center relative z-0 pointer-events-none">
-          <span className="text-xs font-medium text-neutral-500 font-geist select-none">KORLAP-X</span>
+          <span className="text-xs font-medium text-neutral-500 font-geist select-none">Akira</span>
         </div>
         
         {/* Right: Engine & Settings */}

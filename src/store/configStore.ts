@@ -3,8 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 export interface ProjectConfig {
   id?: number;
-  project_id: string;
-  project_name: string;
+  workspace_id: string;
   md_persona: string;
   md_tech_stack: string;
   md_rules: string;
@@ -21,19 +20,35 @@ interface ConfigState {
   
   // Actions
   setActiveTab: (tab: 'persona' | 'tech-stack' | 'rules' | 'tone') => void;
-  loadConfig: (projectId: string) => Promise<void>;
+  loadConfig: (workspaceId: string) => Promise<void>;
   saveConfig: (config: Partial<ProjectConfig>) => Promise<void>;
   updateField: (field: keyof ProjectConfig, value: string) => void;
   getSystemPrompt: () => string;
 }
 
 const defaultConfig: ProjectConfig = {
-  project_id: '',
-  project_name: '',
-  md_persona: `# Persona\n\nKamu adalah senior software engineer yang berpengalaman.\nSelalu berikan solusi yang clean, maintainable, dan mengikuti best practices.`,
-  md_tech_stack: `# Tech Stack\n\n- Framework: \n- Language: \n- Database: \n- Tools: `,
-  md_rules: `# Rules\n\n## DO\n- \n\n## DON'T\n- `,
-  md_tone: `# Tone\n\nJawab singkat dan langsung ke poin.\nBerikan penjelasan yang jelas dan terstruktur.`,
+  workspace_id: '',
+  md_persona: `# Persona
+
+Kamu adalah senior software engineer yang berpengalaman.
+Selalu berikan solusi yang clean, maintainable, dan mengikuti best practices.`,
+  md_tech_stack: `# Tech Stack
+
+- Framework: 
+- Language: 
+- Database: 
+- Tools: `,
+  md_rules: `# Rules
+
+## DO
+- 
+
+## DON'T
+- `,
+  md_tone: `# Tone
+
+Jawab singkat dan langsung ke poin.
+Berikan penjelasan yang jelas dan terstruktur.`,
 };
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -44,10 +59,10 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
-  loadConfig: async (projectId: string) => {
+  loadConfig: async (workspaceId: string) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await invoke<ProjectConfig | null>('get_project_config', { projectId });
+      const result = await invoke<ProjectConfig | null>('get_project_config', { workspaceId });
       if (result) {
         set({ config: result, isLoading: false });
       } else {
@@ -55,8 +70,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         set({ 
           config: { 
             ...defaultConfig, 
-            project_id: projectId,
-            project_name: projectId.split('/').pop() || projectId
+            workspace_id: workspaceId
           }, 
           isLoading: false 
         });

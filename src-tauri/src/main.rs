@@ -10,7 +10,7 @@ use serde::Serialize;
 use std::path::Path;
 
 mod db;
-use db::queries::{self, CreateEngineRequest, CreateTaskRequest, Engine, Task, ProjectConfig};
+use db::queries::{self, CreateEngineRequest, CreateTaskRequest, Engine, Task, ProjectConfig, Workspace};
 
 // Global state with database and running process
 pub struct AppState {
@@ -574,13 +574,91 @@ fn import_tasks_excel(
     Ok(ImportResult { tasks: imported_tasks })
 }
 
+// ============== Workspace Commands ==============
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WorkspaceData {
+    id: String,
+    name: String,
+    folder_path: String,
+    is_active: bool,
+    created_at: Option<String>,
+    updated_at: Option<String>,
+}
+
+#[tauri::command]
+fn create_workspace(
+    state: tauri::State<AppState>,
+    id: String,
+    name: String,
+    folder_path: String,
+) -> Result<WorkspaceData, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    queries::create_workspace(&conn, &id, &name, &folder_path)
+        .map(|w| WorkspaceData {
+            id: w.id,
+            name: w.name,
+            folder_path: w.folder_path,
+            is_active: w.is_active,
+            created_at: w.created_at,
+            updated_at: w.updated_at,
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_all_workspaces(state: tauri::State<AppState>) -> Result<Vec<WorkspaceData>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    queries::get_all_workspaces(&conn)
+        .map(|workspaces| {
+            workspaces.into_iter().map(|w| WorkspaceData {
+                id: w.id,
+                name: w.name,
+                folder_path: w.folder_path,
+                is_active: w.is_active,
+                created_at: w.created_at,
+                updated_at: w.updated_at,
+            }).collect()
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_active_workspace(state: tauri::State<AppState>) -> Result<Option<WorkspaceData>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    queries::get_active_workspace(&conn)
+        .map(|opt| opt.map(|w| WorkspaceData {
+            id: w.id,
+            name: w.name,
+            folder_path: w.folder_path,
+            is_active: w.is_active,
+            created_at: w.created_at,
+            updated_at: w.updated_at,
+        }))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_active_workspace(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::set_active_workspace(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_workspace(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::delete_workspace(&conn, &id).map_err(|e| e.to_string())
+}
+
 // ============== Project Config Commands ==============
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ProjectConfigData {
     id: Option<i64>,
-    project_id: String,
-    project_name: String,
+    workspace_id: String,
     md_persona: String,
     md_tech_stack: String,
     md_rules: String,
@@ -592,15 +670,14 @@ struct ProjectConfigData {
 #[tauri::command]
 fn get_project_config(
     state: tauri::State<AppState>,
-    project_id: String,
+    workspace_id: String,
 ) -> Result<Option<ProjectConfigData>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     
-    match queries::get_project_config(&conn, &project_id) {
+    match queries::get_project_config(&conn, &workspace_id) {
         Ok(Some(config)) => Ok(Some(ProjectConfigData {
             id: config.id,
-            project_id: config.project_id,
-            project_name: config.project_name,
+            workspace_id: config.workspace_id,
             md_persona: config.md_persona,
             md_tech_stack: config.md_tech_stack,
             md_rules: config.md_rules,
@@ -622,8 +699,7 @@ fn save_project_config(
     
     let db_config = queries::ProjectConfig {
         id: config.id,
-        project_id: config.project_id,
-        project_name: config.project_name,
+        workspace_id: config.workspace_id,
         md_persona: config.md_persona,
         md_tech_stack: config.md_tech_stack,
         md_rules: config.md_rules,
@@ -689,6 +765,11 @@ fn main() {
             import_tasks_excel,
             read_directory,
             pick_folder,
+            create_workspace,
+            get_all_workspaces,
+            get_active_workspace,
+            set_active_workspace,
+            delete_workspace,
             get_project_config,
             save_project_config,
         ])

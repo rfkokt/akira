@@ -280,13 +280,134 @@ pub fn clear_chat_history(conn: &Connection, task_id: &str) -> Result<()> {
     Ok(())
 }
 
+// ============== Workspaces ==============
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub folder_path: String,
+    pub is_active: bool,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+pub fn create_workspace(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    folder_path: &str,
+) -> Result<Workspace> {
+    conn.execute(
+        "INSERT INTO workspaces (id, name, folder_path, is_active, updated_at)
+         VALUES (?1, ?2, ?3, 1, CURRENT_TIMESTAMP)
+         ON CONFLICT(folder_path) DO UPDATE SET
+             name = excluded.name,
+             is_active = 1,
+             updated_at = CURRENT_TIMESTAMP",
+        params![id, name, folder_path],
+    )?;
+
+    // Deactivate other workspaces
+    conn.execute("UPDATE workspaces SET is_active = 0 WHERE id != ?1", [id])?;
+
+    get_workspace_by_id(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
+
+pub fn get_workspace_by_id(conn: &Connection, id: &str) -> Result<Option<Workspace>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, folder_path, is_active, created_at, updated_at 
+         FROM workspaces 
+         WHERE id = ?1",
+    )?;
+
+    let workspace = stmt.query_row([id], |row| {
+        Ok(Workspace {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            folder_path: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+        })
+    });
+
+    match workspace {
+        Ok(w) => Ok(Some(w)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn get_all_workspaces(conn: &Connection) -> Result<Vec<Workspace>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, folder_path, is_active, created_at, updated_at 
+         FROM workspaces 
+         ORDER BY is_active DESC, updated_at DESC",
+    )?;
+
+    let workspaces = stmt.query_map([], |row| {
+        Ok(Workspace {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            folder_path: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+        })
+    })?;
+
+    workspaces.collect()
+}
+
+pub fn get_active_workspace(conn: &Connection) -> Result<Option<Workspace>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, folder_path, is_active, created_at, updated_at 
+         FROM workspaces 
+         WHERE is_active = 1
+         LIMIT 1",
+    )?;
+
+    let workspace = stmt.query_row([], |row| {
+        Ok(Workspace {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            folder_path: row.get(2)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+        })
+    });
+
+    match workspace {
+        Ok(w) => Ok(Some(w)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn set_active_workspace(conn: &Connection, id: &str) -> Result<()> {
+    // Deactivate all
+    conn.execute("UPDATE workspaces SET is_active = 0", [])?;
+    // Activate selected
+    conn.execute(
+        "UPDATE workspaces SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        [id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_workspace(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM workspaces WHERE id = ?1", [id])?;
+    Ok(())
+}
+
 // ============== Project Configs ==============
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectConfig {
     pub id: Option<i64>,
-    pub project_id: String,
-    pub project_name: String,
+    pub workspace_id: String,
     pub md_persona: String,
     pub md_tech_stack: String,
     pub md_rules: String,
@@ -295,24 +416,23 @@ pub struct ProjectConfig {
     pub updated_at: Option<String>,
 }
 
-pub fn get_project_config(conn: &Connection, project_id: &str) -> Result<Option<ProjectConfig>> {
+pub fn get_project_config(conn: &Connection, workspace_id: &str) -> Result<Option<ProjectConfig>> {
     let mut stmt = conn.prepare(
-        "SELECT id, project_id, project_name, md_persona, md_tech_stack, md_rules, md_tone, created_at, updated_at 
+        "SELECT id, workspace_id, md_persona, md_tech_stack, md_rules, md_tone, created_at, updated_at 
          FROM project_configs 
-         WHERE project_id = ?1"
+         WHERE workspace_id = ?1"
     )?;
 
-    let config = stmt.query_row([project_id], |row| {
+    let config = stmt.query_row([workspace_id], |row| {
         Ok(ProjectConfig {
             id: row.get(0)?,
-            project_id: row.get(1)?,
-            project_name: row.get(2)?,
-            md_persona: row.get(3)?,
-            md_tech_stack: row.get(4)?,
-            md_rules: row.get(5)?,
-            md_tone: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
+            workspace_id: row.get(1)?,
+            md_persona: row.get(2)?,
+            md_tech_stack: row.get(3)?,
+            md_rules: row.get(4)?,
+            md_tone: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
         })
     });
 
@@ -325,18 +445,16 @@ pub fn get_project_config(conn: &Connection, project_id: &str) -> Result<Option<
 
 pub fn save_project_config(conn: &Connection, config: &ProjectConfig) -> Result<()> {
     conn.execute(
-        "INSERT INTO project_configs (project_id, project_name, md_persona, md_tech_stack, md_rules, md_tone, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)
-         ON CONFLICT(project_id) DO UPDATE SET
-             project_name = excluded.project_name,
+        "INSERT INTO project_configs (workspace_id, md_persona, md_tech_stack, md_rules, md_tone, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP)
+         ON CONFLICT(workspace_id) DO UPDATE SET
              md_persona = excluded.md_persona,
              md_tech_stack = excluded.md_tech_stack,
              md_rules = excluded.md_rules,
              md_tone = excluded.md_tone,
              updated_at = CURRENT_TIMESTAMP",
         params![
-            &config.project_id,
-            &config.project_name,
+            &config.workspace_id,
             &config.md_persona,
             &config.md_tech_stack,
             &config.md_rules,
