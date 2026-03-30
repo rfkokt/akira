@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Task, CreateTaskRequest, Engine, CreateEngineRequest, ChatMessage } from '@/types';
+import type { Task, CreateTaskRequest, Engine, CreateEngineRequest, ChatMessage, RtkInstallResult, RtkGainStats, GitDiffResult, ShellCommandResult } from '@/types';
 
 export const dbService = {
   // Tasks
@@ -67,4 +67,28 @@ export const dbService = {
 
   importTasksMarkdown: (content: string) =>
     invoke<{ tasks: Task[] }>('import_tasks_markdown', { content }),
+
+  // RTK Commands
+  checkRtkStatus: () =>
+    invoke<RtkInstallResult>('check_rtk_status'),
+
+  installRtk: () =>
+    invoke<RtkInstallResult>('install_rtk'),
+
+  initRtk: () =>
+    invoke<{ success: boolean; message: string }>('init_rtk'),
+
+  getRtkGainStats: (days?: number) =>
+    invoke<RtkGainStats>('get_rtk_gain_stats', { days }),
+
+  // Git Commands with RTK
+  gitGetDiff: (cwd: string) =>
+    invoke<GitDiffResult>('git_get_diff', { cwd }),
+
+  gitGetStagedDiff: (cwd: string) =>
+    invoke<GitDiffResult>('git_get_staged_diff', { cwd }),
+
+  // Shell Commands
+  runShellCommand: (command: string, args: string[], cwd: string, useRtk?: boolean) =>
+    invoke<ShellCommandResult>('run_shell_command', { command, args, cwd, useRtk }),
 };

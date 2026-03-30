@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar } from 'lucide-react'
+import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar, Zap } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore } from '@/store'
 import { SettingsModal } from '@/components/SettingsModal'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
@@ -26,6 +27,10 @@ function App() {
   const { setCurrentWorkspace } = useTaskStore()
   const { moveTask, tasks } = useTaskStore()
   const { enqueueTask } = useAIChatStore()
+  
+  // RTK Status
+  const [rtkInstalled, setRtkInstalled] = useState(false)
+  const [rtkStats, setRtkStats] = useState<{ total_saved: number; avg_savings: number } | null>(null)
 
   // Check for saved running task on mount
   useEffect(() => {
@@ -84,6 +89,24 @@ function App() {
     }
     autoSeed()
   }, [engines.length, isLoading])
+
+  // Check RTK status on mount
+  useEffect(() => {
+    const checkRTK = async () => {
+      try {
+        const status = await invoke<{ installed: boolean }>('check_rtk_status')
+        setRtkInstalled(status.installed)
+        
+        if (status.installed) {
+          const stats = await invoke<{ total_saved: number; avg_savings: number }>('get_rtk_gain_stats', { days: 7 })
+          setRtkStats(stats)
+        }
+      } catch (e) {
+        console.error('RTK check failed:', e)
+      }
+    }
+    checkRTK()
+  }, [])
 
   useEffect(() => {
     const handleClickOutside = () => setShowEngineDropdown(false)
@@ -324,6 +347,20 @@ function App() {
           )}
 
           <div className="w-px h-3.5 bg-white/10" />
+
+          {/* RTK Status Indicator */}
+          {rtkInstalled && (
+            <div 
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-yellow-400 bg-yellow-400/10 rounded-md cursor-pointer hover:bg-yellow-400/20 transition-colors"
+              onClick={() => setShowSettings(true)}
+              title="RTK Active - Click to view stats"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              {rtkStats && rtkStats.total_saved > 0 && (
+                <span className="font-mono">{rtkStats.avg_savings.toFixed(0)}%</span>
+              )}
+            </div>
+          )}
 
           {/* Settings */}
           <button

@@ -312,6 +312,27 @@ fn create_tables(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // RTK history table - track token savings
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS rtk_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp       DATETIME DEFAULT CURRENT_TIMESTAMP,
+            original_cmd    TEXT NOT NULL,
+            rtk_cmd         TEXT NOT NULL,
+            input_tokens    INTEGER NOT NULL,
+            output_tokens   INTEGER NOT NULL,
+            saved_tokens    INTEGER NOT NULL,
+            savings_pct     REAL NOT NULL
+        )",
+        [],
+    )?;
+
+    // Create index for RTK history queries
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_rtk_timestamp ON rtk_history(timestamp)",
+        [],
+    )?;
+
     Ok(())
 }
 

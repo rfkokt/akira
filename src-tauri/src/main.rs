@@ -5,6 +5,8 @@ use std::process::{Command, Stdio, Child};
 use std::io::{BufRead, BufReader, Write};
 use std::sync::{Mutex, Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::PathBuf;
+use std::fs;
 use tauri::{Manager, Emitter};
 use serde::Serialize;
 
@@ -16,6 +18,496 @@ pub struct AppState {
     db: Mutex<rusqlite::Connection>,
     running_process: Mutex<Option<Arc<Mutex<Child>>>>,
     should_stop: Arc<AtomicBool>,
+    rtk_path: Mutex<Option<PathBuf>>,
+}
+
+// ============== RTK Integration ==============
+
+const RTK_VERSION: &str = "0.34.1";
+
+fn get_rtk_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let rtk_path = home.join(".local").join("bin").join("rtk");
+    
+    #[cfg(target_os = "windows")]
+    let rtk_path = home.join(".local").join("bin").join("rtk.exe");
+    
+    if rtk_path.exists() {
+        Some(rtk_path)
+    } else {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RtkStats {
+    input_tokens: usize,
+    output_tokens: usize,
+    savings_pct: f64,
+}
+
+fn run_with_rtk(
+    rtk_path: &PathBuf,
+    command: &str,
+    args: &[&str],
+    cwd: &str,
+) -> Result<(String, bool, Option<RtkStats>), String> {
+    let mut cmd_args = vec![command.to_string()];
+    cmd_args.extend(args.iter().map(|s| s.to_string()));
+    
+    let (raw_output, raw_success) = {
+        let output = Command::new(command)
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .map_err(|e| format!("Failed to run {}: {}", command, e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+        (combined, output.status.success())
+    };
+    
+    let input_tokens = estimate_tokens(&raw_output);
+    
+    let output = Command::new(rtk_path)
+        .args(&cmd_args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| format!("Failed to run RTK: {}", e))?;
+    
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let rtk_output = if stdout.is_empty() { stderr } else { stdout };
+    
+    let output_tokens = estimate_tokens(&rtk_output);
+    let saved_tokens = input_tokens.saturating_sub(output_tokens);
+    let savings_pct = if input_tokens > 0 {
+        (saved_tokens as f64 / input_tokens as f64) * 100.0
+    } else {
+        0.0
+    };
+    
+    let stats = Some(RtkStats {
+        input_tokens,
+        output_tokens,
+        savings_pct,
+    });
+    
+    println!("[RTK] {}: {} → {} tokens ({:.1}% saved)", command, input_tokens, output_tokens, savings_pct);
+    
+    Ok((rtk_output, raw_success && output.status.success(), stats))
+}
+
+fn get_platform_url() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let arch = if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else {
+            "x86_64-apple-darwin"
+        };
+        Some(format!(
+            "https://github.com/rtk-ai/rtk/releases/download/v{}/rtk-{}.tar.gz",
+            RTK_VERSION, arch
+        ))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let arch = if cfg!(target_arch = "aarch64") {
+            "aarch64-unknown-linux-gnu"
+        } else {
+            "x86_64-unknown-linux-musl"
+        };
+        Some(format!(
+            "https://github.com/rtk-ai/rtk/releases/download/v{}/rtk-{}.tar.gz",
+            RTK_VERSION, arch
+        ))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Some(format!(
+            "https://github.com/rtk-ai/rtk/releases/download/v{}/rtk-x86_64-pc-windows-msvc.zip",
+            RTK_VERSION
+        ))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        None
+    }
+}
+
+fn ensure_rtk_installed() -> Result<PathBuf, String> {
+    if let Some(path) = get_rtk_path() {
+        return Ok(path);
+    }
+    
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let bin_dir = home.join(".local").join("bin");
+    let rtk_path = bin_dir.join("rtk");
+    
+    // Create bin directory if it doesn't exist
+    std::fs::create_dir_all(&bin_dir)
+        .map_err(|e| format!("Failed to create bin directory: {}", e))?;
+    
+    let url = get_platform_url().ok_or("Unsupported platform")?;
+    
+    println!("Downloading RTK from {}", url);
+    
+    // Download the tarball/zip
+    let response = reqwest::blocking::get(&url)
+        .map_err(|e| format!("Failed to download RTK: {}", e))?;
+    
+    let bytes = response.bytes()
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    // Extract based on platform
+    #[cfg(target_os = "macos")]
+    {
+        use flate2::read::GzDecoder;
+        
+        let decoder = GzDecoder::new(&bytes[..]);
+        let mut tar = tar::Archive::new(decoder);
+        tar.unpack(&bin_dir)
+            .map_err(|e| format!("Failed to extract RTK: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        use flate2::read::GzDecoder;
+        
+        let decoder = GzDecoder::new(&bytes[..]);
+        let mut tar = tar::Archive::new(decoder);
+        tar.unpack(&bin_dir)
+            .map_err(|e| format!("Failed to extract RTK: {}", e))?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::fs::File;
+        use std::io::Write;
+        
+        let mut cursor = std::io::Cursor::new(&bytes[..]);
+        let mut archive = zip::ZipArchive::new(&mut cursor)
+            .map_err(|e| format!("Failed to read zip: {}", e))?;
+        
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)
+                .map_err(|e| format!("Failed to read zip entry: {}", e))?;
+            let outpath = bin_dir.join(file.name());
+            
+            if file.name().ends_with('/') {
+                std::fs::create_dir_all(&outpath).ok();
+            } else {
+                if let Some(p) = outpath.parent() {
+                    std::fs::create_dir_all(p).ok();
+                }
+                let mut outfile = File::create(&outpath)
+                    .map_err(|e| format!("Failed to create file: {}", e))?;
+                std::io::copy(&mut file, &mut outfile)
+                    .map_err(|e| format!("Failed to write file: {}", e))?;
+            }
+        }
+    }
+    
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&rtk_path)
+            .map_err(|e| format!("Failed to get permissions: {}", e))?
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&rtk_path, perms)
+            .map_err(|e| format!("Failed to set permissions: {}", e))?;
+    }
+    
+    println!("RTK installed successfully at {:?}", rtk_path);
+    Ok(rtk_path)
+}
+
+// Estimate tokens (rough approximation: 4 chars per token)
+fn estimate_tokens(text: &str) -> usize {
+    (text.len() as f64 / 4.0).ceil() as usize
+}
+
+#[derive(Debug, Serialize)]
+struct RtkInstallResult {
+    installed: bool,
+    path: Option<String>,
+    version: Option<String>,
+    error: Option<String>,
+}
+
+#[tauri::command]
+fn check_rtk_status() -> RtkInstallResult {
+    if let Some(path) = get_rtk_path() {
+        let output = Command::new(&path)
+            .args(["--version"])
+            .output();
+        
+        match output {
+            Ok(out) => {
+                let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                RtkInstallResult {
+                    installed: true,
+                    path: Some(path.to_string_lossy().to_string()),
+                    version: Some(version),
+                    error: None,
+                }
+            }
+            Err(e) => RtkInstallResult {
+                installed: false,
+                path: Some(path.to_string_lossy().to_string()),
+                version: None,
+                error: Some(e.to_string()),
+            },
+        }
+    } else {
+        RtkInstallResult {
+            installed: false,
+            path: None,
+            version: None,
+            error: None,
+        }
+    }
+}
+
+#[tauri::command]
+fn install_rtk() -> RtkInstallResult {
+    match ensure_rtk_installed() {
+        Ok(path) => {
+            let output = Command::new(&path)
+                .args(["--version"])
+                .output();
+            
+            let version = output
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_else(|_| "unknown".to_string());
+            
+            RtkInstallResult {
+                installed: true,
+                path: Some(path.to_string_lossy().to_string()),
+                version: Some(version),
+                error: None,
+            }
+        }
+        Err(e) => RtkInstallResult {
+            installed: false,
+            path: None,
+            version: None,
+            error: Some(e),
+        },
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct RtkInitResult {
+    success: bool,
+    message: String,
+}
+
+#[tauri::command]
+fn init_rtk() -> Result<RtkInitResult, String> {
+    let rtk_path = get_rtk_path()
+        .ok_or_else(|| "RTK not installed. Call install_rtk first.".to_string())?;
+    
+    let output = Command::new(&rtk_path)
+        .args(["init", "-g"])
+        .output()
+        .map_err(|e| format!("Failed to run rtk init: {}", e))?;
+    
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    
+    if output.status.success() {
+        Ok(RtkInitResult {
+            success: true,
+            message: if stdout.is_empty() { "RTK initialized successfully!".to_string() } else { stdout },
+        })
+    } else {
+        Ok(RtkInitResult {
+            success: false,
+            message: if stderr.is_empty() { "RTK init failed".to_string() } else { stderr },
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct RtkCommandResult {
+    success: bool,
+    output: String,
+    input_tokens: usize,
+    output_tokens: usize,
+    savings_pct: f64,
+    raw_output: Option<String>,
+}
+
+#[tauri::command]
+fn run_rtk_command(
+    state: tauri::State<'_, AppState>,
+    subcommand: String,
+    args: Vec<String>,
+    cwd: String,
+) -> Result<RtkCommandResult, String> {
+    let rtk_path = {
+        let rtk_path_guard = state.rtk_path.lock()
+            .map_err(|e| format!("Failed to lock rtk_path: {}", e))?;
+        
+        if let Some(ref path) = *rtk_path_guard {
+            path.clone()
+        } else {
+            return Err("RTK not installed. Call install_rtk first.".to_string());
+        }
+    };
+    
+    let mut cmd_args = vec![subcommand.clone()];
+    cmd_args.extend(args);
+    
+    // Run raw command first to capture original output
+    let (raw_output, raw_success) = if subcommand == "git" {
+        let git_args = cmd_args.iter().skip(1).cloned().collect::<Vec<_>>();
+        println!("[RTK] Running raw git: {:?} with args {:?}", "git", git_args);
+        let output = Command::new("git")
+            .args(&git_args)
+            .current_dir(&cwd)
+            .output()
+            .map_err(|e| format!("Failed to run git: {}", e))?;
+        println!("[RTK] Raw git exit code: {:?}", output.status.code());
+        
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+        (combined, output.status.success())
+    } else {
+            let binary = cmd_args.get(1).cloned().unwrap_or_else(|| String::new());
+        let tool_args = cmd_args.iter().skip(2).cloned().collect::<Vec<_>>();
+        
+        let output = Command::new(&binary)
+            .args(&tool_args)
+            .current_dir(&cwd)
+            .output();
+        
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+                (combined, out.status.success())
+            }
+            Err(_) => (String::new(), false),
+        }
+    };
+    
+    let input_tokens = estimate_tokens(&raw_output);
+    
+    // Run RTK command
+    println!("[RTK] Running: {:?} with args {:?}", rtk_path, cmd_args);
+    
+    let output = Command::new(&rtk_path)
+        .args(&cmd_args)
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to run RTK: {}", e))?;
+    
+    println!("[RTK] Exit code: {:?}", output.status.code());
+    
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    
+    println!("[RTK] stdout length: {}, stderr length: {}", stdout.len(), stderr.len());
+    if !stdout.is_empty() {
+        println!("[RTK] stdout preview: {}", &stdout[..stdout.len().min(500)]);
+    }
+    if !stderr.is_empty() {
+        println!("[RTK] stderr: {}", stderr);
+    }
+    
+    let rtk_output = if stdout.is_empty() {
+        stderr
+    } else {
+        stdout
+    };
+    
+    let output_tokens = estimate_tokens(&rtk_output);
+    let saved_tokens = input_tokens.saturating_sub(output_tokens);
+    let savings_pct = if input_tokens > 0 {
+        ((saved_tokens) as f64 / input_tokens as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    // Track token savings in database
+    if let Ok(conn) = state.db.lock() {
+        let rtk_cmd = format!("rtk {}", cmd_args.join(" "));
+        let original_cmd = if subcommand == "git" {
+            format!("git {}", cmd_args.iter().skip(1).cloned().collect::<Vec<_>>().join(" "))
+        } else {
+            format!("{} {}", cmd_args.get(1).map(|s| s.as_str()).unwrap_or(""), cmd_args.iter().skip(2).cloned().collect::<Vec<_>>().join(" "))
+        };
+        
+        let _ = conn.execute(
+            "INSERT INTO rtk_history (timestamp, original_cmd, rtk_cmd, input_tokens, output_tokens, saved_tokens, savings_pct) VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![original_cmd, rtk_cmd, input_tokens as i64, output_tokens as i64, saved_tokens as i64, savings_pct],
+        );
+    }
+    
+    Ok(RtkCommandResult {
+        success: raw_success && output.status.success(),
+        output: rtk_output,
+        input_tokens,
+        output_tokens,
+        savings_pct,
+        raw_output: if savings_pct > 50.0 { Some(raw_output) } else { None },
+    })
+}
+
+#[derive(Debug, Serialize)]
+struct RtkGainStats {
+    total_commands: i64,
+    total_saved: i64,
+    avg_savings: f64,
+    top_commands: Vec<RtkCommandStats>,
+}
+
+#[derive(Debug, Serialize)]
+struct RtkCommandStats {
+    cmd: String,
+    count: i64,
+    avg_savings: f64,
+}
+
+#[tauri::command]
+fn get_rtk_gain_stats(state: tauri::State<'_, AppState>, days: Option<i64>) -> Result<RtkGainStats, String> {
+    let days = days.unwrap_or(90);
+    
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    let (total_commands, total_saved, avg_savings): (i64, i64, f64) = conn.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(saved_tokens), 0), COALESCE(AVG(savings_pct), 0) FROM rtk_history WHERE timestamp > datetime('now', ?1)",
+        [format!("-{} days", days)],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).unwrap_or((0, 0, 0.0));
+    
+    let mut stmt = conn.prepare(
+        "SELECT original_cmd, COUNT(*) as cnt, AVG(savings_pct) as avg_sav FROM rtk_history WHERE timestamp > datetime('now', ?1) GROUP BY original_cmd ORDER BY cnt DESC LIMIT 10"
+    ).map_err(|e| e.to_string())?;
+    
+    let top_commands: Vec<RtkCommandStats> = stmt.query_map([format!("-{} days", days)], |row| {
+        Ok(RtkCommandStats {
+            cmd: row.get(0)?,
+            count: row.get(1)?,
+            avg_savings: row.get(2)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok())
+    .collect();
+    
+    Ok(RtkGainStats {
+        total_commands,
+        total_saved,
+        avg_savings,
+        top_commands,
+    })
 }
 
 // ============== Basic Commands ==============
@@ -409,8 +901,6 @@ fn clear_chat_history(
 
 use tauri_plugin_dialog::DialogExt;
 use serde::Deserialize;
-use std::fs;
-use std::path::PathBuf;
 
 #[derive(Debug, Serialize)]
 struct FileEntry {
@@ -914,18 +1404,30 @@ struct GitDiffResult {
     diff: String,
     has_changes: bool,
     changed_files: Vec<String>,
+    rtk_stats: Option<RtkStats>,
 }
 
 /// Get uncommitted changes (git diff)
 #[tauri::command]
-fn git_get_diff(cwd: String) -> Result<GitDiffResult, String> {
-    let output = Command::new("git")
-        .args(&["diff", "--no-color"])
-        .current_dir(&cwd)
-        .output()
-        .map_err(|e| format!("Failed to get git diff: {}", e))?;
+fn git_get_diff(cwd: String, state: tauri::State<'_, AppState>) -> Result<GitDiffResult, String> {
+    let rtk_path = state.rtk_path.lock()
+        .map_err(|e| e.to_string())?
+        .clone();
     
-    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    let (diff, _success, stats) = if let Some(ref rtk) = rtk_path {
+        run_with_rtk(rtk, "git", &["diff", "--no-color"], &cwd)?
+    } else {
+        let output = Command::new("git")
+            .args(&["diff", "--no-color"])
+            .current_dir(&cwd)
+            .output()
+            .map_err(|e| format!("Failed to get git diff: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+        (combined, output.status.success(), None)
+    };
+    
     let has_changes = !diff.trim().is_empty();
     
     let changed_files: Vec<String> = diff
@@ -945,19 +1447,31 @@ fn git_get_diff(cwd: String) -> Result<GitDiffResult, String> {
         diff,
         has_changes,
         changed_files,
+        rtk_stats: stats,
     })
 }
 
 /// Get staged changes (git diff --cached)
 #[tauri::command]
-fn git_get_staged_diff(cwd: String) -> Result<GitDiffResult, String> {
-    let output = Command::new("git")
-        .args(&["diff", "--cached", "--no-color"])
-        .current_dir(&cwd)
-        .output()
-        .map_err(|e| format!("Failed to get staged diff: {}", e))?;
+fn git_get_staged_diff(cwd: String, state: tauri::State<'_, AppState>) -> Result<GitDiffResult, String> {
+    let rtk_path = state.rtk_path.lock()
+        .map_err(|e| e.to_string())?
+        .clone();
     
-    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    let (diff, _success, stats) = if let Some(ref rtk) = rtk_path {
+        run_with_rtk(rtk, "git", &["diff", "--cached", "--no-color"], &cwd)?
+    } else {
+        let output = Command::new("git")
+            .args(&["diff", "--cached", "--no-color"])
+            .current_dir(&cwd)
+            .output()
+            .map_err(|e| format!("Failed to get staged diff: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+        (combined, output.status.success(), None)
+    };
+    
     let has_changes = !diff.trim().is_empty();
     
     let changed_files: Vec<String> = diff
@@ -977,6 +1491,7 @@ fn git_get_staged_diff(cwd: String) -> Result<GitDiffResult, String> {
         diff,
         has_changes,
         changed_files,
+        rtk_stats: stats,
     })
 }
 
@@ -985,6 +1500,7 @@ struct PRDiffResult {
     diff: String,
     has_changes: bool,
     changed_files: Vec<String>,
+    rtk_stats: Option<RtkStats>,
 }
 
 fn parse_diff_output(diff: &str) -> (bool, Vec<String>) {
@@ -1005,8 +1521,11 @@ fn parse_diff_output(diff: &str) -> (bool, Vec<String>) {
 
 /// Get diff for a PR/MR by comparing branch with its base branch
 #[tauri::command]
-fn git_get_pr_diff(cwd: String, branch: String) -> Result<PRDiffResult, String> {
-    // Get the remote name dynamically
+fn git_get_pr_diff(cwd: String, branch: String, state: tauri::State<'_, AppState>) -> Result<PRDiffResult, String> {
+    let rtk_path = state.rtk_path.lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    
     let remote_output = Command::new("git")
         .args(&["remote"])
         .current_dir(&cwd)
@@ -1023,7 +1542,6 @@ fn git_get_pr_diff(cwd: String, branch: String) -> Result<PRDiffResult, String> 
         "origin".to_string()
     };
     
-    // Find the base branch (usually rdev, development, main)
     let base_branches = ["rdev", "development", "dev", "main", "master"];
     let mut base_branch = "main".to_string();
     
@@ -1041,8 +1559,6 @@ fn git_get_pr_diff(cwd: String, branch: String) -> Result<PRDiffResult, String> 
     
     let remote_branch = format!("{}/{}", remote_name, branch);
     
-    // Try git log first - it's faster as it doesn't need fetch
-    // Check if we can get diff using log (only works if base branch is ancestor)
     let log_output = Command::new("git")
         .args(&["log", "--oneline", "-1", &format!("{}/{}", remote_name, branch)])
         .current_dir(&cwd)
@@ -1051,8 +1567,6 @@ fn git_get_pr_diff(cwd: String, branch: String) -> Result<PRDiffResult, String> 
     let diff_from;
     
     if log_output.is_ok() && log_output.as_ref().unwrap().status.success() {
-        // Branch exists on remote, try using git log -p for diff
-        // This avoids the slow fetch
         let log_diff = Command::new("git")
             .args(&["log", "-p", &format!("{}..{}", base_branch, branch), "--color=never"])
             .current_dir(&cwd)
@@ -1063,38 +1577,56 @@ fn git_get_pr_diff(cwd: String, branch: String) -> Result<PRDiffResult, String> 
             if !log_diff_output.trim().is_empty() {
                 diff_from = log_diff_output;
             } else {
-                // Try merge-base approach
-                diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch)?;
+                diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch, &rtk_path)?;
             }
         } else {
-            // Fallback to merge-base approach
-            diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch)?;
+            diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch, &rtk_path)?;
         }
     } else {
-        // Branch not available locally, need to fetch
         let _ = Command::new("git")
             .args(&["fetch", &remote_name, &branch])
             .current_dir(&cwd)
             .output();
         
-        diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch)?;
+        diff_from = get_diff_via_merge_base(&cwd, &base_branch, &remote_branch, &rtk_path)?;
     }
     
     let (has_changes, changed_files) = parse_diff_output(&diff_from);
+    
+    let stats = if let Some(ref rtk) = rtk_path {
+        let input_tokens = estimate_tokens(&diff_from);
+        let (rtk_output, _, _) = run_with_rtk(rtk, "echo", &[], &cwd)?;
+        let output_tokens = estimate_tokens(&rtk_output);
+        let saved_tokens = input_tokens.saturating_sub(output_tokens);
+        let savings_pct = if input_tokens > 0 {
+            (saved_tokens as f64 / input_tokens as f64) * 100.0
+        } else {
+            0.0
+        };
+        Some(RtkStats {
+            input_tokens,
+            output_tokens,
+            savings_pct,
+        })
+    } else {
+        None
+    };
     
     Ok(PRDiffResult {
         diff: diff_from,
         has_changes,
         changed_files,
+        rtk_stats: stats,
     })
 }
 
-fn get_diff_via_merge_base(cwd: &str, base_branch: &str, remote_branch: &str) -> Result<String, String> {
-    // Find common ancestor using git merge-base
+fn get_diff_via_merge_base(cwd: &str, base_branch: &str, remote_branch: &str, rtk_path: &Option<PathBuf>) -> Result<String, String> {
     let merge_base_output = Command::new("git")
         .args(&["merge-base", base_branch, remote_branch])
         .current_dir(cwd)
         .output();
+    
+    let diff_from;
     
     if merge_base_output.is_ok() && merge_base_output.as_ref().unwrap().status.success() {
         let merge_base = String::from_utf8_lossy(&merge_base_output.as_ref().unwrap().stdout)
@@ -1102,54 +1634,102 @@ fn get_diff_via_merge_base(cwd: &str, base_branch: &str, remote_branch: &str) ->
             .to_string();
         
         if !merge_base.is_empty() {
-            // Get diff from merge-base to branch tip
-            let diff_output = Command::new("git")
-                .args(&["diff", &merge_base, remote_branch, "--color=never"])
-                .current_dir(cwd)
-                .output()
-                .map_err(|e| format!("Failed to get diff: {}", e))?;
-            
-            return Ok(String::from_utf8_lossy(&diff_output.stdout).to_string());
+            if let Some(ref rtk) = rtk_path {
+                let (output, _, _) = run_with_rtk(rtk, "git", &["diff", &merge_base, remote_branch, "--color=never"], cwd)?;
+                diff_from = output;
+            } else {
+                let diff_output = Command::new("git")
+                    .args(&["diff", &merge_base, remote_branch, "--color=never"])
+                    .current_dir(cwd)
+                    .output()
+                    .map_err(|e| format!("Failed to get diff: {}", e))?;
+                diff_from = String::from_utf8_lossy(&diff_output.stdout).to_string();
+            }
+            return Ok(diff_from);
         }
     }
     
-    // Fallback: diff between base and branch
-    let diff_output = Command::new("git")
-        .args(&["diff", base_branch, remote_branch, "--color=never"])
-        .current_dir(cwd)
-        .output()
-        .map_err(|e| format!("Failed to get diff: {}", e))?;
+    if let Some(ref rtk) = rtk_path {
+        let (output, _, _) = run_with_rtk(rtk, "git", &["diff", base_branch, remote_branch, "--color=never"], cwd)?;
+        diff_from = output;
+    } else {
+        let diff_output = Command::new("git")
+            .args(&["diff", base_branch, remote_branch, "--color=never"])
+            .current_dir(cwd)
+            .output()
+            .map_err(|e| format!("Failed to get diff: {}", e))?;
+        diff_from = String::from_utf8_lossy(&diff_output.stdout).to_string();
+    }
     
-    Ok(String::from_utf8_lossy(&diff_output.stdout).to_string())
+    Ok(diff_from)
 }
 
 #[derive(Debug, Serialize)]
 struct ShellCommandResult {
     success: bool,
     output: String,
+    rtk_stats: Option<RtkStats>,
 }
 
 /// Run a shell command with the given args
 #[tauri::command]
-fn run_shell_command(command: String, args: Vec<String>, cwd: String) -> Result<ShellCommandResult, String> {
-    let output = Command::new(&command)
-        .args(&args)
-        .current_dir(&cwd)
-        .output()
-        .map_err(|e| format!("Failed to run command: {}", e))?;
+fn run_shell_command(
+    command: String, 
+    args: Vec<String>, 
+    cwd: String, 
+    state: tauri::State<'_, AppState>,
+    use_rtk: Option<bool>,
+) -> Result<ShellCommandResult, String> {
+    let rtk_path = state.rtk_path.lock()
+        .map_err(|e| e.to_string())?
+        .clone();
     
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let use_rtk = use_rtk.unwrap_or(false);
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     
-    let combined_output = if stderr.is_empty() {
-        stdout
+    let (output_text, success, stats) = if use_rtk {
+        if let Some(ref rtk) = rtk_path {
+            match run_with_rtk(rtk, &command, &args_refs, &cwd) {
+                Ok((output, success, stats)) => (output, success, stats),
+                Err(_e) => {
+                    let output = Command::new(&command)
+                        .args(&args)
+                        .current_dir(&cwd)
+                        .output()
+                        .map_err(|e| format!("Failed to run command: {}", e))?;
+                    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+                    (combined, output.status.success(), None)
+                }
+            }
+        } else {
+            let output = Command::new(&command)
+                .args(&args)
+                .current_dir(&cwd)
+                .output()
+                .map_err(|e| format!("Failed to run command: {}", e))?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+            (combined, output.status.success(), None)
+        }
     } else {
-        format!("{}\n{}", stdout, stderr)
+        let output = Command::new(&command)
+            .args(&args)
+            .current_dir(&cwd)
+            .output()
+            .map_err(|e| format!("Failed to run command: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let combined = if stderr.is_empty() { stdout.clone() } else { format!("{}\n{}", stdout, stderr) };
+        (combined, output.status.success(), None)
     };
     
     Ok(ShellCommandResult {
-        success: output.status.success(),
-        output: combined_output,
+        success,
+        output: output_text,
+        rtk_stats: stats,
     })
 }
 
@@ -1180,6 +1760,7 @@ fn main() {
                 db: Mutex::new(conn),
                 running_process: Mutex::new(None),
                 should_stop: Arc::new(AtomicBool::new(false)),
+                rtk_path: Mutex::new(get_rtk_path()),
             });
             
             Ok(())
@@ -1224,6 +1805,11 @@ fn main() {
             git_get_pr_diff,
             run_shell_command,
             generate_commit_message,
+            check_rtk_status,
+            install_rtk,
+            init_rtk,
+            run_rtk_command,
+            get_rtk_gain_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
