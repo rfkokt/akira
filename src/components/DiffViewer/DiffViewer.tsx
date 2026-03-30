@@ -355,14 +355,14 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
                 <Button
                   size="sm"
                   onClick={() => setViewMode('summary')}
-                  className={viewMode === 'summary' ? 'bg-[#0e639c]' : 'bg-transparent'}
+                  className={`rounded-sm ${viewMode === 'summary' ? 'bg-[#0e639c]' : 'bg-transparent'}`}
                 >
                   Ringkasan
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => setViewMode('detail')}
-                  className={viewMode === 'detail' ? 'bg-[#0e639c]' : 'bg-transparent'}
+                  className={`rounded-sm ${viewMode === 'detail' ? 'bg-[#0e639c]' : 'bg-transparent'}`}
                 >
                   Detail
                 </Button>

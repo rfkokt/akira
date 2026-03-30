@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar, Zap } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
-import { useEngineStore, useWorkspaceStore, useTaskStore } from '@/store'
+import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore } from '@/store'
 import { SettingsModal } from '@/components/SettingsModal'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { ConfigPanel } from './components/ProjectConfig/ConfigPanel'
@@ -37,6 +37,7 @@ function App() {
   const { setCurrentWorkspace } = useTaskStore()
   const { moveTask, tasks } = useTaskStore()
   const { enqueueTask } = useAIChatStore()
+  const { scale, zoomIn, zoomOut, resetZoom } = useZoomStore()
   
   // RTK Status
   const [rtkInstalled, setRtkInstalled] = useState(false)
@@ -117,6 +118,27 @@ function App() {
     }
     checkRTK()
   }, [])
+
+  // Zoom keyboard shortcuts (Cmd+=/+, Cmd+-, Cmd+0)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMeta = e.metaKey || e.ctrlKey
+      
+      if (isMeta && (e.key === '=' || e.key === '+')) {
+        e.preventDefault()
+        zoomIn()
+      } else if (isMeta && e.key === '-') {
+        e.preventDefault()
+        zoomOut()
+      } else if (isMeta && e.key === '0') {
+        e.preventDefault()
+        resetZoom()
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [zoomIn, zoomOut, resetZoom])
 
   useEffect(() => {
     const handleClickOutside = () => setShowEngineDropdown(false)
@@ -353,6 +375,39 @@ function App() {
             </Button>
           )}
 
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={zoomOut}
+              title="Zoom Out (Cmd+-)"
+            >
+              <ZoomOut className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-12 text-xs font-mono"
+              onClick={resetZoom}
+              title="Reset Zoom (Cmd+0)"
+            >
+              {Math.round(scale * 100)}%
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={zoomIn}
+              title="Zoom In (Cmd+=)"
+            >
+              <ZoomIn className="size-3.5" />
+            </Button>
+          </div>
+
+          <Separator orientation="vertical" className="h-4" />
+
           {/* Settings */}
           <Button
             variant="ghost"
@@ -398,7 +453,14 @@ function App() {
 
         {/* Main Content Area */}
         <div className="flex-1 bg-[#1e1e1e] overflow-auto">
-          <main className="h-full p-4">
+          <main 
+            className="h-full p-4 origin-top-left"
+            style={{ 
+              transform: `scale(${scale})`,
+              width: `${100 / scale}%`,
+              height: `${100 / scale}%`
+            }}
+          >
             {renderMainContent()}
           </main>
         </div>

@@ -413,7 +413,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
           </Tooltip>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="h-full">
           <div className="p-4 space-y-4">
             {showHistoryModal && (
               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">

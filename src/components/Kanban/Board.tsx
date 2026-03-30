@@ -646,10 +646,11 @@ function TaskCard({
           )}
 
           {task.status === 'review' && (
-            <>
+            <div className="flex items-center -space-x-1 [&>button]:rounded-md">
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-7 w-7 relative z-10"
                 onClick={(e) => {
                   e.stopPropagation()
                   onViewDiff(task)
@@ -661,6 +662,7 @@ function TaskCard({
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-7 w-7 relative z-10"
                 onClick={(e) => {
                   e.stopPropagation()
                   onOpenChat(task)
@@ -670,17 +672,18 @@ function TaskCard({
                 <MessageSquare className="w-3.5 h-3.5" />
               </Button>
               <Button
-                size="sm"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 relative z-10 text-green-500 hover:text-green-400 hover:bg-green-500/10"
                 onClick={(e) => {
                   e.stopPropagation()
                   onComplete(task)
                 }}
-                className="bg-green-600 hover:bg-green-700"
+                title="Merge"
               >
-                <GitMerge className="w-3 h-3" />
-                Merge
+                <GitMerge className="w-3.5 h-3.5" />
               </Button>
-            </>
+            </div>
           )}
 
           {task.status === 'done' && (

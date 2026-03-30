@@ -594,7 +594,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
 
             <div className="flex-1 flex overflow-hidden">
               <div className={`flex flex-col ${showTerminal ? 'w-1/2 border-r border-white/5' : 'w-full'}`}>
-                <ScrollArea className="flex-1 p-3">
+                <ScrollArea className="h-full p-3">
                   <div className="space-y-3">
                     {messages.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
@@ -760,7 +760,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                     </div>
                   </div>
 
-                  <ScrollArea className="flex-1 p-2 font-mono text-xs leading-relaxed bg-[#1e1e1e]">
+                  <ScrollArea className="h-full p-2 font-mono text-xs leading-relaxed bg-[#1e1e1e]">
                     {terminalLines.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
                         <ScrollText className="w-8 h-8 mb-2 opacity-30" />

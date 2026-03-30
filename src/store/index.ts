@@ -7,3 +7,4 @@ export type { Workspace } from './workspaceStore';
 export { useAIChatStore } from './aiChatStore';
 export type { ChatMessage } from './aiChatStore';
 export { useAssessmentStore } from './assessmentStore';
+export { useZoomStore } from './zoomStore';
