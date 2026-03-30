@@ -426,18 +426,16 @@ function App() {
             
             return (
               <Tooltip key={item.id}>
-                <TooltipTrigger>
-                  <Button
-                    variant={isActive ? 'secondary' : 'ghost'}
-                    size="icon"
-                    className={`size-12 relative ${isActive ? 'bg-accent' : ''}`}
-                    onClick={() => setCurrentPage(item.id)}
-                  >
+                <TooltipTrigger
+                  className="inline-flex items-center justify-center rounded-lg"
+                  onClick={() => setCurrentPage(item.id)}
+                >
+                  <div className={`size-12 flex items-center justify-center relative ${isActive ? 'bg-accent' : 'hover:bg-accent/50'} transition-colors`}>
                     <Icon className="size-6" />
                     {isActive && (
                       <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-primary rounded-r" />
                     )}
-                  </Button>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="right">
                   {item.label}

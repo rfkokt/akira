@@ -866,6 +866,7 @@ export function KanbanBoard() {
   const { activeWorkspace } = useWorkspaceStore()
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showTaskCreator, setShowTaskCreator] = useState(true)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [processingTasks, setProcessingTasks] = useState<Set<string>>(new Set())
   const [showGitFlow, setShowGitFlow] = useState<Task | null>(null)
@@ -1063,12 +1064,27 @@ export function KanbanBoard() {
   return (
     <div className="flex gap-4 h-full">
       {/* Task Creator Panel - Left Sidebar (Fixed, no scroll) */}
-      <div className="w-[480px] shrink-0 h-full">
-        <TaskCreatorChat />
-      </div>
+      {showTaskCreator && (
+        <div className="w-[480px] shrink-0 h-full">
+          <TaskCreatorChat onHide={() => setShowTaskCreator(false)} />
+        </div>
+      )}
 
       {/* Kanban Board Area (Scrollable) */}
       <div className="flex-1 min-w-0 h-full overflow-auto">
+        {!showTaskCreator && (
+          <div className="px-4 py-2 border-b border-white/5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowTaskCreator(true)}
+              className="h-7 px-2 text-xs"
+            >
+              <MessageSquare className="w-3.5 h-3.5 mr-1" />
+              Show Task Creator
+            </Button>
+          </div>
+        )}
         {/* Kanban Columns with DnD */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex gap-5 pb-4 min-w-max">
@@ -1681,6 +1697,31 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           addLog(`✓ Merge state saved to database`)
         } catch (e) {
           console.error('Failed to save merge state to database:', e)
+        }
+        
+        // Delete the PR branch after successful merge
+        if (prBranch) {
+          addLog(`Deleting PR branch: ${prBranch}`)
+          const deleteBranch = await runGit(['branch', '-d', prBranch])
+          if (deleteBranch.success) {
+            addLog(`✓ PR branch deleted locally`)
+          } else {
+            // Try force delete if branch wasn't fully merged
+            const forceDelete = await runGit(['branch', '-D', prBranch])
+            if (forceDelete.success) {
+              addLog(`✓ PR branch force deleted locally`)
+            } else {
+              addLog(`⚠ Failed to delete local branch: ${deleteBranch.output}`)
+            }
+          }
+          
+          // Also try to delete the remote branch
+          const deleteRemote = await runGit(['push', 'origin', '--delete', prBranch])
+          if (deleteRemote.success) {
+            addLog(`✓ PR branch deleted from remote`)
+          } else {
+            addLog(`⚠ Remote branch delete skipped: ${deleteRemote.output}`)
+          }
         }
       }
       

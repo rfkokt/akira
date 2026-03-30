@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
 import { dbService } from '@/lib/db'
@@ -77,7 +77,11 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-export function TaskCreatorChat() {
+interface TaskCreatorChatProps {
+  onHide?: () => void
+}
+
+export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [message, setMessage] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [isSummarizing, setIsSummarizing] = useState(false)
@@ -99,7 +103,7 @@ export function TaskCreatorChat() {
   const { createTask } = useTaskStore()
   const { activeWorkspace } = useWorkspaceStore()
 
-  const taskId = '__task_creator__'
+  const taskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
   const taskMessages = getMessages(taskId)
   const currentStreamingId = streamingMessageId[taskId]
 
@@ -127,6 +131,11 @@ export function TaskCreatorChat() {
       fetchFiles(activeWorkspace.folder_path)
     }
   }, [activeWorkspace?.folder_path, fetchFiles])
+
+  useEffect(() => {
+    clearMessages(taskId)
+    loadChatHistory()
+  }, [activeWorkspace?.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -400,18 +409,32 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
       <div className="flex flex-col h-full bg-[#1e1e1e] rounded-lg border border-white/10 overflow-hidden">
         <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white font-geist">Task Creator</h3>
+          <div className="flex items-center gap-1">
             <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
+              <TooltipTrigger
+                className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
                 onClick={() => { loadAllHistory(); setShowHistoryModal(true); }}
               >
-                <History className="w-4 h-4 text-neutral-400" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>View History</TooltipContent>
-          </Tooltip>
+                <div className="p-2">
+                  <History className="w-4 h-4 text-neutral-400" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>View History</TooltipContent>
+            </Tooltip>
+            {onHide && (
+              <Tooltip>
+                <TooltipTrigger
+                  className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+                  onClick={onHide}
+                >
+                  <div className="p-2">
+                    <ChevronLeft className="w-4 h-4 text-neutral-400" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>Hide</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
 
         <ScrollArea className="h-full">

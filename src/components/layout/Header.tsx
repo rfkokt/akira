@@ -76,11 +76,11 @@ export function Header() {
           
           {useRouter && (
             <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex items-center h-8 px-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground">
-                {routerProvider || 'Select Provider'}
-                <ChevronDown className="w-3 h-3 ml-1.5" />
+              <DropdownMenuTrigger className="inline-flex items-center h-7 px-2 text-xs rounded-md hover:bg-white/10 hover:text-white data-[popup-open]:bg-white/10 data-[popup-open]:text-white transition-colors gap-1">
+                <span>{routerProvider || 'Select Provider'}</span>
+                <ChevronDown className="w-3 h-3 text-neutral-500" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[160px]">
+              <DropdownMenuContent align="start" className="min-w-[160px] bg-[#252526] border border-white/10">
                 {providers.length > 0 ? (
                   providers.map((provider) => (
                     <DropdownMenuItem
@@ -105,27 +105,25 @@ export function Header() {
         <div className="flex items-center gap-2">
           {useRouter && (
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowCostDashboard(true)}
-                >
+              <TooltipTrigger
+                className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+                onClick={() => setShowCostDashboard(true)}
+              >
+                <div className="p-2">
                   <DollarSign className="w-4 h-4" />
-                </Button>
+                </div>
               </TooltipTrigger>
               <TooltipContent>Cost Tracking Dashboard</TooltipContent>
             </Tooltip>
           )}
           <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowSettings(true)}
-              >
+            <TooltipTrigger
+              className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+              onClick={() => setShowSettings(true)}
+            >
+              <div className="p-2">
                 <Settings className="w-4 h-4" />
-              </Button>
+              </div>
             </TooltipTrigger>
             <TooltipContent>Settings</TooltipContent>
           </Tooltip>
