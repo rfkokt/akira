@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Task, CreateTaskRequest, Engine, CreateEngineRequest, ChatMessage, RtkInstallResult, RtkGainStats, GitDiffResult, ShellCommandResult, RouterProviderInfo, RouterConfig, RouterSession, ContextMessage, ProviderCostSummary, SwitchHistory, RunAgentRequest, RunAgentResponse, RouterAgentStatus } from '@/types';
+import type { Task, CreateTaskRequest, Engine, CreateEngineRequest, ChatMessage, RtkInstallResult, RtkGainStats, GitDiffResult, ShellCommandResult, RouterProviderInfo, RouterConfig, RouterSession, ContextMessage, ProviderCostSummary, SwitchHistory, RunAgentRequest, RunAgentResponse, RouterAgentStatus, PtyRequest, PtyWriteRequest, PtyResizeRequest } from '@/types';
 
 export const dbService = {
   // Tasks
@@ -101,10 +101,10 @@ export const dbService = {
 
   // CLI Router - Config
   getRouterConfig: () =>
-    invoke<RouterConfig>('get_router_config'),
+    invoke<RouterConfig | null>('get_router_config'),
 
-  saveRouterConfig: (autoSwitchEnabled: boolean, tokenLimitThreshold: number, fallbackOrder: string[]) =>
-    invoke<void>('save_router_config_cmd', { autoSwitchEnabled, tokenLimitThreshold, fallbackOrder }),
+  saveRouterConfig: (autoSwitchEnabled: boolean, confirmBeforeSwitch: boolean, tokenLimitThreshold: number, fallbackOrder: string, budgetLimit: number, budgetAlertThreshold: number) =>
+    invoke<void>('save_router_config_cmd', { autoSwitchEnabled, confirmBeforeSwitch, tokenLimitThreshold, fallbackOrder, budgetLimit, budgetAlertThreshold }),
 
   // CLI Router - Sessions
   createRouterSession: (taskId: string, providerAlias: string) =>
@@ -148,9 +148,34 @@ export const dbService = {
   runAgent: (request: RunAgentRequest) =>
     invoke<RunAgentResponse>('run_agent', { request }),
 
-  stopAgent: () =>
-    invoke<void>('stop_agent'),
+  stopAgent: (taskId: string) =>
+    invoke<void>('stop_agent', { taskId }),
 
   getAgentStatus: () =>
     invoke<RouterAgentStatus>('get_agent_status'),
+
+  // PTY Commands
+  spawnPtySession: (request: PtyRequest) =>
+    invoke<void>('spawn_pty_session', { 
+      sessionId: request.session_id,
+      binary: request.binary,
+      args: request.args,
+      cwd: request.cwd,
+    }),
+
+  ptyWrite: (request: PtyWriteRequest) =>
+    invoke<void>('pty_write', { 
+      sessionId: request.session_id,
+      data: request.data,
+    }),
+
+  ptyResize: (request: PtyResizeRequest) =>
+    invoke<void>('pty_resize', { 
+      sessionId: request.session_id,
+      rows: request.rows,
+      cols: request.cols,
+    }),
+
+  killPtySession: (sessionId: string) =>
+    invoke<void>('kill_pty_session', { sessionId }),
 };

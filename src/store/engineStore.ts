@@ -80,10 +80,12 @@ export const useEngineStore = create<EngineState>()(
         seedDefaultEngines: async () => {
           set({ isLoading: true, error: null });
           try {
-            const engines = await dbService.seedDefaultEngines();
-            set({ engines, isLoading: false });
+            await dbService.seedDefaultEngines();
+            await get().fetchEngines();
+            set({ isLoading: false });
             
             // Set first enabled engine as active if none selected
+            const engines = get().engines;
             if (!get().activeEngine && engines.length > 0) {
               const firstEnabled = engines.find(e => e.enabled);
               if (firstEnabled) {
@@ -91,6 +93,7 @@ export const useEngineStore = create<EngineState>()(
               }
             }
           } catch (error) {
+            console.error('Seed engines error:', error);
             set({ error: String(error), isLoading: false });
           }
         },

@@ -139,8 +139,11 @@ export interface RouterProviderInfo {
 
 export interface RouterConfig {
   auto_switch_enabled: boolean;
+  confirm_before_switch: boolean;
   token_limit_threshold: number;
-  fallback_order: string[];
+  fallback_order: string;
+  budget_limit: number;
+  budget_alert_threshold: number;
 }
 
 export interface RouterSession {
@@ -198,4 +201,22 @@ export interface RouterAgentStatus {
   is_running: boolean;
   task_id: string | null;
   provider_alias: string | null;
+}
+
+export interface PtyRequest {
+  session_id: string;
+  binary: string;
+  args: string[];
+  cwd: string;
+}
+
+export interface PtyWriteRequest {
+  session_id: string;
+  data: string;
+}
+
+export interface PtyResizeRequest {
+  session_id: string;
+  rows: number;
+  cols: number;
 }

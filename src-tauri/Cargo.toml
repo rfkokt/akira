@@ -26,6 +26,9 @@ tar = "0.4"
 zip = "2"
 dirs = "5"
 
+[target.'cfg(unix)'.dependencies]
+portable-pty = "0.8"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

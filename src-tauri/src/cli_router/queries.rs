@@ -12,6 +12,7 @@ pub struct Engine {
     pub created_at: String,
 }
 
+#[allow(dead_code)]
 pub fn get_all_engines(conn: &Connection) -> Result<Vec<Engine>> {
     let mut stmt = conn.prepare(
         "SELECT id, alias, binary_path, model, args, enabled, created_at FROM engines ORDER BY alias"
@@ -128,6 +129,7 @@ pub fn update_session_provider(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_session(conn: &Connection, session_id: &str) -> Result<()> {
     conn.execute("DELETE FROM router_sessions WHERE id = ?1", [session_id])?;
     Ok(())
@@ -186,6 +188,7 @@ pub fn get_session_messages(conn: &Connection, session_id: &str) -> Result<Vec<C
     messages.collect()
 }
 
+#[allow(dead_code)]
 pub fn get_session_message_count(conn: &Connection, session_id: &str) -> Result<i64> {
     conn.query_row(
         "SELECT COUNT(*) FROM router_context WHERE session_id = ?1",
@@ -194,6 +197,7 @@ pub fn get_session_message_count(conn: &Connection, session_id: &str) -> Result<
     )
 }
 
+#[allow(dead_code)]
 pub fn clear_session_messages(conn: &Connection, session_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM router_context WHERE session_id = ?1",
@@ -203,6 +207,7 @@ pub fn clear_session_messages(conn: &Connection, session_id: &str) -> Result<()>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CostRecord {
     pub id: i64,
     pub provider_alias: String,
@@ -234,6 +239,7 @@ pub fn record_cost(
     Ok(conn.last_insert_rowid())
 }
 
+#[allow(dead_code)]
 pub fn get_provider_cost_stats(conn: &Connection, provider_alias: &str) -> Result<CostRecord> {
     conn.query_row(
         "SELECT id, provider_alias, session_id, task_id, input_tokens, output_tokens, cost, model, created_at
@@ -296,6 +302,7 @@ pub fn get_all_provider_costs(conn: &Connection) -> Result<Vec<ProviderCostSumma
     summaries.collect()
 }
 
+#[allow(dead_code)]
 pub fn get_task_cost_summary(conn: &Connection, task_id: &str) -> Result<ProviderCostSummary> {
     conn.query_row(
         "SELECT 
@@ -324,6 +331,7 @@ pub fn get_task_cost_summary(conn: &Connection, task_id: &str) -> Result<Provide
     )
 }
 
+#[allow(dead_code)]
 pub fn get_cost_by_date_range(
     conn: &Connection,
     start_date: &str,
@@ -357,18 +365,30 @@ pub fn get_cost_by_date_range(
     summaries.collect()
 }
 
+pub fn get_total_cost(conn: &Connection) -> Result<f64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(cost), 0.0) as total FROM router_cost_tracking",
+        [],
+        |row| row.get(0),
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterConfig {
     pub id: i64,
     pub auto_switch_enabled: bool,
+    pub confirm_before_switch: bool,
     pub token_limit_threshold: i64,
     pub fallback_order: String,
+    pub budget_limit: f64,
+    pub budget_alert_threshold: f64,
     pub updated_at: String,
 }
 
 pub fn get_router_config(conn: &Connection) -> Result<Option<RouterConfig>> {
     let mut stmt = conn.prepare(
-        "SELECT id, auto_switch_enabled, token_limit_threshold, fallback_order, updated_at 
+        "SELECT id, auto_switch_enabled, confirm_before_switch, token_limit_threshold, fallback_order, 
+                COALESCE(budget_limit, 0) as budget_limit, COALESCE(budget_alert_threshold, 0.8) as budget_alert_threshold, updated_at 
          FROM router_config LIMIT 1",
     )?;
 
@@ -376,9 +396,12 @@ pub fn get_router_config(conn: &Connection) -> Result<Option<RouterConfig>> {
         Ok(RouterConfig {
             id: row.get(0)?,
             auto_switch_enabled: row.get::<_, i64>(1)? != 0,
-            token_limit_threshold: row.get(2)?,
-            fallback_order: row.get(3)?,
-            updated_at: row.get(4)?,
+            confirm_before_switch: row.get::<_, i64>(2)? != 0,
+            token_limit_threshold: row.get(3)?,
+            fallback_order: row.get(4)?,
+            budget_limit: row.get(5)?,
+            budget_alert_threshold: row.get(6)?,
+            updated_at: row.get(7)?,
         })
     });
 
@@ -392,18 +415,24 @@ pub fn get_router_config(conn: &Connection) -> Result<Option<RouterConfig>> {
 pub fn save_router_config(
     conn: &Connection,
     auto_switch_enabled: bool,
+    confirm_before_switch: bool,
     token_limit_threshold: i64,
     fallback_order: &str,
+    budget_limit: f64,
+    budget_alert_threshold: f64,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO router_config (auto_switch_enabled, token_limit_threshold, fallback_order, updated_at)
-         VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)
+        "INSERT INTO router_config (auto_switch_enabled, confirm_before_switch, token_limit_threshold, fallback_order, budget_limit, budget_alert_threshold, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
              auto_switch_enabled = excluded.auto_switch_enabled,
+             confirm_before_switch = excluded.confirm_before_switch,
              token_limit_threshold = excluded.token_limit_threshold,
              fallback_order = excluded.fallback_order,
+             budget_limit = excluded.budget_limit,
+             budget_alert_threshold = excluded.budget_alert_threshold,
              updated_at = CURRENT_TIMESTAMP",
-        params![auto_switch_enabled as i64, token_limit_threshold, fallback_order],
+        params![auto_switch_enabled as i64, confirm_before_switch as i64, token_limit_threshold, fallback_order, budget_limit, budget_alert_threshold],
     )?;
     Ok(())
 }

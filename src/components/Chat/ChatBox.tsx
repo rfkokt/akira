@@ -31,7 +31,7 @@ interface Message {
 }
 
 interface TerminalLine {
-  type: 'command' | 'stdout' | 'stderr' | 'system' | 'error'
+  type: 'command' | 'stdout' | 'stderr' | 'system' | 'error' | 'warning'
   content: string
   timestamp: Date
 }
@@ -56,6 +56,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
   const [routerProviders, setRouterProviders] = useState<RouterProviderInfo[]>([])
   const [selectedRouterProvider, setSelectedRouterProvider] = useState<string | null>(null)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [pendingSwitch, setPendingSwitch] = useState<{ newProvider: string; sessionId: string } | null>(null)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const terminalEndRef = useRef<HTMLDivElement>(null)
@@ -187,7 +188,51 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
         })
       })
 
-      unlistenFns.current = [unlistenOutput, unlistenError, unlistenComplete, unlistenAgentOutput]
+      const unlistenTokenLimit = await listen<{ session_id: string; line: string }>('agent-token-limit', (event) => {
+        const { line } = event.payload
+        setTerminalLines(prev => [...prev, {
+          type: 'system',
+          content: `[Token limit detected: ${line.substring(0, 100)}...]`,
+          timestamp: new Date()
+        }])
+      })
+
+      const unlistenAgentComplete = await listen<{ session_id: string; success: boolean; switched: boolean; new_provider: string | null }>('agent-complete', async (event) => {
+        const { session_id, switched, new_provider } = event.payload
+        setIsStreaming(false)
+        
+        if (switched && new_provider) {
+          setTerminalLines(prev => [...prev, {
+            type: 'system',
+            content: `[Provider switched to: ${new_provider}]`,
+            timestamp: new Date()
+          }])
+          setPendingSwitch({ newProvider: new_provider, sessionId: session_id })
+          setSelectedRouterProvider(new_provider)
+        }
+        
+        if (taskId && activeEngine) {
+          const lastMsg = messages[messages.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            try {
+              await dbService.createChatMessage(taskId, 'assistant', lastMsg.content, activeEngine.alias)
+            } catch (err) {
+              console.error('Failed to save chat message:', err)
+            }
+          }
+        }
+      })
+
+      const unlistenBudgetAlert = await listen<{ total_cost: number; budget_limit: number; threshold: number; alert_threshold_pct: number }>('budget-alert', (event) => {
+        const { total_cost, budget_limit, alert_threshold_pct } = event.payload
+        setTerminalLines(prev => [...prev, {
+          type: 'warning',
+          content: `[Budget Alert: $${total_cost.toFixed(2)} spent (${(alert_threshold_pct * 100).toFixed(0)}% of $${budget_limit.toFixed(2)} limit)]`,
+          timestamp: new Date()
+        }])
+      })
+
+      unlistenFns.current = [unlistenOutput, unlistenError, unlistenComplete, unlistenAgentOutput, unlistenTokenLimit, unlistenAgentComplete, unlistenBudgetAlert]
     }
 
     setupListeners()
@@ -216,8 +261,8 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     if (!isStreaming) return
     
     try {
-      if (useRouter) {
-        await dbService.stopAgent()
+      if (useRouter && taskId) {
+        await dbService.stopAgent(taskId)
       } else {
         await dbService.stopCli()
       }
@@ -230,7 +275,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     } catch (err) {
       console.error('Failed to stop:', err)
     }
-  }, [isStreaming, useRouter])
+  }, [isStreaming, useRouter, taskId])
 
   const handleSend = useCallback(async () => {
     if (!message.trim() || isStreaming) return
@@ -583,17 +628,24 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                         Router {useRouter ? 'ON' : 'OFF'}
                       </button>
                       {useRouter && (
-                        <select
-                          value={selectedRouterProvider || ''}
-                          onChange={(e) => setSelectedRouterProvider(e.target.value)}
-                          className="bg-[#3c3c3c] text-xs text-[#cccccc] px-2 py-1 rounded border border-white/10 outline-none focus:border-[#0e639c]"
-                        >
-                          {routerProviders.filter(p => p.enabled).map(p => (
-                            <option key={p.alias} value={p.alias}>
-                              {p.alias} ({p.status})
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={selectedRouterProvider || ''}
+                            onChange={(e) => setSelectedRouterProvider(e.target.value)}
+                            className="bg-[#3c3c3c] text-xs text-[#cccccc] px-2 py-1 rounded border border-white/10 outline-none focus:border-[#0e639c]"
+                          >
+                            {routerProviders.filter(p => p.enabled).map(p => (
+                              <option key={p.alias} value={p.alias}>
+                                {p.alias} ({p.status})
+                              </option>
+                            ))}
+                          </select>
+                          {pendingSwitch && (
+                            <span className="text-xs text-yellow-400 animate-pulse">
+                              Switched to {pendingSwitch.newProvider}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                     {!useRouter && (

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Settings, Zap, ChevronDown } from 'lucide-react'
+import { Settings, Zap, ChevronDown, DollarSign } from 'lucide-react'
 import { SettingsModal } from '@/components/SettingsModal'
+import { CostTrackingDashboard } from '@/components/Router/CostTrackingDashboard'
 import { useAIChatStore } from '@/store'
 import { dbService } from '@/lib/db'
 import type { RouterProviderInfo } from '@/types'
 
 export function Header() {
   const [showSettings, setShowSettings] = useState(false)
+  const [showCostDashboard, setShowCostDashboard] = useState(false)
   const [providers, setProviders] = useState<RouterProviderInfo[]>([])
   const { useRouter, setUseRouter, routerProvider, setRouterProvider } = useAIChatStore()
 
@@ -94,6 +96,15 @@ export function Header() {
         
         {/* Right - Settings */}
         <div className="flex items-center gap-2">
+          {useRouter && (
+            <button
+              onClick={() => setShowCostDashboard(true)}
+              className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
+              title="Cost Tracking Dashboard"
+            >
+              <DollarSign className="w-4 h-4" />
+            </button>
+          )}
           <button 
             onClick={() => setShowSettings(true)}
             className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
@@ -104,6 +115,7 @@ export function Header() {
       </header>
 
       <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <CostTrackingDashboard isOpen={showCostDashboard} onClose={() => setShowCostDashboard(false)} />
     </>
   )
 }

@@ -7,12 +7,15 @@ use std::sync::{Mutex, Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::path::PathBuf;
 use std::fs;
+use std::collections::HashMap;
 use tauri::{Manager, Emitter};
 use serde::{Serialize, Deserialize};
 
 mod db;
 mod cli_router;
+mod pty_manager;
 
+use pty_manager::PtyManager;
 use db::queries::{self, CreateEngineRequest, CreateTaskRequest, Engine, Task};
 use cli_router::queries::{
     ProviderCostSummary, RouterSession, ContextMessage as DbContextMessage, SwitchHistory,
@@ -21,7 +24,6 @@ use cli_router::queries::{
 mod cli_router_core;
 use cli_router_core::{
     CliRouter, ProviderInfo, ProviderStatus, RouterConfig,
-    SessionContext, ContextMessage,
     create_backend_from_engine,
 };
 
@@ -29,9 +31,10 @@ use cli_router_core::{
 pub struct AppState {
     db: Mutex<rusqlite::Connection>,
     running_process: Mutex<Option<Arc<Mutex<Child>>>>,
-    should_stop: Arc<AtomicBool>,
+    should_stop: Mutex<HashMap<String, Arc<AtomicBool>>>,
     rtk_path: Mutex<Option<PathBuf>>,
     cli_router: Arc<CliRouter>,
+    pty_manager: Arc<PtyManager>,
 }
 
 // ============== RTK Integration ==============
@@ -733,8 +736,14 @@ async fn run_cli(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
+    const CLI_DEFAULT_KEY: &str = "cli-default";
+    
     // Reset stop flag
-    state.should_stop.store(false, Ordering::Relaxed);
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut flags = state.should_stop.lock().map_err(|e| e.to_string())?;
+        flags.insert(CLI_DEFAULT_KEY.to_string(), Arc::clone(&stop_flag));
+    }
 
     // Build command with working directory
     let mut cmd = Command::new(&binary);
@@ -776,7 +785,7 @@ async fn run_cli(
 
     // Stream stdout in a separate thread
     let stdout_app = app.clone();
-    let stdout_stop = Arc::clone(&state.should_stop);
+    let stdout_stop = Arc::clone(&stop_flag);
     let stdout_handle = std::thread::spawn(move || {
         if let Some(stdout) = stdout {
             let reader = BufReader::new(stdout);
@@ -799,7 +808,7 @@ async fn run_cli(
 
     // Stream stderr in a separate thread
     let stderr_app = app.clone();
-    let stderr_stop = Arc::clone(&state.should_stop);
+    let stderr_stop = Arc::clone(&stop_flag);
     let stderr_handle = std::thread::spawn(move || {
         if let Some(stderr) = stderr {
             let reader = BufReader::new(stderr);
@@ -836,7 +845,13 @@ async fn run_cli(
     }
 
     // Signal threads to stop
-    state.should_stop.store(true, Ordering::Relaxed);
+    stop_flag.store(true, Ordering::Relaxed);
+    
+    // Remove from flags
+    {
+        let mut flags = state.should_stop.lock().map_err(|e| e.to_string())?;
+        flags.remove(CLI_DEFAULT_KEY);
+    }
 
     // Wait for output threads to finish
     let _ = stdout_handle.join();
@@ -862,8 +877,14 @@ async fn run_cli(
 /// Stop the currently running CLI process
 #[tauri::command]
 fn stop_cli(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    const CLI_DEFAULT_KEY: &str = "cli-default";
+    
     // Signal stop
-    state.should_stop.store(true, Ordering::Relaxed);
+    if let Ok(mut flags) = state.should_stop.lock() {
+        if let Some(flag) = flags.remove(CLI_DEFAULT_KEY) {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
     
     // Kill the process if running
     let mut running = state.running_process.lock().map_err(|e| e.to_string())?;
@@ -1811,8 +1832,11 @@ fn sync_engines_to_router(state: tauri::State<'_, AppState>) -> Result<Vec<Route
 #[derive(Debug, Serialize)]
 struct RouterConfigInfo {
     auto_switch_enabled: bool,
+    confirm_before_switch: bool,
     token_limit_threshold: usize,
     fallback_order: Vec<String>,
+    budget_limit: f64,
+    budget_alert_threshold: f64,
 }
 
 #[tauri::command]
@@ -1822,15 +1846,21 @@ fn get_router_config(state: tauri::State<'_, AppState>) -> Result<RouterConfigIn
     match cli_router::queries::get_router_config(&conn) {
         Ok(Some(config)) => Ok(RouterConfigInfo {
             auto_switch_enabled: config.auto_switch_enabled,
+            confirm_before_switch: config.confirm_before_switch,
             token_limit_threshold: config.token_limit_threshold as usize,
             fallback_order: config.fallback_order.split(',').map(|s| s.trim().to_string()).collect(),
+            budget_limit: config.budget_limit,
+            budget_alert_threshold: config.budget_alert_threshold,
         }),
         Ok(None) => {
             let default_config = state.cli_router.get_config();
             Ok(RouterConfigInfo {
                 auto_switch_enabled: default_config.auto_switch_enabled,
+                confirm_before_switch: default_config.confirm_before_switch,
                 token_limit_threshold: default_config.token_limit_threshold,
-                fallback_order: default_config.fallback_order,
+                fallback_order: default_config.fallback_order.clone(),
+                budget_limit: default_config.budget_limit,
+                budget_alert_threshold: default_config.budget_alert_threshold,
             })
         }
         Err(e) => Err(e.to_string()),
@@ -1841,24 +1871,31 @@ fn get_router_config(state: tauri::State<'_, AppState>) -> Result<RouterConfigIn
 fn save_router_config_cmd(
     state: tauri::State<'_, AppState>,
     auto_switch_enabled: bool,
-    token_limit_threshold: usize,
-    fallback_order: Vec<String>,
+    confirm_before_switch: bool,
+    token_limit_threshold: i64,
+    fallback_order: String,
+    budget_limit: f64,
+    budget_alert_threshold: f64,
 ) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    
-    let fallback_str = fallback_order.join(",");
     
     cli_router::queries::save_router_config(
         &conn,
         auto_switch_enabled,
-        token_limit_threshold as i64,
-        &fallback_str,
+        confirm_before_switch,
+        token_limit_threshold,
+        &fallback_order,
+        budget_limit,
+        budget_alert_threshold,
     ).map_err(|e: rusqlite::Error| e.to_string())?;
     
     state.cli_router.update_config(RouterConfig {
         auto_switch_enabled,
-        token_limit_threshold,
-        fallback_order,
+        confirm_before_switch,
+        token_limit_threshold: token_limit_threshold as usize,
+        fallback_order: fallback_order.split(',').map(|s| s.to_string()).collect(),
+        budget_limit,
+        budget_alert_threshold,
     });
     
     Ok(())
@@ -1928,7 +1965,7 @@ fn switch_provider_in_session(
     session_id: String,
     new_provider_alias: String,
     reason: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     
     let session = cli_router::queries::get_session(&conn, &session_id)
@@ -1937,8 +1974,53 @@ fn switch_provider_in_session(
     
     let old_provider = session.provider_alias.clone();
     
+    let old_messages = cli_router::queries::get_session_messages(&conn, &session_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    let context_summary = if !old_messages.is_empty() {
+        let mut summary = format!(
+            "## Context from {} (previous provider)\n\n",
+            old_provider
+        );
+        
+        for msg in old_messages.iter().take(20) {
+            let role_display = if msg.role == "assistant" { "AI" } else { "User" };
+            let content_preview = if msg.content.len() > 200 {
+                format!("{}...", &msg.content[..200])
+            } else {
+                msg.content.clone()
+            };
+            summary.push_str(&format!("**{}**: {}\n\n", role_display, content_preview));
+        }
+        
+        if old_messages.len() > 20 {
+            summary.push_str(&format!("_({} more messages omitted)_", old_messages.len() - 20));
+        }
+        
+        summary
+    } else {
+        format!(
+            "Switching from {} to {}. No previous context.",
+            old_provider,
+            new_provider_alias
+        )
+    };
+    
     cli_router::queries::update_session_provider(&conn, &session_id, &new_provider_alias)
         .map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    cli_router::queries::add_context_message(
+        &conn,
+        &session_id,
+        "system",
+        &format!(
+            "[Provider Switch] {} → {} | Reason: {}",
+            old_provider,
+            new_provider_alias,
+            reason
+        ),
+        None,
+    ).map_err(|e: rusqlite::Error| e.to_string())?;
     
     cli_router::queries::record_provider_switch(
         &conn,
@@ -1948,7 +2030,7 @@ fn switch_provider_in_session(
         &reason,
     ).map_err(|e: rusqlite::Error| e.to_string())?;
     
-    Ok(())
+    Ok(context_summary)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2044,6 +2126,7 @@ impl From<ProviderCostSummary> for ProviderCostInfo {
 #[tauri::command]
 fn record_cli_cost(
     state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     provider_alias: String,
     input_tokens: i64,
     output_tokens: i64,
@@ -2054,7 +2137,7 @@ fn record_cli_cost(
 ) -> Result<i64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     
-    cli_router::queries::record_cost(
+    let id = cli_router::queries::record_cost(
         &conn,
         &provider_alias,
         input_tokens,
@@ -2063,7 +2146,26 @@ fn record_cli_cost(
         session_id.as_deref(),
         task_id.as_deref(),
         model.as_deref(),
-    ).map_err(|e: rusqlite::Error| e.to_string())
+    ).map_err(|e: rusqlite::Error| e.to_string())?;
+
+    if cost > 0.0 {
+        if let Ok(Some(config)) = cli_router::queries::get_router_config(&conn) {
+            if config.budget_limit > 0.0 {
+                let total_cost = cli_router::queries::get_total_cost(&conn).unwrap_or(0.0);
+                let threshold = config.budget_limit * config.budget_alert_threshold;
+                if total_cost >= threshold && total_cost - cost < threshold {
+                    let _ = app_handle.emit("budget-alert", serde_json::json!({
+                        "total_cost": total_cost,
+                        "budget_limit": config.budget_limit,
+                        "threshold": threshold,
+                        "alert_threshold_pct": config.budget_alert_threshold,
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -2110,7 +2212,7 @@ async fn run_agent(
     request: RunAgentRequest,
     app: tauri::AppHandle,
 ) -> Result<RunAgentResponse, String> {
-    let provider = state.cli_router.get_provider(&request.provider_alias)
+    let _provider = state.cli_router.get_provider(&request.provider_alias)
         .ok_or(format!("Provider '{}' not found", request.provider_alias))?;
     
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -2126,21 +2228,25 @@ async fn run_agent(
     state.cli_router.update_provider_task(&request.provider_alias, Some(request.task_id.clone()));
     
     let backend = {
-    let engines = cli_router::queries::get_enabled_engines(&conn).map_err(|e: rusqlite::Error| e.to_string())?;
+        let engines = cli_router::queries::get_enabled_engines(&conn).map_err(|e: rusqlite::Error| e.to_string())?;
         engines.iter()
             .find(|e| e.alias == request.provider_alias)
             .map(|e| create_backend_from_engine(e))
     };
     
+    let backend_arc = Arc::new(backend);
+    
     let mut switched = false;
     let mut new_provider: Option<String> = None;
-    let mut full_output = String::new();
-    let mut token_count: usize = 0;
+    let mut full_output;
+    let mut token_count;
     
     let app_clone = app.clone();
-    let provider_clone = request.provider_alias.clone();
-    let task_id_clone = request.task_id.clone();
     let session_id_clone = session_id.clone();
+    
+    let app_for_thread = app.clone();
+    let session_for_thread = session_id.clone();
+    let backend_for_thread = Arc::clone(&backend_arc);
     
     let output_callback = move |line: String, is_error: bool| {
         let _ = app_clone.emit("agent-output", serde_json::json!({
@@ -2152,13 +2258,16 @@ async fn run_agent(
     
     let token_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
     let token_counter_clone = Arc::clone(&token_counter);
-    let token_counter_clone2 = Arc::clone(&token_counter);
+    let _token_counter_clone2 = Arc::clone(&token_counter);
     
     let output_buffer: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let output_buffer_clone = Arc::clone(&output_buffer);
-    let output_buffer_clone2 = Arc::clone(&output_buffer);
+    let _output_buffer_clone2 = Arc::clone(&output_buffer);
     
-    let backend_clone = backend.map(|b| {
+    let token_limit_hit: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    let token_limit_hit_clone = Arc::clone(&token_limit_hit);
+    
+    if backend_arc.is_some() {
         let provider_info = state.cli_router.get_provider(&request.provider_alias).unwrap();
         let mut cmd = std::process::Command::new(provider_info.binary_path);
         for arg in &provider_info.args {
@@ -2169,16 +2278,19 @@ async fn run_agent(
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        cmd
-    });
-    
-    if let Some(mut cmd) = backend_clone {
+        
         let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn process: {}", e))?;
         
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
         
         let stop_flag = Arc::new(AtomicBool::new(false));
+        
+        {
+            let mut flags = state.should_stop.lock().map_err(|e| e.to_string())?;
+            flags.insert(request.task_id.clone(), Arc::clone(&stop_flag));
+        }
+        
         let stop_clone = Arc::clone(&stop_flag);
         let stop_clone2 = Arc::clone(&stop_flag);
         
@@ -2186,6 +2298,8 @@ async fn run_agent(
         
         let stdout_handle = std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
+            let mut token_limit_reached = false;
+            
             for line in reader.lines() {
                 if stop_clone.load(Ordering::Relaxed) {
                     break;
@@ -2198,6 +2312,20 @@ async fn run_agent(
                         buf.push_str(&line);
                         buf.push('\n');
                     }
+                    
+                    if !token_limit_reached && backend_for_thread.is_some() {
+                        if let Some(backend_ref) = backend_for_thread.as_ref().as_ref() {
+                            if backend_ref.detect_token_limit(&line) {
+                                token_limit_reached = true;
+                                token_limit_hit_clone.store(true, Ordering::Relaxed);
+                                let _ = app_for_thread.emit("agent-token-limit", serde_json::json!({
+                                    "session_id": session_for_thread,
+                                    "line": line,
+                                }));
+                            }
+                        }
+                    }
+                    
                     output_callback_clone(line, false);
                 }
             }
@@ -2231,17 +2359,23 @@ async fn run_agent(
             state.cli_router.update_provider_status(&request.provider_alias, ProviderStatus::Idle);
         }
         
-        if state.cli_router.should_auto_switch(&request.provider_alias, token_count) {
+        if token_limit_hit.load(Ordering::Relaxed) || state.cli_router.should_auto_switch(&request.provider_alias, token_count) {
             if let Some(next_provider) = state.cli_router.find_next_provider(&request.provider_alias) {
                 switched = true;
                 new_provider = Some(next_provider.alias.clone());
+                
+                let switch_reason = if token_limit_hit.load(Ordering::Relaxed) {
+                    "Token limit detected"
+                } else {
+                    "Token threshold reached"
+                };
                 
                 let _ = cli_router::queries::record_provider_switch(
                     &conn,
                     &request.task_id,
                     &request.provider_alias,
                     &next_provider.alias,
-                    "Token limit threshold reached",
+                    switch_reason,
                 );
             }
         }
@@ -2307,13 +2441,69 @@ async fn run_agent(
 
 #[tauri::command]
 fn stop_agent(state: tauri::State<'_, AppState>, task_id: String) -> Result<(), String> {
+    if let Ok(mut flags) = state.should_stop.lock() {
+        if let Some(flag) = flags.remove(&task_id) {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
     state.cli_router.process_manager().stop(&task_id)?;
     Ok(())
 }
 
 #[tauri::command]
 fn get_agent_status(state: tauri::State<'_, AppState>, task_id: String) -> bool {
+    if let Ok(flags) = state.should_stop.lock() {
+        if let Some(flag) = flags.get(&task_id) {
+            return flag.load(Ordering::Relaxed);
+        }
+    }
     state.cli_router.process_manager().is_running(&task_id)
+}
+
+#[tauri::command]
+fn spawn_pty_session(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    binary: String,
+    args: Vec<String>,
+    cwd: String,
+) -> Result<(), String> {
+    state.pty_manager.spawn(&session_id, &binary, &args, &cwd)
+}
+
+#[tauri::command]
+fn pty_write(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    data: String,
+) -> Result<(), String> {
+    state.pty_manager.write(&session_id, &data)
+}
+
+#[tauri::command]
+fn pty_resize(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    rows: u16,
+    cols: u16,
+) -> Result<(), String> {
+    state.pty_manager.resize(&session_id, rows, cols)
+}
+
+#[tauri::command]
+fn pty_read(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    state.pty_manager.read_output(&session_id)
+}
+
+#[tauri::command]
+fn pty_kill(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
+    state.pty_manager.kill(&session_id)
 }
 
 fn main() {
@@ -2342,9 +2532,10 @@ fn main() {
             app.manage(AppState { 
                 db: Mutex::new(conn),
                 running_process: Mutex::new(None),
-                should_stop: Arc::new(AtomicBool::new(false)),
+                should_stop: Mutex::new(HashMap::new()),
                 rtk_path: Mutex::new(get_rtk_path()),
                 cli_router: Arc::new(CliRouter::new()),
+                pty_manager: Arc::new(PtyManager::new()),
             });
             
             Ok(())
@@ -2412,6 +2603,11 @@ fn main() {
             run_agent,
             stop_agent,
             get_agent_status,
+            spawn_pty_session,
+            pty_write,
+            pty_resize,
+            pty_read,
+            pty_kill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

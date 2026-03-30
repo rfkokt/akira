@@ -380,12 +380,34 @@ fn create_tables(conn: &Connection) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS router_config (
             id                      INTEGER PRIMARY KEY CHECK (id = 1),
             auto_switch_enabled     INTEGER DEFAULT 1,
+            confirm_before_switch  INTEGER DEFAULT 0,
             token_limit_threshold   INTEGER DEFAULT 150000,
             fallback_order          TEXT DEFAULT 'claude,opencode,zai,gemini',
+            budget_limit           REAL DEFAULT 0,
+            budget_alert_threshold REAL DEFAULT 0.8,
             updated_at              DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
+
+    // Add confirm_before_switch column if it doesn't exist (for existing installations)
+    conn.execute(
+        "ALTER TABLE router_config ADD COLUMN confirm_before_switch INTEGER DEFAULT 0",
+        [],
+    )
+    .ok();
+
+    // Add budget columns if they don't exist (for existing installations)
+    conn.execute(
+        "ALTER TABLE router_config ADD COLUMN budget_limit REAL DEFAULT 0",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "ALTER TABLE router_config ADD COLUMN budget_alert_threshold REAL DEFAULT 0.8",
+        [],
+    )
+    .ok();
 
     // Router switch history table - logs provider switches
     conn.execute(
@@ -432,25 +454,27 @@ fn create_tables(conn: &Connection) -> Result<()> {
 /// Insert default engines (optional - for demo)
 pub fn seed_default_engines(conn: &Connection) -> Result<()> {
     let defaults = vec![
-        ("ollama", "ollama", "llama3.2", "run"),
+        ("ollama", "ollama", "llama3.2", "run", 1),
         (
             "claude",
             "claude",
             "claude-3-5-sonnet-20241022",
             "--dangerously-skip-permissions",
+            1,
         ),
         (
             "opencode",
             "/Users/rifkioktapratama/.opencode/bin/opencode",
             "",
             "--format json run",
+            1,
         ),
     ];
 
-    for (alias, binary, model, args) in defaults {
+    for (alias, binary, model, args, enabled) in defaults {
         conn.execute(
-            "INSERT OR IGNORE INTO engines (alias, binary_path, model, args) VALUES (?1, ?2, ?3, ?4)",
-            [alias, binary, model, args],
+            "INSERT OR REPLACE INTO engines (alias, binary_path, model, args, enabled) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![alias, binary, model, args, enabled],
         )?;
     }
 

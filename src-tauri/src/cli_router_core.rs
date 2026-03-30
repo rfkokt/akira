@@ -64,14 +64,18 @@ pub struct ContextMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterConfig {
     pub auto_switch_enabled: bool,
+    pub confirm_before_switch: bool,
     pub token_limit_threshold: usize,
     pub fallback_order: Vec<String>,
+    pub budget_limit: f64,
+    pub budget_alert_threshold: f64,
 }
 
 impl Default for RouterConfig {
     fn default() -> Self {
         Self {
             auto_switch_enabled: true,
+            confirm_before_switch: false,
             token_limit_threshold: 150_000,
             fallback_order: vec![
                 "claude".to_string(),
@@ -79,6 +83,8 @@ impl Default for RouterConfig {
                 "zai".to_string(),
                 "gemini".to_string(),
             ],
+            budget_limit: 0.0,
+            budget_alert_threshold: 0.8,
         }
     }
 }
@@ -229,7 +235,7 @@ impl CliProcessManager {
     }
 
     pub fn stop(&self, task_id: &str) -> Result<(), String> {
-        let flag = {
+        let _flag = {
             let mut flags = self.should_stop_flags.lock().map_err(|e| e.to_string())?;
             if let Some(flag) = flags.remove(task_id) {
                 flag.store(true, Ordering::Relaxed);
@@ -517,6 +523,126 @@ fn chrono_lite_now() -> String {
     )
 }
 
+fn parse_json_line(json_str: &str) -> Option<ParsedOutput> {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+        let output_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        match output_type {
+            "type" => {
+                let content = json
+                    .get("text")
+                    .or(json.get("content"))
+                    .or_else(|| json.get("message"))
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                Some(ParsedOutput {
+                    content,
+                    is_complete: false,
+                    is_error: false,
+                    token_count: None,
+                })
+            }
+            "contentBlockDelta" => {
+                if let Some(delta) = json.get("delta") {
+                    let text = delta
+                        .get("text")
+                        .or_else(|| delta.get("content"))
+                        .map(|v| v.to_string())
+                        .unwrap_or_default();
+                    let is_thinking = delta
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .map(|t| t == "thinkingDelta")
+                        .unwrap_or(false);
+
+                    Some(ParsedOutput {
+                        content: if is_thinking {
+                            format!("[Thinking] {}", text)
+                        } else {
+                            text
+                        },
+                        is_complete: false,
+                        is_error: false,
+                        token_count: None,
+                    })
+                } else {
+                    None
+                }
+            }
+            "contentBlockFinishMessage" => {
+                let reason = json
+                    .get("finishReason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("stop");
+                Some(ParsedOutput {
+                    content: format!("[Completed: {}]", reason),
+                    is_complete: true,
+                    is_error: false,
+                    token_count: json
+                        .get("usage")
+                        .and_then(|u| u.get("outputTokens"))
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as usize),
+                })
+            }
+            "error" => {
+                let error_msg = json
+                    .get("error")
+                    .or(json.get("message"))
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "Unknown error".to_string());
+                Some(ParsedOutput {
+                    content: format!("[Error] {}", error_msg),
+                    is_complete: false,
+                    is_error: true,
+                    token_count: None,
+                })
+            }
+            "usage" => {
+                let tokens = json
+                    .get("totalTokens")
+                    .or(json.get("inputTokens"))
+                    .or(json.get("outputTokens"))
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as usize);
+                Some(ParsedOutput {
+                    content: String::new(),
+                    is_complete: false,
+                    is_error: false,
+                    token_count: tokens,
+                })
+            }
+            _ => {
+                if let Some(text) = json
+                    .get("text")
+                    .or(json.get("content"))
+                    .or(json.get("message"))
+                    .or(json.get("output"))
+                {
+                    return Some(ParsedOutput {
+                        content: text.to_string(),
+                        is_complete: json.get("done").and_then(|v| v.as_bool()).unwrap_or(false),
+                        is_error: false,
+                        token_count: json
+                            .get("tokens")
+                            .or(json.get("token_count"))
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v as usize),
+                    });
+                }
+                None
+            }
+        }
+    } else {
+        Some(ParsedOutput {
+            content: json_str.to_string(),
+            is_complete: false,
+            is_error: false,
+            token_count: None,
+        })
+    }
+}
+
 pub struct ClaudeCodeBackend {
     pub alias: String,
     pub binary_path: String,
@@ -567,25 +693,21 @@ impl AgentBackend for ClaudeCodeBackend {
     }
 
     fn parse_stream_output(&self, line: &str) -> Option<ParsedOutput> {
-        if line.starts_with("```json") || line.starts_with('{') {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(text) = json
-                    .get("text")
-                    .or(json.get("content"))
-                    .or(json.get("message"))
-                {
-                    return Some(ParsedOutput {
-                        content: text.to_string(),
-                        is_complete: json.get("done").and_then(|v| v.as_bool()).unwrap_or(false),
-                        is_error: false,
-                        token_count: json
-                            .get("tokens")
-                            .or(json.get("token_count"))
-                            .and_then(|v| v.as_u64())
-                            .map(|v| v as usize),
-                    });
-                }
-            }
+        if line.is_empty() {
+            return None;
+        }
+
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("```json") {
+            let json_str = trimmed
+                .trim_start_matches("```json")
+                .trim_end_matches("```");
+            return parse_json_line(json_str);
+        }
+
+        if trimmed.starts_with('{') {
+            return parse_json_line(trimmed);
         }
 
         Some(ParsedOutput {
@@ -666,6 +788,20 @@ impl AgentBackend for OpenCodeBackend {
     }
 
     fn parse_stream_output(&self, line: &str) -> Option<ParsedOutput> {
+        if line.is_empty() {
+            return None;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with('{') || trimmed.starts_with("```json") {
+            let json_str = if trimmed.starts_with("```json") {
+                trimmed
+                    .trim_start_matches("```json")
+                    .trim_end_matches("```")
+            } else {
+                trimmed
+            };
+            return parse_json_line(json_str);
+        }
         Some(ParsedOutput {
             content: line.to_string(),
             is_complete: false,
@@ -740,6 +876,20 @@ impl AgentBackend for GenericBackend {
     }
 
     fn parse_stream_output(&self, line: &str) -> Option<ParsedOutput> {
+        if line.is_empty() {
+            return None;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with('{') || trimmed.starts_with("```json") {
+            let json_str = if trimmed.starts_with("```json") {
+                trimmed
+                    .trim_start_matches("```json")
+                    .trim_end_matches("```")
+            } else {
+                trimmed
+            };
+            return parse_json_line(json_str);
+        }
         Some(ParsedOutput {
             content: line.to_string(),
             is_complete: false,
