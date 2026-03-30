@@ -8,7 +8,6 @@ import {
   Bot, 
   AlertCircle,
   Terminal,
-  ChevronRight,
   ScrollText,
   Copy,
   Check,
@@ -448,11 +447,6 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
   }
 
   const clearTerminal = () => setTerminalLines([])
-
-  const formatTime = (date?: Date) => {
-    if (!date) return ''
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
 
   if (!isOpen) {
     return (

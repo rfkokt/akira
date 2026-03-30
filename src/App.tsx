@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, ChevronDown, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar, Zap } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar, Zap } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore } from '@/store'
 import { SettingsModal } from '@/components/SettingsModal'
@@ -12,6 +12,16 @@ import { GitBranchSelector } from './components/Git/GitBranchSelector'
 import { AssessmentScheduler } from './components/Assessment'
 import { RecoveryModal } from './components/RecoveryModal'
 import { getSavedRunningTask, useAIChatStore } from './store/aiChatStore'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Separator } from '@/components/ui/separator'
 
 type PageView = 'tasks' | 'files' | 'config' | 'git' | 'assessment';
 
@@ -276,136 +286,115 @@ function App() {
         </div>
         
         {/* Right: Engine & Settings */}
-        <div className="flex items-center gap-2 pr-4 relative z-10" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="flex items-center gap-1 pr-4 relative z-10" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* Engine Selector */}
-          <div className="relative">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowEngineDropdown(!showEngineDropdown)
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist"
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
-              {activeEngine?.model && (
-                <span className="text-xs px-1 py-0.5 bg-[#0e639c]/20 text-[#0e639c] rounded">
-                  {activeEngine.model}
-                </span>
-              )}
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            
-            {/* Engine Dropdown */}
-            {showEngineDropdown && (
-              <div className="absolute right-0 top-full mt-1 w-40 bg-[#252526] border border-white/10 rounded-md shadow-xl py-1 z-50">
-                {enabledEngines.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-neutral-500 font-geist">
-                    No engines
-                  </div>
-                ) : (
-                  enabledEngines.map(engine => (
-                    <button
-                      key={engine.id}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setActiveEngine(engine)
-                        setShowEngineDropdown(false)
-                      }}
-                      className={`w-full px-3 py-1.5 text-left text-xs font-geist hover:bg-white/5 transition-colors ${
-                        activeEngine?.id === engine.id ? 'text-white bg-white/10' : 'text-neutral-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="flex flex-col">
-                          <span className="capitalize">{engine.alias}</span>
-                          {engine.model && (
-                            <span className="text-xs text-neutral-500">{engine.model}</span>
-                          )}
-                        </div>
-                        {activeEngine?.id === engine.id && (
-                          <span className="ml-auto text-xs text-green-400">●</span>
-                        )}
-                      </div>
-                    </button>
-                  ))
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs">
+                <Cpu className="size-3.5" />
+                <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
+                {activeEngine?.model && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1">{activeEngine.model}</Badge>
                 )}
-              </div>
-            )}
-          </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {enabledEngines.length === 0 ? (
+                <DropdownMenuItem disabled>No engines</DropdownMenuItem>
+              ) : (
+                enabledEngines.map(engine => (
+                  <DropdownMenuItem
+                    key={engine.id}
+                    onClick={() => setActiveEngine(engine)}
+                    className={activeEngine?.id === engine.id ? 'bg-accent' : ''}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="capitalize">{engine.alias}</span>
+                      {engine.model && (
+                        <span className="text-[10px] text-muted-foreground">{engine.model}</span>
+                      )}
+                    </div>
+                    {activeEngine?.id === engine.id && (
+                      <span className="ml-auto text-green-500">●</span>
+                    )}
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           
           {/* Switch Workspace */}
           {activeWorkspace && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
               onClick={() => setShowWelcome(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist"
-              title="Switch Workspace"
             >
-              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <ArrowLeftRight className="size-3.5" />
               <span className="hidden sm:inline">Switch</span>
-            </button>
+            </Button>
           )}
 
-          <div className="w-px h-3.5 bg-white/10" />
+          <Separator orientation="vertical" className="h-4" />
 
           {/* RTK Status Indicator */}
           {rtkInstalled && (
-            <div 
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-yellow-400 bg-yellow-400/10 rounded-md cursor-pointer hover:bg-yellow-400/20 transition-colors"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10"
               onClick={() => setShowSettings(true)}
-              title="RTK Active - Click to view stats"
             >
-              <Zap className="w-3.5 h-3.5" />
+              <Zap className="size-3.5" />
               {rtkStats && rtkStats.total_saved > 0 && (
                 <span className="font-mono">{rtkStats.avg_savings.toFixed(0)}%</span>
               )}
-            </div>
+            </Button>
           )}
 
           {/* Settings */}
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
             onClick={() => setShowSettings(true)}
-            className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
           >
-            <Settings className="w-3.5 h-3.5" />
-          </button>
+            <Settings className="size-3.5" />
+          </Button>
         </div>
       </div>
 
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Navigation Sidebar (Left) */}
-        <div className="w-[48px] shrink-0 bg-[#2d2d2d] border-r border-white/5 flex flex-col items-center py-2 gap-1">
+        <nav className="w-12 shrink-0 bg-secondary flex flex-col items-center py-2 gap-1 border-r border-border">
           {menuItems.map((item) => {
             const Icon = item.icon
             const isActive = currentPage === item.id
             
             return (
-              <button
-                key={item.id}
-                onClick={() => setCurrentPage(item.id)}
-                className={`relative w-8 h-8 flex items-center justify-center rounded-md transition-all group ${
-                  isActive 
-                    ? 'text-white bg-white/10' 
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
-                }`}
-                title={item.label}
-              >
-                <Icon className="w-4 h-4" />
-                
-                {/* Active indicator */}
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-white rounded-r" />
-                )}
-                
-                {/* Tooltip */}
-                <div className="absolute left-full ml-2 px-2 py-1 bg-[#252526] border border-white/10 rounded text-xs text-neutral-300 font-geist whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+              <Tooltip key={item.id}>
+                <TooltipTrigger>
+                  <Button
+                    variant={isActive ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className={`size-8 relative ${isActive ? 'bg-accent' : ''}`}
+                    onClick={() => setCurrentPage(item.id)}
+                  >
+                    <Icon className="size-4" />
+                    {isActive && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-primary rounded-r" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
                   {item.label}
-                </div>
-              </button>
+                </TooltipContent>
+              </Tooltip>
             )
           })}
-        </div>
+        </nav>
 
         {/* Main Content Area */}
         <div className="flex-1 bg-[#1e1e1e] overflow-auto">
