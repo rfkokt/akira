@@ -379,17 +379,16 @@ function App() {
           <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
-              size="icon"
-              className="h-7 w-7"
+              size="icon-sm"
               onClick={zoomOut}
               title="Zoom Out (Cmd+-)"
             >
-              <ZoomOut className="size-3.5" />
+              <ZoomOut className="size-4" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-12 text-xs font-mono"
+              className="font-mono min-w-[52px]"
               onClick={resetZoom}
               title="Reset Zoom (Cmd+0)"
             >
@@ -397,12 +396,11 @@ function App() {
             </Button>
             <Button
               variant="ghost"
-              size="icon"
-              className="h-7 w-7"
+              size="icon-sm"
               onClick={zoomIn}
               title="Zoom In (Cmd+=)"
             >
-              <ZoomIn className="size-3.5" />
+              <ZoomIn className="size-4" />
             </Button>
           </div>
 
@@ -434,12 +432,12 @@ function App() {
                   <Button
                     variant={isActive ? 'secondary' : 'ghost'}
                     size="icon"
-                    className={`size-8 relative ${isActive ? 'bg-accent' : ''}`}
+                    className={`size-12 relative ${isActive ? 'bg-accent' : ''}`}
                     onClick={() => setCurrentPage(item.id)}
                   >
-                    <Icon className="size-4" />
+                    <Icon className="size-6" />
                     {isActive && (
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-primary rounded-r" />
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-primary rounded-r" />
                     )}
                   </Button>
                 </TooltipTrigger>
