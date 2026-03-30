@@ -333,6 +333,99 @@ fn create_tables(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Router sessions table - tracks AI agent sessions
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS router_sessions (
+            id              TEXT PRIMARY KEY,
+            task_id         TEXT NOT NULL,
+            provider_alias  TEXT NOT NULL,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // Router context table - stores conversation messages per session
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS router_context (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id      TEXT NOT NULL,
+            role            TEXT NOT NULL,
+            content         TEXT NOT NULL,
+            token_count     INTEGER,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES router_sessions(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // Router cost tracking table - tracks usage per provider
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS router_cost_tracking (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider_alias  TEXT NOT NULL,
+            session_id      TEXT,
+            task_id         TEXT,
+            input_tokens    INTEGER NOT NULL DEFAULT 0,
+            output_tokens   INTEGER NOT NULL DEFAULT 0,
+            cost            REAL NOT NULL DEFAULT 0.0,
+            model           TEXT,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // Router config table - stores router settings
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS router_config (
+            id                      INTEGER PRIMARY KEY CHECK (id = 1),
+            auto_switch_enabled     INTEGER DEFAULT 1,
+            token_limit_threshold   INTEGER DEFAULT 150000,
+            fallback_order          TEXT DEFAULT 'claude,opencode,zai,gemini',
+            updated_at              DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // Router switch history table - logs provider switches
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS router_switch_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id         TEXT NOT NULL,
+            from_provider   TEXT NOT NULL,
+            to_provider     TEXT NOT NULL,
+            reason          TEXT NOT NULL,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // Create indexes for router tables
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_router_sessions_task ON router_sessions(task_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_router_context_session ON router_context(session_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_router_cost_provider ON router_cost_tracking(provider_alias)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_router_cost_task ON router_cost_tracking(task_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_router_switch_task ON router_switch_history(task_id)",
+        [],
+    )?;
+
     Ok(())
 }
 

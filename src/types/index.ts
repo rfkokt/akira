@@ -125,3 +125,77 @@ export interface RtkGainStats {
   avg_savings: number;
   top_commands: RtkCommandStats[];
 }
+
+// CLI Router types
+export interface RouterProviderInfo {
+  alias: string;
+  binary_path: string;
+  model: string;
+  args: string[];
+  status: 'idle' | 'running' | 'error' | 'token_limit_reached';
+  current_task_id: string | null;
+  enabled: boolean;
+}
+
+export interface RouterConfig {
+  auto_switch_enabled: boolean;
+  token_limit_threshold: number;
+  fallback_order: string[];
+}
+
+export interface RouterSession {
+  id: string;
+  task_id: string;
+  provider_alias: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContextMessage {
+  id: number;
+  session_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  token_count: number | null;
+  timestamp: string;
+}
+
+export interface ProviderCostSummary {
+  provider_alias: string;
+  total_requests: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost: number;
+  last_used: string | null;
+}
+
+export interface SwitchHistory {
+  id: number;
+  task_id: string;
+  from_provider: string;
+  to_provider: string;
+  reason: string;
+  switched_at: string;
+}
+
+export interface RunAgentRequest {
+  task_id: string;
+  provider_alias: string;
+  prompt: string;
+  cwd: string;
+  session_id?: string;
+}
+
+export interface RunAgentResponse {
+  session_id: string;
+  provider_alias: string;
+  output: string;
+  switched: boolean;
+  new_provider: string | null;
+}
+
+export interface RouterAgentStatus {
+  is_running: boolean;
+  task_id: string | null;
+  provider_alias: string | null;
+}

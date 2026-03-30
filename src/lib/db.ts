@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Task, CreateTaskRequest, Engine, CreateEngineRequest, ChatMessage, RtkInstallResult, RtkGainStats, GitDiffResult, ShellCommandResult } from '@/types';
+import type { Task, CreateTaskRequest, Engine, CreateEngineRequest, ChatMessage, RtkInstallResult, RtkGainStats, GitDiffResult, ShellCommandResult, RouterProviderInfo, RouterConfig, RouterSession, ContextMessage, ProviderCostSummary, SwitchHistory, RunAgentRequest, RunAgentResponse, RouterAgentStatus } from '@/types';
 
 export const dbService = {
   // Tasks
@@ -91,4 +91,66 @@ export const dbService = {
   // Shell Commands
   runShellCommand: (command: string, args: string[], cwd: string, useRtk?: boolean) =>
     invoke<ShellCommandResult>('run_shell_command', { command, args, cwd, useRtk }),
+
+  // CLI Router - Providers
+  getRouterProviders: () =>
+    invoke<RouterProviderInfo[]>('get_router_providers'),
+
+  syncEnginesToRouter: () =>
+    invoke<void>('sync_engines_to_router'),
+
+  // CLI Router - Config
+  getRouterConfig: () =>
+    invoke<RouterConfig>('get_router_config'),
+
+  saveRouterConfig: (autoSwitchEnabled: boolean, tokenLimitThreshold: number, fallbackOrder: string[]) =>
+    invoke<void>('save_router_config_cmd', { autoSwitchEnabled, tokenLimitThreshold, fallbackOrder }),
+
+  // CLI Router - Sessions
+  createRouterSession: (taskId: string, providerAlias: string) =>
+    invoke<RouterSession>('create_router_session', { taskId, providerAlias }),
+
+  getRouterSession: (sessionId: string) =>
+    invoke<RouterSession | null>('get_router_session', { sessionId }),
+
+  getTaskRouterSessions: (taskId: string) =>
+    invoke<RouterSession[]>('get_task_router_sessions', { taskId }),
+
+  // CLI Router - Messages
+  addRouterMessage: (sessionId: string, role: string, content: string, tokenCount?: number) =>
+    invoke<void>('add_router_message', { sessionId, role, content, tokenCount }),
+
+  getRouterMessages: (sessionId: string) =>
+    invoke<ContextMessage[]>('get_router_messages', { sessionId }),
+
+  // CLI Router - Context Transfer
+  transferRouterContext: (fromSessionId: string, toProviderAlias: string) =>
+    invoke<string>('transfer_router_context', { fromSessionId, toProviderAlias }),
+
+  // CLI Router - Provider Switching
+  switchProviderInSession: (sessionId: string, fromProvider: string, toProvider: string, reason: string) =>
+    invoke<void>('switch_provider_in_session', { sessionId, fromProvider, toProvider, reason }),
+
+  getNextAvailableProvider: (currentProviderAlias: string) =>
+    invoke<RouterProviderInfo | null>('get_next_available_provider', { currentProviderAlias }),
+
+  // CLI Router - Cost Tracking
+  recordCliCost: (providerAlias: string, inputTokens: number, outputTokens: number, cost: number) =>
+    invoke<void>('record_cli_cost', { providerAlias, inputTokens, outputTokens, cost }),
+
+  getProviderCosts: () =>
+    invoke<ProviderCostSummary[]>('get_provider_costs'),
+
+  getTaskSwitchHistory: (taskId: string) =>
+    invoke<SwitchHistory[]>('get_task_switch_history', { taskId }),
+
+  // CLI Router - Agent Execution
+  runAgent: (request: RunAgentRequest) =>
+    invoke<RunAgentResponse>('run_agent', { request }),
+
+  stopAgent: () =>
+    invoke<void>('stop_agent'),
+
+  getAgentStatus: () =>
+    invoke<RouterAgentStatus>('get_agent_status'),
 };

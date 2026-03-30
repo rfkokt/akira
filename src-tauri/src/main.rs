@@ -8,10 +8,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::path::PathBuf;
 use std::fs;
 use tauri::{Manager, Emitter};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 mod db;
+mod cli_router;
+
 use db::queries::{self, CreateEngineRequest, CreateTaskRequest, Engine, Task};
+use cli_router::queries::{
+    ProviderCostSummary, RouterSession, ContextMessage as DbContextMessage, SwitchHistory,
+};
+
+mod cli_router_core;
+use cli_router_core::{
+    CliRouter, ProviderInfo, ProviderStatus, RouterConfig,
+    SessionContext, ContextMessage,
+    create_backend_from_engine,
+};
 
 // Global state with database and running process
 pub struct AppState {
@@ -19,6 +31,7 @@ pub struct AppState {
     running_process: Mutex<Option<Arc<Mutex<Child>>>>,
     should_stop: Arc<AtomicBool>,
     rtk_path: Mutex<Option<PathBuf>>,
+    cli_router: Arc<CliRouter>,
 }
 
 // ============== RTK Integration ==============
@@ -900,7 +913,6 @@ fn clear_chat_history(
 // ============== File System Commands ==============
 
 use tauri_plugin_dialog::DialogExt;
-use serde::Deserialize;
 
 #[derive(Debug, Serialize)]
 struct FileEntry {
@@ -1733,6 +1745,577 @@ fn run_shell_command(
     })
 }
 
+// ============== CLI Router Commands ==============
+
+#[derive(Debug, Clone, Serialize)]
+struct RouterProviderInfo {
+    alias: String,
+    binary_path: String,
+    model: String,
+    args: Vec<String>,
+    enabled: bool,
+    status: String,
+    current_task_id: Option<String>,
+}
+
+impl From<ProviderInfo> for RouterProviderInfo {
+    fn from(p: ProviderInfo) -> Self {
+        let status = match p.status {
+            ProviderStatus::Idle => "idle",
+            ProviderStatus::Running => "running",
+            ProviderStatus::Error => "error",
+            ProviderStatus::TokenLimitReached => "token_limit_reached",
+        };
+        RouterProviderInfo {
+            alias: p.alias,
+            binary_path: p.binary_path,
+            model: p.model,
+            args: p.args,
+            enabled: p.enabled,
+            status: status.to_string(),
+            current_task_id: p.current_task_id,
+        }
+    }
+}
+
+#[tauri::command]
+fn get_router_providers(state: tauri::State<'_, AppState>) -> Result<Vec<RouterProviderInfo>, String> {
+    let router = &state.cli_router;
+    let providers = router.get_enabled_providers();
+    Ok(providers.into_iter().map(RouterProviderInfo::from).collect())
+}
+
+#[tauri::command]
+fn sync_engines_to_router(state: tauri::State<'_, AppState>) -> Result<Vec<RouterProviderInfo>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let engines = cli_router::queries::get_enabled_engines(&conn).map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    let router = &state.cli_router;
+    
+    for engine in &engines {
+        let provider = ProviderInfo {
+            alias: engine.alias.clone(),
+            binary_path: engine.binary_path.clone(),
+            model: engine.model.clone(),
+            args: engine.args.split_whitespace().map(|s| s.to_string()).collect(),
+            enabled: engine.enabled,
+            status: ProviderStatus::Idle,
+            current_task_id: None,
+        };
+        router.add_provider(provider);
+    }
+    
+    Ok(router.get_enabled_providers().into_iter().map(RouterProviderInfo::from).collect())
+}
+
+#[derive(Debug, Serialize)]
+struct RouterConfigInfo {
+    auto_switch_enabled: bool,
+    token_limit_threshold: usize,
+    fallback_order: Vec<String>,
+}
+
+#[tauri::command]
+fn get_router_config(state: tauri::State<'_, AppState>) -> Result<RouterConfigInfo, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    match cli_router::queries::get_router_config(&conn) {
+        Ok(Some(config)) => Ok(RouterConfigInfo {
+            auto_switch_enabled: config.auto_switch_enabled,
+            token_limit_threshold: config.token_limit_threshold as usize,
+            fallback_order: config.fallback_order.split(',').map(|s| s.trim().to_string()).collect(),
+        }),
+        Ok(None) => {
+            let default_config = state.cli_router.get_config();
+            Ok(RouterConfigInfo {
+                auto_switch_enabled: default_config.auto_switch_enabled,
+                token_limit_threshold: default_config.token_limit_threshold,
+                fallback_order: default_config.fallback_order,
+            })
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_router_config_cmd(
+    state: tauri::State<'_, AppState>,
+    auto_switch_enabled: bool,
+    token_limit_threshold: usize,
+    fallback_order: Vec<String>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    let fallback_str = fallback_order.join(",");
+    
+    cli_router::queries::save_router_config(
+        &conn,
+        auto_switch_enabled,
+        token_limit_threshold as i64,
+        &fallback_str,
+    ).map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    state.cli_router.update_config(RouterConfig {
+        auto_switch_enabled,
+        token_limit_threshold,
+        fallback_order,
+    });
+    
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SessionInfo {
+    id: String,
+    task_id: String,
+    provider_alias: String,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<RouterSession> for SessionInfo {
+    fn from(s: RouterSession) -> Self {
+        SessionInfo {
+            id: s.id,
+            task_id: s.task_id,
+            provider_alias: s.provider_alias,
+            created_at: s.created_at,
+            updated_at: s.updated_at,
+        }
+    }
+}
+
+#[tauri::command]
+fn create_router_session(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+    provider_alias: String,
+) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    let session_id = cli_router::queries::create_session(&conn, &task_id, &provider_alias)
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    state.cli_router.create_session(&task_id, &provider_alias);
+    
+    Ok(session_id)
+}
+
+#[tauri::command]
+fn get_router_session(state: tauri::State<'_, AppState>, session_id: String) -> Result<Option<SessionInfo>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    cli_router::queries::get_session(&conn, &session_id)
+        .map(|s| s.map(SessionInfo::from))
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn get_task_router_sessions(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+) -> Result<Vec<SessionInfo>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    cli_router::queries::get_task_sessions(&conn, &task_id)
+        .map(|sessions| sessions.into_iter().map(SessionInfo::from).collect())
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn switch_provider_in_session(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    new_provider_alias: String,
+    reason: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    let session = cli_router::queries::get_session(&conn, &session_id)
+        .map_err(|e: rusqlite::Error| e.to_string())?
+        .ok_or("Session not found")?;
+    
+    let old_provider = session.provider_alias.clone();
+    
+    cli_router::queries::update_session_provider(&conn, &session_id, &new_provider_alias)
+        .map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    cli_router::queries::record_provider_switch(
+        &conn,
+        &session.task_id,
+        &old_provider,
+        &new_provider_alias,
+        &reason,
+    ).map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RouterContextMessage {
+    id: i64,
+    role: String,
+    content: String,
+    token_count: Option<i64>,
+    timestamp: String,
+}
+
+impl From<DbContextMessage> for RouterContextMessage {
+    fn from(m: DbContextMessage) -> Self {
+        RouterContextMessage {
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            token_count: m.token_count,
+            timestamp: m.created_at,
+        }
+    }
+}
+
+#[tauri::command]
+fn add_router_message(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+    role: String,
+    content: String,
+    token_count: Option<i64>,
+) -> Result<i64, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    cli_router::queries::add_context_message(&conn, &session_id, &role, &content, token_count)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn get_router_messages(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<Vec<RouterContextMessage>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    cli_router::queries::get_session_messages(&conn, &session_id)
+        .map(|msgs| msgs.into_iter().map(RouterContextMessage::from).collect())
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn transfer_router_context(
+    state: tauri::State<'_, AppState>,
+    from_session_id: String,
+    to_provider_alias: String,
+) -> Result<String, String> {
+    state.cli_router.transfer_context(&from_session_id, &to_provider_alias)
+}
+
+#[tauri::command]
+fn get_next_available_provider(
+    state: tauri::State<'_, AppState>,
+    current_provider_alias: String,
+) -> Result<Option<RouterProviderInfo>, String> {
+    match state.cli_router.find_next_provider(&current_provider_alias) {
+        Some(provider) => Ok(Some(RouterProviderInfo::from(provider))),
+        None => Ok(None),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ProviderCostInfo {
+    provider_alias: String,
+    total_requests: i64,
+    total_input_tokens: i64,
+    total_output_tokens: i64,
+    total_cost: f64,
+    last_used: Option<String>,
+}
+
+impl From<ProviderCostSummary> for ProviderCostInfo {
+    fn from(s: ProviderCostSummary) -> Self {
+        ProviderCostInfo {
+            provider_alias: s.provider_alias,
+            total_requests: s.total_requests,
+            total_input_tokens: s.total_input_tokens,
+            total_output_tokens: s.total_output_tokens,
+            total_cost: s.total_cost,
+            last_used: s.last_used,
+        }
+    }
+}
+
+#[tauri::command]
+fn record_cli_cost(
+    state: tauri::State<'_, AppState>,
+    provider_alias: String,
+    input_tokens: i64,
+    output_tokens: i64,
+    cost: f64,
+    session_id: Option<String>,
+    task_id: Option<String>,
+    model: Option<String>,
+) -> Result<i64, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    cli_router::queries::record_cost(
+        &conn,
+        &provider_alias,
+        input_tokens,
+        output_tokens,
+        cost,
+        session_id.as_deref(),
+        task_id.as_deref(),
+        model.as_deref(),
+    ).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn get_provider_costs(state: tauri::State<'_, AppState>) -> Result<Vec<ProviderCostInfo>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    cli_router::queries::get_all_provider_costs(&conn)
+        .map(|costs| costs.into_iter().map(ProviderCostInfo::from).collect())
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+fn get_task_switch_history(
+    state: tauri::State<'_, AppState>,
+    task_id: String,
+) -> Result<Vec<SwitchHistory>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    cli_router::queries::get_task_switch_history(&conn, &task_id)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RunAgentRequest {
+    task_id: String,
+    provider_alias: String,
+    prompt: String,
+    cwd: String,
+    session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RunAgentResponse {
+    session_id: String,
+    provider_alias: String,
+    output: String,
+    switched: bool,
+    new_provider: Option<String>,
+}
+
+#[tauri::command]
+async fn run_agent(
+    state: tauri::State<'_, AppState>,
+    request: RunAgentRequest,
+    app: tauri::AppHandle,
+) -> Result<RunAgentResponse, String> {
+    let provider = state.cli_router.get_provider(&request.provider_alias)
+        .ok_or(format!("Provider '{}' not found", request.provider_alias))?;
+    
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    let session_id = if let Some(sid) = request.session_id {
+        sid
+    } else {
+        cli_router::queries::create_session(&conn, &request.task_id, &request.provider_alias)
+            .map_err(|e: rusqlite::Error| e.to_string())?
+    };
+    
+    state.cli_router.update_provider_status(&request.provider_alias, ProviderStatus::Running);
+    state.cli_router.update_provider_task(&request.provider_alias, Some(request.task_id.clone()));
+    
+    let backend = {
+    let engines = cli_router::queries::get_enabled_engines(&conn).map_err(|e: rusqlite::Error| e.to_string())?;
+        engines.iter()
+            .find(|e| e.alias == request.provider_alias)
+            .map(|e| create_backend_from_engine(e))
+    };
+    
+    let mut switched = false;
+    let mut new_provider: Option<String> = None;
+    let mut full_output = String::new();
+    let mut token_count: usize = 0;
+    
+    let app_clone = app.clone();
+    let provider_clone = request.provider_alias.clone();
+    let task_id_clone = request.task_id.clone();
+    let session_id_clone = session_id.clone();
+    
+    let output_callback = move |line: String, is_error: bool| {
+        let _ = app_clone.emit("agent-output", serde_json::json!({
+            "session_id": session_id_clone,
+            "line": line,
+            "is_error": is_error,
+        }));
+    };
+    
+    let token_counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let token_counter_clone = Arc::clone(&token_counter);
+    let token_counter_clone2 = Arc::clone(&token_counter);
+    
+    let output_buffer: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let output_buffer_clone = Arc::clone(&output_buffer);
+    let output_buffer_clone2 = Arc::clone(&output_buffer);
+    
+    let backend_clone = backend.map(|b| {
+        let provider_info = state.cli_router.get_provider(&request.provider_alias).unwrap();
+        let mut cmd = std::process::Command::new(provider_info.binary_path);
+        for arg in &provider_info.args {
+            cmd.arg(arg);
+        }
+        cmd.arg(&request.prompt);
+        cmd.current_dir(&request.cwd);
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        cmd
+    });
+    
+    if let Some(mut cmd) = backend_clone {
+        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn process: {}", e))?;
+        
+        let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+        let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
+        
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let stop_clone = Arc::clone(&stop_flag);
+        let stop_clone2 = Arc::clone(&stop_flag);
+        
+        let output_callback_clone = output_callback.clone();
+        
+        let stdout_handle = std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                if stop_clone.load(Ordering::Relaxed) {
+                    break;
+                }
+                if let Ok(line) = line {
+                    if let Ok(mut count) = token_counter_clone.lock() {
+                        *count += line.len() / 4;
+                    }
+                    if let Ok(mut buf) = output_buffer_clone.lock() {
+                        buf.push_str(&line);
+                        buf.push('\n');
+                    }
+                    output_callback_clone(line, false);
+                }
+            }
+        });
+        
+        let stderr_handle = std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                if stop_clone2.load(Ordering::Relaxed) {
+                    break;
+                }
+                if let Ok(line) = line {
+                    output_callback(line, true);
+                }
+            }
+        });
+        
+        let status = child.wait().map_err(|e| format!("Failed to wait for process: {}", e))?;
+        
+        stop_flag.store(true, Ordering::Relaxed);
+        
+        let _ = stdout_handle.join();
+        let _ = stderr_handle.join();
+        
+        full_output = output_buffer.lock().map(|b| b.clone()).unwrap_or_default();
+        token_count = *token_counter.lock().unwrap();
+        
+        if !status.success() {
+            state.cli_router.update_provider_status(&request.provider_alias, ProviderStatus::Error);
+        } else {
+            state.cli_router.update_provider_status(&request.provider_alias, ProviderStatus::Idle);
+        }
+        
+        if state.cli_router.should_auto_switch(&request.provider_alias, token_count) {
+            if let Some(next_provider) = state.cli_router.find_next_provider(&request.provider_alias) {
+                switched = true;
+                new_provider = Some(next_provider.alias.clone());
+                
+                let _ = cli_router::queries::record_provider_switch(
+                    &conn,
+                    &request.task_id,
+                    &request.provider_alias,
+                    &next_provider.alias,
+                    "Token limit threshold reached",
+                );
+            }
+        }
+    } else {
+        return Err(format!("Provider '{}' not configured properly", request.provider_alias));
+    }
+    
+    state.cli_router.update_provider_task(&request.provider_alias, None);
+    
+    cli_router::queries::add_context_message(
+        &conn,
+        &session_id,
+        "user",
+        &request.prompt,
+        None,
+    ).map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    cli_router::queries::add_context_message(
+        &conn,
+        &session_id,
+        "assistant",
+        &full_output,
+        Some(token_count as i64),
+    ).map_err(|e: rusqlite::Error| e.to_string())?;
+    
+    let input_tokens = request.prompt.len() / 4;
+    let output_tokens = full_output.len() / 4;
+    
+    if let Some(engine) = cli_router::queries::get_enabled_engines(&conn)
+        .ok()
+        .and_then(|engines| engines.into_iter().find(|e| e.alias == request.provider_alias))
+    {
+        let backend = create_backend_from_engine(&engine);
+        let cost = backend.estimate_cost(input_tokens, output_tokens);
+        
+        let _ = cli_router::queries::record_cost(
+            &conn,
+            &request.provider_alias,
+            input_tokens as i64,
+            output_tokens as i64,
+            cost,
+            Some(&session_id),
+            Some(&request.task_id),
+            Some(&engine.model),
+        );
+    }
+    
+    app.emit("agent-complete", serde_json::json!({
+        "session_id": session_id,
+        "success": !switched,
+        "switched": switched,
+        "new_provider": new_provider,
+    })).map_err(|e| e.to_string())?;
+    
+    Ok(RunAgentResponse {
+        session_id,
+        provider_alias: request.provider_alias,
+        output: full_output,
+        switched,
+        new_provider,
+    })
+}
+
+#[tauri::command]
+fn stop_agent(state: tauri::State<'_, AppState>, task_id: String) -> Result<(), String> {
+    state.cli_router.process_manager().stop(&task_id)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_agent_status(state: tauri::State<'_, AppState>, task_id: String) -> bool {
+    state.cli_router.process_manager().is_running(&task_id)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -1761,6 +2344,7 @@ fn main() {
                 running_process: Mutex::new(None),
                 should_stop: Arc::new(AtomicBool::new(false)),
                 rtk_path: Mutex::new(get_rtk_path()),
+                cli_router: Arc::new(CliRouter::new()),
             });
             
             Ok(())
@@ -1810,6 +2394,24 @@ fn main() {
             init_rtk,
             run_rtk_command,
             get_rtk_gain_stats,
+            get_router_providers,
+            sync_engines_to_router,
+            get_router_config,
+            save_router_config_cmd,
+            create_router_session,
+            get_router_session,
+            get_task_router_sessions,
+            switch_provider_in_session,
+            add_router_message,
+            get_router_messages,
+            transfer_router_context,
+            get_next_available_provider,
+            record_cli_cost,
+            get_provider_costs,
+            get_task_switch_history,
+            run_agent,
+            stop_agent,
+            get_agent_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

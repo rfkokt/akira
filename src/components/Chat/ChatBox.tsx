@@ -15,12 +15,13 @@ import {
   Trash2,
   PanelLeft,
   Square,
-  Loader2
+  Loader2,
+  Zap,
 } from 'lucide-react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useEngineStore } from '@/store/engineStore'
 import { dbService } from '@/lib/db'
-import type { CliOutputEvent, CliCompleteEvent, ChatMessage } from '@/types'
+import type { CliOutputEvent, CliCompleteEvent, ChatMessage, RouterProviderInfo } from '@/types'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -51,6 +52,10 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [useRouter, setUseRouter] = useState(true)
+  const [routerProviders, setRouterProviders] = useState<RouterProviderInfo[]>([])
+  const [selectedRouterProvider, setSelectedRouterProvider] = useState<string | null>(null)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const terminalEndRef = useRef<HTMLDivElement>(null)
@@ -61,6 +66,25 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
   useEffect(() => {
     if (taskId) loadChatHistory()
   }, [taskId])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const loadRouterProviders = async () => {
+      try {
+        const providers = await dbService.getRouterProviders()
+        setRouterProviders(providers)
+        if (providers.length > 0 && !selectedRouterProvider) {
+          const idleProvider = providers.find(p => p.status === 'idle' && p.enabled)
+          setSelectedRouterProvider(idleProvider?.alias || providers[0].alias)
+        }
+      } catch (err) {
+        console.error('Failed to load router providers:', err)
+      }
+    }
+
+    loadRouterProviders()
+  }, [isOpen])
 
   const loadChatHistory = async () => {
     if (!taskId) return
@@ -140,7 +164,30 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
         }
       })
 
-      unlistenFns.current = [unlistenOutput, unlistenError, unlistenComplete]
+      const unlistenAgentOutput = await listen<{ session_id: string; line: string; is_error: boolean }>('agent-output', (event) => {
+        const { line, is_error } = event.payload
+        
+        setTerminalLines(prev => [...prev, {
+          type: is_error ? 'stderr' : 'stdout',
+          content: line,
+          timestamp: new Date()
+        }])
+        
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1]
+          if (lastMsg?.role === 'assistant' && lastMsg.isStreaming) {
+            const newMessages = [...prev]
+            newMessages[newMessages.length - 1] = {
+              ...lastMsg,
+              content: lastMsg.content + line + '\n'
+            }
+            return newMessages
+          }
+          return prev
+        })
+      })
+
+      unlistenFns.current = [unlistenOutput, unlistenError, unlistenComplete, unlistenAgentOutput]
     }
 
     setupListeners()
@@ -169,7 +216,11 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     if (!isStreaming) return
     
     try {
-      await dbService.stopCli()
+      if (useRouter) {
+        await dbService.stopAgent()
+      } else {
+        await dbService.stopCli()
+      }
       setIsStreaming(false)
       setTerminalLines(prev => [...prev, {
         type: 'system',
@@ -179,24 +230,33 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     } catch (err) {
       console.error('Failed to stop:', err)
     }
-  }, [isStreaming])
+  }, [isStreaming, useRouter])
 
   const handleSend = useCallback(async () => {
     if (!message.trim() || isStreaming) return
     
-    if (!activeEngine) {
-      setError('No AI engine selected. Please configure an engine in Settings.')
-      return
-    }
+    if (useRouter) {
+      if (!selectedRouterProvider) {
+        setError('No router provider selected. Please select a provider.')
+        return
+      }
+    } else {
+      if (!activeEngine) {
+        setError('No AI engine selected. Please configure an engine in Settings.')
+        return
+      }
 
-    if (!activeEngine.enabled) {
-      setError('Selected engine is disabled. Please enable it in Settings.')
-      return
+      if (!activeEngine.enabled) {
+        setError('Selected engine is disabled. Please enable it in Settings.')
+        return
+      }
     }
 
     const userMessage = message.trim()
     setMessage('')
     setError(null)
+    
+    const providerAlias = useRouter ? selectedRouterProvider! : activeEngine!.alias
     
     const newMessage: Message = { 
       role: 'user', 
@@ -207,7 +267,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     
     if (taskId) {
       try {
-        await dbService.createChatMessage(taskId, 'user', userMessage, activeEngine.alias)
+        await dbService.createChatMessage(taskId, 'user', userMessage, providerAlias)
       } catch (err) {
         console.error('Failed to save user message:', err)
       }
@@ -221,45 +281,73 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     }])
     setIsStreaming(true)
 
-    let args: string[] = []
-    if (activeEngine.args) {
-      args = activeEngine.args.split(' ').filter(Boolean)
-    }
-    
-    if (activeEngine.model) {
-      if (activeEngine.alias.toLowerCase().includes('ollama')) {
-        args = ['run', activeEngine.model, ...args]
-      } else if (activeEngine.alias.toLowerCase().includes('claude')) {
-        args = ['--model', activeEngine.model, ...args]
-      }
-    }
-
     // Build conversation context from previous messages
     const conversationContext = messages
-      .filter(msg => !msg.isStreaming) // Exclude streaming placeholder
+      .filter(msg => !msg.isStreaming)
       .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
       .join('\n\n')
     
-    // Build full prompt with context
-    let fullPrompt = ''
-    if (conversationContext) {
-      fullPrompt = `Previous conversation:\n${conversationContext}\n\nUser: ${userMessage}\n\nAssistant:`
-    } else {
-      fullPrompt = userMessage
-    }
-
-    const fullCommand = `${activeEngine.binary_path} ${args.join(' ')}`
-    
-    setTerminalLines(prev => [
-      ...prev,
-      { type: 'system', content: `────────────────────────────────────────`, timestamp: new Date() },
-      { type: 'system', content: `Working directory: ${projectPath || '(current)'}`, timestamp: new Date() },
-      { type: 'command', content: `$ ${fullCommand}`, timestamp: new Date() },
-      { type: 'stdout', content: '', timestamp: new Date() }
-    ])
+    let fullPrompt = conversationContext 
+      ? `Previous conversation:\n${conversationContext}\n\nUser: ${userMessage}\n\nAssistant:`
+      : userMessage
 
     try {
-      await dbService.runCli(activeEngine.binary_path, args, fullPrompt + '\n', projectPath)
+      if (useRouter) {
+        // Use CLI Router
+        const request = {
+          task_id: taskId || '',
+          provider_alias: selectedRouterProvider!,
+          prompt: fullPrompt + '\n',
+          cwd: projectPath || process.cwd(),
+          session_id: currentSessionId || undefined,
+        }
+        
+        setTerminalLines(prev => [
+          ...prev,
+          { type: 'system', content: `────────────────────────────────────────`, timestamp: new Date() },
+          { type: 'system', content: `Router Mode: ${selectedRouterProvider}`, timestamp: new Date() },
+          { type: 'system', content: `Working directory: ${projectPath || '(current)'}`, timestamp: new Date() },
+          { type: 'stdout', content: '', timestamp: new Date() }
+        ])
+
+        const response = await dbService.runAgent(request)
+        
+        if (response.switched && response.new_provider) {
+          setTerminalLines(prev => [...prev, {
+            type: 'system',
+            content: `[Auto-switched to ${response.new_provider} due to token limit]`,
+            timestamp: new Date()
+          }])
+        }
+        
+        setCurrentSessionId(response.session_id)
+      } else {
+        // Use direct CLI (legacy mode)
+        let args: string[] = []
+        if (activeEngine!.args) {
+          args = activeEngine!.args.split(' ').filter(Boolean)
+        }
+        
+        if (activeEngine!.model) {
+          if (activeEngine!.alias.toLowerCase().includes('ollama')) {
+            args = ['run', activeEngine!.model, ...args]
+          } else if (activeEngine!.alias.toLowerCase().includes('claude')) {
+            args = ['--model', activeEngine!.model, ...args]
+          }
+        }
+
+        const fullCommand = `${activeEngine!.binary_path} ${args.join(' ')}`
+        
+        setTerminalLines(prev => [
+          ...prev,
+          { type: 'system', content: `────────────────────────────────────────`, timestamp: new Date() },
+          { type: 'system', content: `Working directory: ${projectPath || '(current)'}`, timestamp: new Date() },
+          { type: 'command', content: `$ ${fullCommand}`, timestamp: new Date() },
+          { type: 'stdout', content: '', timestamp: new Date() }
+        ])
+
+        await dbService.runCli(activeEngine!.binary_path, args, fullPrompt + '\n', projectPath)
+      }
     } catch (err) {
       const errorMsg = String(err)
       setError(errorMsg)
@@ -271,7 +359,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
       setIsStreaming(false)
       setMessages(prev => prev.filter(msg => !msg.isStreaming))
     }
-  }, [message, isStreaming, activeEngine, taskId])
+  }, [message, isStreaming, activeEngine, taskId, useRouter, selectedRouterProvider, projectPath, currentSessionId])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -328,10 +416,17 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
           <span className="text-xs text-[#cccccc] font-geist">
             {showTerminal ? 'Terminal' : 'Chat'}
           </span>
-          {activeEngine && (
-            <span className="text-xs text-[#858585]">
-              ({activeEngine.alias}{activeEngine.model && ` • ${activeEngine.model}`})
+          {useRouter ? (
+            <span className="text-xs text-[#0e639c] flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              Router: {selectedRouterProvider || 'None'}
             </span>
+          ) : (
+            activeEngine && (
+              <span className="text-xs text-[#858585]">
+                ({activeEngine.alias}{activeEngine.model && ` • ${activeEngine.model}`})
+              </span>
+            )
           )}
           {isStreaming && (
             <button 
@@ -473,14 +568,53 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
               {/* Input */}
               {!showTerminal && (
                 <div className="p-2 bg-[#252526] border-t border-white/5">
+                  {/* Router Toggle */}
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setUseRouter(!useRouter)}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                          useRouter 
+                            ? 'bg-[#0e639c]/20 text-[#0e639c]' 
+                            : 'bg-[#3c3c3c] text-[#858585]'
+                        }`}
+                      >
+                        <Zap className="w-3 h-3" />
+                        Router {useRouter ? 'ON' : 'OFF'}
+                      </button>
+                      {useRouter && (
+                        <select
+                          value={selectedRouterProvider || ''}
+                          onChange={(e) => setSelectedRouterProvider(e.target.value)}
+                          className="bg-[#3c3c3c] text-xs text-[#cccccc] px-2 py-1 rounded border border-white/10 outline-none focus:border-[#0e639c]"
+                        >
+                          {routerProviders.filter(p => p.enabled).map(p => (
+                            <option key={p.alias} value={p.alias}>
+                              {p.alias} ({p.status})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    {!useRouter && (
+                      <span className="text-xs text-[#858585]">
+                        Engine: {activeEngine?.alias || 'None'}
+                      </span>
+                    )}
+                  </div>
+                  
                   <div className="flex items-end gap-2">
                     <textarea
                       ref={inputRef}
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder={activeEngine ? 'Type a message...' : 'Configure engine first...'}
-                      disabled={!activeEngine || isStreaming}
+                      placeholder={
+                        useRouter 
+                          ? (selectedRouterProvider ? 'Type a message...' : 'Select a provider first...')
+                          : (activeEngine ? 'Type a message...' : 'Configure engine first...')
+                      }
+                      disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || isStreaming}
                       rows={1}
                       className="flex-1 bg-[#3c3c3c] text-xs text-[#cccccc] placeholder-[#6e6e6e] font-geist resize-none outline-none px-2.5 py-2 max-h-24 min-h-[32px] border border-transparent focus:border-[#0e639c] disabled:opacity-50"
                     />
@@ -495,7 +629,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                     ) : (
                       <button
                         onClick={handleSend}
-                        disabled={!activeEngine || !message.trim()}
+                        disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || !message.trim()}
                         className="p-2 bg-[#0e639c] hover:bg-[#1177bb] disabled:bg-[#3c3c3c] disabled:opacity-50 text-white transition-colors"
                       >
                         <Send className="w-3.5 h-3.5" />

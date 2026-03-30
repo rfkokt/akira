@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2 } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { Task } from '@/types'
 
-interface ParsedTask {
+
+interface ConversationSummary {
   title: string
   description: string
-  priority: Task['priority']
 }
 
 interface FileEntry {
@@ -70,7 +69,8 @@ function MarkdownContent({ content }: { content: string }) {
 export function TaskCreatorChat() {
   const [message, setMessage] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
-  const [parsedTask, setParsedTask] = useState<ParsedTask | null>(null)
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const [conversationSummary, setConversationSummary] = useState<ConversationSummary | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [createdSuccess, setCreatedSuccess] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
@@ -81,7 +81,7 @@ export function TaskCreatorChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const aiChatStore = useAIChatStore()
-  const { sendSimpleMessage, stopMessage, getMessages } = aiChatStore
+  const { sendSimpleMessage, stopMessage, getMessages, clearMessages } = aiChatStore
   const { activeEngine, engines, setActiveEngine } = useEngineStore()
   const { createTask } = useTaskStore()
   const { activeWorkspace } = useWorkspaceStore()
@@ -203,69 +203,105 @@ export function TaskCreatorChat() {
     }
   }
 
-  const parseTaskFromResponse = (content: string): ParsedTask | null => {
-    const taskRegex = /### Task[\s\S]*?Title:\s*(.+?)[\s\S]*?Description:[\s\S]*?(?:```[\s\S]*?```[\s\S]*?)?([\s\S]*?)(?=###|$)/gi
+  const cleanDescription = (text: string): string => {
+    if (!text) return ''
     
-    let match
-    while ((match = taskRegex.exec(content)) !== null) {
-      const title = match[1].trim()
-      let description = match[2].trim()
-      
-      description = description.replace(/```\w*\n?/g, '').trim()
-      
-      if (title) {
-        return {
-          title,
-          description,
-          priority: 'medium'
-        }
-      }
-    }
-
-    const titleOnlyMatch = /^(?:task|title)[:\s]+(.+)$/gim.exec(content)
-    if (titleOnlyMatch) {
-      return {
-        title: titleOnlyMatch[1].trim(),
-        description: '',
-        priority: 'medium'
-      }
-    }
-
-    return null
+    // Remove code blocks
+    let cleaned = text.replace(/```[\s\S]*?```/g, '')
+    
+    // Remove inline code
+    cleaned = cleaned.replace(/`([^`]+)`/g, '$1')
+    
+    // Remove markdown headers (but keep text)
+    cleaned = cleaned.replace(/^#{1,6}\s+/gm, '')
+    
+    // Remove bold/italic markers
+    cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1')
+    cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1')
+    cleaned = cleaned.replace(/__([^_]+)__/g, '$1')
+    cleaned = cleaned.replace(/_([^_]+)_/g, '$1')
+    
+    // Remove list markers but keep the text
+    cleaned = cleaned.replace(/^[\s]*[-*+]\s+/gm, '')
+    cleaned = cleaned.replace(/^[\s]*\d+\.\s+/gm, '')
+    
+    // Remove checkbox markers
+    cleaned = cleaned.replace(/^\s*\[[ x]\]\s*/gim, '')
+    
+    // Remove horizontal rules
+    cleaned = cleaned.replace(/^[-*_]{3,}\s*$/gm, '')
+    
+    // Remove extra whitespace
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+    
+    // Trim each line
+    cleaned = cleaned.split('\n').map(line => line.trim()).join('\n').trim()
+    
+    return cleaned.substring(0, 500) // Limit description length
   }
 
   const handleSend = async () => {
     if (!message.trim() || !activeEngine) return
     
-    setParsedTask(null)
-    setCreatedSuccess(false)
+    setConversationSummary(null)
     
-    const systemPrompt = `You are a task assistant. When the user describes what they want to build or modify, create a structured task definition in this exact format:
-
-### Task
-Title: [A clear, concise task title]
-Description: [A detailed description of what needs to be done, including relevant details from the user's request]
-
-Focus on understanding the user's intent and breaking it down into actionable steps. Keep the title concise but descriptive.`
-
     setIsStreaming(true)
     
     try {
       const userMsg = message
       setMessage('')
       
-      const response = await sendSimpleMessage(taskId, `${systemPrompt}\n\nUser request: ${userMsg}`)
-      
-      if (response) {
-        const parsed = parseTaskFromResponse(response)
-        if (parsed) {
-          setParsedTask(parsed)
-        }
-      }
+      await sendSimpleMessage(taskId, userMsg)
     } catch (err) {
       console.error('Failed to send message:', err)
     } finally {
       setIsStreaming(false)
+    }
+  }
+
+  const handleSummarize = async () => {
+    const messages = getMessages(taskId)
+    if (messages.length === 0) return
+    
+    setIsSummarizing(true)
+    setConversationSummary(null)
+    
+    try {
+      const conversationText = messages
+        .filter(m => m.content.trim())
+        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+        .join('\n\n')
+      
+      const summaryPrompt = `Based on this conversation, create a task summary in this exact format (no other text):
+
+TASK_TITLE: [Short clear title, max 80 chars]
+TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
+
+      await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
+      
+      // Wait for response and parse
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      const summaryMessages = getMessages(taskId + '_summary')
+      const lastResponse = summaryMessages[summaryMessages.length - 1]?.content || ''
+      
+      // Parse the summary
+      const titleMatch = lastResponse.match(/TASK_TITLE:\s*(.+?)(?:\n|$)/i)
+      const descMatch = lastResponse.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|$)/i)
+      
+      if (titleMatch) {
+        setConversationSummary({
+          title: titleMatch[1].trim().substring(0, 100),
+          description: cleanDescription(descMatch?.[1] || '').substring(0, 500)
+        })
+      }
+      
+      // Clear summary messages
+      clearMessages(taskId + '_summary')
+    } catch (err) {
+      console.error('Failed to summarize:', err)
+    } finally {
+      setIsSummarizing(false)
     }
   }
 
@@ -275,19 +311,22 @@ Focus on understanding the user's intent and breaking it down into actionable st
   }
 
   const handleCreateTask = async () => {
-    if (!parsedTask || !activeWorkspace?.folder_path) return
+    if (!conversationSummary?.title || !activeWorkspace?.folder_path) return
     
     setIsCreating(true)
     try {
       await createTask({
-        title: parsedTask.title,
-        description: parsedTask.description,
+        title: conversationSummary.title,
+        description: conversationSummary.description,
         status: 'todo',
-        priority: parsedTask.priority,
+        priority: 'medium',
       })
       
       setCreatedSuccess(true)
-      setParsedTask(null)
+      setConversationSummary(null)
+      
+      // Clear chat after creating task
+      clearMessages(taskId)
       
       setTimeout(() => setCreatedSuccess(false), 2000)
     } catch (err) {
@@ -295,6 +334,12 @@ Focus on understanding the user's intent and breaking it down into actionable st
     } finally {
       setIsCreating(false)
     }
+  }
+
+  const handleClearChat = () => {
+    clearMessages(taskId)
+    setConversationSummary(null)
+    setCreatedSuccess(false)
   }
 
   const suggestedPrompts = [
@@ -320,13 +365,13 @@ Focus on understanding the user's intent and breaking it down into actionable st
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
             <div>
               <p className="text-sm text-neutral-300 font-geist">
-                Describe your task in plain English
+                Chat dengan AI untuk diskusi
               </p>
               <p className="text-xs text-neutral-500 font-geist mt-1">
-                AI will create a structured task for you
+                Setelah diskusi, buat task dari percakapan
               </p>
               <p className="text-xs text-cyan-500 font-geist mt-2">
-                Type @ to reference files
+                Type @ untuk reference files
               </p>
             </div>
             <div className="grid grid-cols-1 gap-2 w-full">
@@ -373,21 +418,52 @@ Focus on understanding the user's intent and breaking it down into actionable st
           ))
         )}
         
-        {parsedTask && (
+        {/* Action buttons when there are messages */}
+        {taskMessages.length > 0 && !conversationSummary && (
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={handleSummarize}
+              disabled={isSummarizing || isStreaming}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-medium bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors font-geist"
+            >
+              {isSummarizing ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Summarizing...
+                </>
+              ) : (
+                <>
+                  <Check className="w-3 h-3" />
+                  Summarize & Create Task
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleClearChat}
+              disabled={isStreaming}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors font-geist"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        
+        {/* Task Summary */}
+        {conversationSummary && (
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 mt-4">
             <div className="flex items-center gap-2 mb-3">
               <Check className="w-4 h-4 text-green-400" />
               <span className="text-xs text-green-400 font-geist font-medium">Task Ready</span>
             </div>
-            <div className="space-y-2">
-              <div>
-                <label className="text-xs text-neutral-500 font-geist">Title</label>
-                <p className="text-sm text-white font-geist">{parsedTask.title}</p>
+            <div className="space-y-3">
+              <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
+                <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
+                <p className="text-sm text-white font-geist mt-1 break-words">{conversationSummary.title}</p>
               </div>
-              {parsedTask.description && (
-                <div>
-                  <label className="text-xs text-neutral-500 font-geist">Description</label>
-                  <p className="text-xs text-neutral-300 font-geist line-clamp-3">{parsedTask.description}</p>
+              {conversationSummary.description && (
+                <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
+                  <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
+                  <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{conversationSummary.description}</p>
                 </div>
               )}
             </div>
@@ -400,10 +476,10 @@ Focus on understanding the user's intent and breaking it down into actionable st
                 {createdSuccess ? 'Created!' : isCreating ? 'Creating...' : 'Create Task'}
               </button>
               <button
-                onClick={() => setParsedTask(null)}
+                onClick={() => setConversationSummary(null)}
                 className="px-4 py-2 rounded-lg text-xs font-medium text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors font-geist"
               >
-                Clear
+                Edit
               </button>
             </div>
           </div>

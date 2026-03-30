@@ -42,6 +42,9 @@ interface AIChatState {
   taskQueue: TaskQueueItem[];
   currentRunningTask: string | null;
   isProcessingQueue: boolean;
+  useRouter: boolean;
+  routerProvider: string | null;
+  currentSessionId: string | null;
   
   // Actions
   enqueueTask: (taskId: string, taskTitle: string, taskDescription?: string) => Promise<void>;
@@ -56,6 +59,8 @@ interface AIChatState {
   getTaskState: (taskId: string) => AITaskState;
   isStreaming: (taskId: string) => boolean;
   autoCreatePR: (taskId: string, taskTitle: string) => Promise<{ branch: string; prUrl?: string } | null>;
+  setUseRouter: (useRouter: boolean) => void;
+  setRouterProvider: (provider: string | null) => void;
 }
 
 // Get saved running task from localStorage
@@ -176,6 +181,9 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
   taskQueue: [],
   currentRunningTask: null,
   isProcessingQueue: false,
+  useRouter: true,
+  routerProvider: null,
+  currentSessionId: null,
 
   enqueueTask: async (taskId: string, taskTitle: string, taskDescription?: string) => {
     const { taskQueue, taskStates } = get();
@@ -851,13 +859,12 @@ Please respond helpfully and concisely.`;
             if (json.type === 'text' && json.part?.text) {
               displayLine = json.part.text;
             } else if (json.type === 'step_start') {
-              displayLine = `[${json.part?.type || 'step'}] Thinking...`;
+              displayLine = '';
             } else if (json.type === 'tool_use') {
               const toolName = json.part?.tool || 'unknown';
               displayLine = `[Tool: ${toolName}]`;
             } else if (json.type === 'step_finish') {
-              const tokens = json.tokens?.total || 0;
-              displayLine = `\n--- Step completed: ${tokens} tokens ---`;
+              displayLine = '';
             } else {
               displayLine = '';
             }
@@ -1067,5 +1074,13 @@ Please respond helpfully and concisely.`;
       console.error('Failed to auto-create PR:', err);
       return null;
     }
+  },
+
+  setUseRouter: (useRouter: boolean) => {
+    set({ useRouter });
+  },
+
+  setRouterProvider: (provider: string | null) => {
+    set({ routerProvider: provider });
   },
 }));
