@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { FileCode, Loader2 } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
+import { Button } from '@/components/ui/button'
 
 interface FileEntry {
   name: string
@@ -169,24 +170,24 @@ export function DescriptionWithFileTag({
             File references (↑↓ to navigate, Enter/Tab to insert)
           </div>
           {suggestions.map((file, index) => (
-            <button
+            <Button
               key={file.path}
               ref={(el) => { suggestionRefs.current[index] = el }}
-              type="button"
-              onClick={() => handleSelectFile(file)}
-              onMouseEnter={() => setSelectedIndex(index)}
-              className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 font-geist transition-colors ${
+              variant="ghost"
+              className={`w-full justify-start h-auto py-1.5 px-3 text-xs ${
                 index === selectedIndex 
                   ? 'bg-[#094771] text-white' 
-                  : 'hover:bg-[#094771]/50 text-neutral-300'
+                  : 'text-neutral-300'
               }`}
+              onClick={() => handleSelectFile(file)}
+              onMouseEnter={() => setSelectedIndex(index)}
             >
-              <FileCode className="w-3.5 h-3.5 text-[#0e639c] shrink-0" />
+              <FileCode className="w-3.5 h-3.5 text-[#0e639c] shrink-0 mr-2" />
               <span className="truncate">{file.name}</span>
               <span className="text-neutral-500 text-xs truncate ml-auto">
                 {file.path.replace(workspacePath || '', '')}
               </span>
-            </button>
+            </Button>
           ))}
         </div>
       )}

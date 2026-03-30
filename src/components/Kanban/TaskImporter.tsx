@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { Upload, FileJson, FileText, FileSpreadsheet, X, CheckCircle2, AlertCircle } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTaskStore } from '@/store/taskStore'
+import { Button } from '@/components/ui/button'
 
 interface TaskImporterProps {
   isOpen: boolean
@@ -123,12 +124,14 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#2d2d2d]">
           <h2 className="text-sm font-semibold text-white font-geist">Import Tasks</h2>
-          <button 
+          <Button 
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="p-1 text-[#858585] hover:text-white hover:bg-white/5 transition-colors"
+            className="h-8 w-8 text-[#858585] hover:text-white"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <div className="p-6">
@@ -141,12 +144,12 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
               )}
               <p className="text-sm font-geist">{result.message}</p>
               {!result.success && (
-                <button 
+                <Button 
                   onClick={() => setResult(null)}
-                  className="mt-4 px-4 py-2 text-xs bg-[#0e639c] hover:bg-[#1177bb] text-white font-geist"
+                  className="mt-4 bg-[#0e639c] hover:bg-[#1177bb]"
                 >
                   Try Again
-                </button>
+                </Button>
               )}
             </div>
           ) : (

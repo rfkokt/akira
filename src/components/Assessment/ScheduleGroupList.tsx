@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MoreHorizontal, Trash2, Calendar, ChevronDown, Users } from 'lucide-react';
 import { useAssessmentStore } from '@/store';
+import { Button } from '@/components/ui/button';
 
 const statusConfig = {
   draft: { label: 'Draft', color: 'bg-neutral-500', textColor: 'text-neutral-300' },
@@ -111,25 +112,29 @@ export function ScheduleGroupList() {
 
                 <div className="flex items-center gap-1">
                   {/* Expand/Collapse */}
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => toggleExpanded(group.id)}
-                    className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+                    className="h-8 w-8 text-neutral-400 hover:text-white"
                   >
                     <ChevronDown
                       className={`w-4 h-4 transition-transform ${
                         isExpanded ? 'rotate-180' : ''
                       }`}
                     />
-                  </button>
+                  </Button>
 
                   {/* Menu */}
                   <div className="relative">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => setMenuOpen(isMenuOpen ? null : group.id)}
-                      className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+                      className="h-8 w-8 text-neutral-400 hover:text-white"
                     >
                       <MoreHorizontal className="w-4 h-4" />
-                    </button>
+                    </Button>
 
                     {isMenuOpen && (
                       <>
@@ -138,13 +143,14 @@ export function ScheduleGroupList() {
                           onClick={() => setMenuOpen(null)}
                         />
                         <div className="absolute right-0 mt-1 w-40 bg-[#1e1e1e] border border-white/10 rounded-lg shadow-xl py-1 z-20">
-                          <button
+                          <Button
+                            variant="ghost"
                             onClick={() => handleDelete(group.id)}
-                            className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 font-geist flex items-center gap-2"
+                            className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 text-xs"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5 mr-2" />
                             Hapus
-                          </button>
+                          </Button>
                         </div>
                       </>
                     )}

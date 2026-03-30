@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { GitBranch, ChevronDown, Plus, Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { Button } from '@/components/ui/button';
 
 interface GitBranchInfo {
   current: string;
@@ -100,15 +101,17 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
 
   return (
     <div className="relative">
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading}
-        className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 transition-colors font-geist"
+        className="h-auto py-1 px-2"
       >
         <GitBranch className="w-3 h-3 text-[#0e639c]" />
         <span className="max-w-[100px] truncate">{branchInfo.current}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      </Button>
 
       {isOpen && (
         <>
@@ -123,20 +126,17 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
             
             <div className="max-h-48 overflow-y-auto">
               {branchInfo.branches.map((branch) => (
-                <button
+                <Button
                   key={branch}
+                  variant="ghost"
+                  className={`w-full justify-start rounded-none ${branch === branchInfo.current ? 'bg-[#0e639c]/20 text-white' : ''}`}
                   onClick={() => handleBranchChange(branch)}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-xs font-geist transition-colors ${
-                    branch === branchInfo.current
-                      ? 'bg-[#0e639c]/20 text-white'
-                      : 'text-neutral-300 hover:bg-white/5'
-                  }`}
                 >
                   <span className="truncate">{branch}</span>
                   {branch === branchInfo.current && (
-                    <Check className="w-3 h-3 text-[#0e639c]" />
+                    <Check className="w-3 h-3 text-[#0e639c] ml-auto" />
                   )}
-                </button>
+                </Button>
               ))}
             </div>
 
@@ -158,22 +158,24 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
                     }}
                     autoFocus
                   />
-                  <button
+                  <Button
+                    size="icon"
                     onClick={handleCreateBranch}
                     disabled={!newBranchName.trim() || isLoading}
-                    className="p-1 rounded bg-[#0e639c] hover:bg-[#1177bb] disabled:opacity-50 text-white"
+                    className="bg-[#0e639c] hover:bg-[#1177bb]"
                   >
                     <Plus className="w-3 h-3" />
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <button
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start"
                   onClick={() => setShowNewBranchInput(true)}
-                  className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-white/5 transition-colors font-geist"
                 >
                   <Plus className="w-3 h-3" />
                   Create new branch
-                </button>
+                </Button>
               )}
             </div>
           </div>

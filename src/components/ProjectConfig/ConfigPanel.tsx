@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Eye, Save, User, Layers, Shield, MessageSquare, Check } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
 import { MarkdownEditor } from './MarkdownBlockEditor';
+import { Button } from '@/components/ui/button';
 
 interface ConfigPanelProps {
   projectId: string;
@@ -79,23 +80,24 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
           Project Config
         </span>
         <div className="flex items-center gap-1">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setShowPreview(!showPreview)}
-            className={`p-1.5 rounded transition-colors ${
-              showPreview ? 'text-[#0e639c] bg-[#0e639c]/10' : 'text-neutral-400 hover:text-white hover:bg-white/5'
-            }`}
+            className={showPreview ? 'text-[#0e639c] bg-[#0e639c]/10' : ''}
             title="Toggle Preview"
           >
             <Eye className="w-3.5 h-3.5" />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={handleSave}
             disabled={isLoading}
-            className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded transition-colors"
             title="Save Config"
           >
             <Save className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -108,18 +110,15 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
           const isActive = activeTab === tab.id;
           
           return (
-            <button
+            <Button
               key={tab.id}
+              variant="ghost"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium transition-colors ${
-                isActive 
-                  ? 'text-white bg-white/5 border-b border-[#0e639c]' 
-                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
-              }`}
+              className={`flex-1 rounded-none ${isActive ? 'text-white bg-white/5 border-b border-[#0e639c]' : 'text-neutral-500'}`}
             >
               <Icon className="w-3 h-3" />
               <span className="hidden sm:inline">{tab.label}</span>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -133,9 +132,11 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
               <span className="text-xs text-neutral-400 font-geist uppercase tracking-wide">
                 System Prompt
               </span>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleCopyPrompt}
-                className="text-xs text-[#0e639c] hover:text-[#1177bb] font-geist flex items-center gap-1"
+                className="text-[#0e639c] hover:text-[#1177bb]"
               >
                 {copied ? (
                   <>
@@ -145,7 +146,7 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
                 ) : (
                   'Copy'
                 )}
-              </button>
+              </Button>
             </div>
             <div className="flex-1 overflow-auto p-3">
               <pre className="text-xs text-neutral-300 font-geist whitespace-pre-wrap">

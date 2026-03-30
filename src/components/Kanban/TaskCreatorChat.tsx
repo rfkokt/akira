@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square, Loader2, History, X } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
 import { dbService } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface ConversationSummary {
   title: string
@@ -264,45 +271,27 @@ export function TaskCreatorChat() {
   const cleanDescription = (text: string): string => {
     if (!text) return ''
     
-    // Remove code blocks
     let cleaned = text.replace(/```[\s\S]*?```/g, '')
-    
-    // Remove inline code
     cleaned = cleaned.replace(/`([^`]+)`/g, '$1')
-    
-    // Remove markdown headers (but keep text)
     cleaned = cleaned.replace(/^#{1,6}\s+/gm, '')
-    
-    // Remove bold/italic markers
     cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1')
     cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1')
     cleaned = cleaned.replace(/__([^_]+)__/g, '$1')
     cleaned = cleaned.replace(/_([^_]+)_/g, '$1')
-    
-    // Remove list markers but keep the text
     cleaned = cleaned.replace(/^[\s]*[-*+]\s+/gm, '')
     cleaned = cleaned.replace(/^[\s]*\d+\.\s+/gm, '')
-    
-    // Remove checkbox markers
     cleaned = cleaned.replace(/^\s*\[[ x]\]\s*/gim, '')
-    
-    // Remove horizontal rules
     cleaned = cleaned.replace(/^[-*_]{3,}\s*$/gm, '')
-    
-    // Remove extra whitespace
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
-    
-    // Trim each line
     cleaned = cleaned.split('\n').map(line => line.trim()).join('\n').trim()
     
-    return cleaned.substring(0, 500) // Limit description length
+    return cleaned.substring(0, 500)
   }
 
   const handleSend = async () => {
     if (!message.trim() || !activeEngine) return
     
     setConversationSummary(null)
-    
     setIsStreaming(true)
     
     try {
@@ -337,13 +326,11 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
 
       await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
       
-      // Wait for response and parse
       await new Promise(resolve => setTimeout(resolve, 2000))
       
       const summaryMessages = getMessages(taskId + '_summary')
       const lastResponse = summaryMessages[summaryMessages.length - 1]?.content || ''
       
-      // Parse the summary
       const titleMatch = lastResponse.match(/TASK_TITLE:\s*(.+?)(?:\n|$)/i)
       const descMatch = lastResponse.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|$)/i)
       
@@ -354,7 +341,6 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
         })
       }
       
-      // Clear summary messages
       clearMessages(taskId + '_summary')
     } catch (err) {
       console.error('Failed to summarize:', err)
@@ -382,8 +368,6 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
       
       setCreatedSuccess(true)
       setConversationSummary(null)
-      
-      // Clear chat after creating task
       clearMessages(taskId)
       
       setTimeout(() => setCreatedSuccess(false), 2000)
@@ -411,285 +395,289 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
   const filteredFiles = filterFiles(currentQuery)
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] rounded-lg border border-white/10 overflow-hidden">
-      {/* Header - minimal */}
-      <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white font-geist">Task Creator</h3>
-        <button
-          onClick={() => { loadAllHistory(); setShowHistoryModal(true); }}
-          className="p-1.5 hover:bg-white/10 rounded-md transition-colors"
-          title="View History"
-        >
-          <History className="w-4 h-4 text-neutral-400" />
-        </button>
-      </div>
+    <TooltipProvider>
+      <div className="flex flex-col h-full bg-[#1e1e1e] rounded-lg border border-white/10 overflow-hidden">
+        <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white font-geist">Task Creator</h3>
+            <Tooltip>
+            <TooltipTrigger>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => { loadAllHistory(); setShowHistoryModal(true); }}
+              >
+                <History className="w-4 h-4 text-neutral-400" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>View History</TooltipContent>
+          </Tooltip>
+        </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* History Modal */}
-        {showHistoryModal && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-[#252526] rounded-lg border border-white/10 w-full max-w-md max-h-[70vh] overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white font-geist">Chat History</h3>
-                <button
-                  onClick={() => setShowHistoryModal(false)}
-                  className="p-1 hover:bg-white/10 rounded"
-                >
-                  <X className="w-4 h-4 text-neutral-400" />
-                </button>
-              </div>
-              <div className="overflow-y-auto max-h-[60vh]">
-                {historyList.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-neutral-500">No history yet</div>
-                ) : (
-                  historyList.map((item, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        clearMessages(taskId)
-                        setMessages(taskId, [])
-                        setShowHistoryModal(false)
-                      }}
-                      className="w-full px-4 py-3 text-left hover:bg-white/5 border-b border-white/5 last:border-0"
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-4">
+            {showHistoryModal && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-[#252526] rounded-lg border border-white/10 w-full max-w-md max-h-[70vh] overflow-hidden">
+                  <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-white font-geist">Chat History</h3>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowHistoryModal(false)}
                     >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-cyan-400 capitalize">{item.role}</span>
-                        <span className="text-[10px] text-neutral-500">
-                          {new Date(item.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-xs text-neutral-300 truncate">{item.preview}</p>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {taskMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-            <div>
-              <p className="text-sm text-neutral-300 font-geist">
-                Chat dengan AI untuk diskusi
-              </p>
-              <p className="text-xs text-neutral-500 font-geist mt-1">
-                Setelah diskusi, buat task dari percakapan
-              </p>
-              <p className="text-xs text-cyan-500 font-geist mt-2">
-                Type @ untuk reference files
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 w-full">
-              {suggestedPrompts.slice(0, 2).map((prompt, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setMessage(prompt)}
-                  className="px-3 py-2 text-xs text-neutral-400 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 text-left transition-colors font-geist"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          taskMessages.map((msg, idx) => (
-            <div
-              key={idx}
-              className={`font-geist text-xs leading-relaxed ${
-                msg.role === 'user' ? 'text-blue-400' : 'text-neutral-200'
-              }`}
-            >
-              <span className="text-neutral-500 mr-2">{msg.role}:</span>
-              {msg.role === 'assistant' ? (
-                <span className="overflow-x-hidden">
-                  <MarkdownContent content={msg.content} />
-                </span>
-              ) : (
-                <pre className="inline whitespace-pre-wrap break-words overflow-hidden">{msg.content}</pre>
-              )}
-              {msg.role === 'assistant' && isStreaming && idx === taskMessages.length - 1 && (
-                <span className="inline-flex ml-1">
-                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
-                </span>
-              )}
-            </div>
-          ))
-        )}
-        
-        {/* Action buttons when there are messages */}
-        {taskMessages.length > 0 && !conversationSummary && (
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={handleSummarize}
-              disabled={isSummarizing || isStreaming}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-medium bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors font-geist"
-            >
-              {isSummarizing ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Summarizing...
-                </>
-              ) : (
-                <>
-                  <Check className="w-3 h-3" />
-                  Summarize & Create Task
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleClearChat}
-              disabled={isStreaming}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors font-geist"
-            >
-              Clear
-            </button>
-          </div>
-        )}
-        
-        {/* Task Summary */}
-        {conversationSummary && (
-          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 mt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Check className="w-4 h-4 text-green-400" />
-              <span className="text-xs text-green-400 font-geist font-medium">Task Ready</span>
-            </div>
-            <div className="space-y-3">
-              <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
-                <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
-                <p className="text-sm text-white font-geist mt-1 break-words">{conversationSummary.title}</p>
-              </div>
-              {conversationSummary.description && (
-                <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
-                  <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
-                  <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{conversationSummary.description}</p>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <ScrollArea className="max-h-[60vh]">
+                    {historyList.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-neutral-500">No history yet</div>
+                    ) : (
+                      historyList.map((item, idx) => (
+                        <Button
+                          key={idx}
+                          variant="ghost"
+                          className="w-full justify-start h-auto py-3 px-4 rounded-none border-b border-white/5"
+                          onClick={() => {
+                            clearMessages(taskId)
+                            setMessages(taskId, [])
+                            setShowHistoryModal(false)
+                          }}
+                        >
+                          <div className="flex flex-col items-start w-full">
+                            <div className="flex items-center justify-between w-full mb-1">
+                              <span className="text-xs text-cyan-400 capitalize">{item.role}</span>
+                              <span className="text-[10px] text-neutral-500">
+                                {new Date(item.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-xs text-neutral-300 truncate w-full text-left">{item.preview}</p>
+                          </div>
+                        </Button>
+                      ))
+                    )}
+                  </ScrollArea>
                 </div>
-              )}
-            </div>
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={handleCreateTask}
-                disabled={isCreating || createdSuccess}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors font-geist"
-              >
-                {createdSuccess ? 'Created!' : isCreating ? 'Creating...' : 'Create Task'}
-              </button>
-              <button
-                onClick={() => setConversationSummary(null)}
-                className="px-4 py-2 rounded-lg text-xs font-medium text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors font-geist"
-              >
-                Edit
-              </button>
-            </div>
-          </div>
-        )}
-        
-        <div ref={messagesEndRef} />
-      </div>
-
-        {/* Input Area */}
-      <div className="p-4 border-t border-white/5">
-        {/* File Suggestions Dropdown */}
-        {showFileSuggestions && filteredFiles.length > 0 && (
-          <div className="mb-2 bg-[#252526] rounded-lg border border-white/10 shadow-xl max-h-48 overflow-y-auto">
-            <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-white/5 font-geist">
-              Files (↑↓ navigate, Enter to insert)
-            </div>
-            {filteredFiles.map((file, idx) => (
-              <button
-                key={file.path}
-                onClick={() => insertFileReference(file)}
-                className={`w-full px-3 py-2 text-left text-xs hover:bg-white/5 transition-colors ${
-                  idx === selectedFileIndex ? 'bg-cyan-500/10' : ''
-                }`}
-              >
-                <span className="text-white">{file.name}</span>
-                <span className="text-neutral-500 text-xs ml-2">
-                  {file.path.replace(activeWorkspace?.folder_path || '', '')}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-        
-        {/* Input with inline action bar */}
-        <div className="relative">
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={handleMessageChange}
-            onKeyDown={handleKeyDown}
-            placeholder={activeEngine ? "Describe what you want to build..." : "Select a model first"}
-            disabled={!activeEngine || isStreaming}
-            className="w-full px-4 py-3 pb-10 rounded-xl text-sm bg-[#252526] text-white placeholder-neutral-600 border border-white/10 focus:outline-none focus:border-cyan-500/50 resize-none transition-all"
-            rows={3}
-          />
-          
-          {/* Action bar inside textarea */}
-          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-            {/* Model Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
-                className="px-2 py-1 bg-white/5 hover:bg-white/10 rounded-md border border-white/10 hover:border-white/20 transition-colors flex items-center gap-1.5"
-              >
-                <span className="text-xs text-neutral-400 font-geist">
-                  {activeEngine?.alias || 'Model'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-neutral-500" />
-              </button>
-              
-              {showModelDropdown && (
-                <div className="absolute left-0 bottom-full mb-1 bg-[#252526] rounded-lg border border-white/10 shadow-xl max-h-48 overflow-y-auto min-w-[140px]">
-                  {engines.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-neutral-500">
-                      No engines
-                    </div>
+              </div>
+            )}
+            {taskMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                <div>
+                  <p className="text-sm text-neutral-300 font-geist">
+                    Chat dengan AI untuk diskusi
+                  </p>
+                  <p className="text-xs text-neutral-500 font-geist mt-1">
+                    Setelah diskusi, buat task dari percakapan
+                  </p>
+                  <p className="text-xs text-cyan-500 font-geist mt-2">
+                    Type @ untuk reference files
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 w-full">
+                  {suggestedPrompts.slice(0, 2).map((prompt, idx) => (
+                    <Button
+                      key={idx}
+                      variant="secondary"
+                      className="justify-start h-auto py-2"
+                      onClick={() => setMessage(prompt)}
+                    >
+                      {prompt}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              taskMessages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`font-geist text-xs leading-relaxed ${
+                    msg.role === 'user' ? 'text-blue-400' : 'text-neutral-200'
+                  }`}
+                >
+                  <span className="text-neutral-500 mr-2">{msg.role}:</span>
+                  {msg.role === 'assistant' ? (
+                    <span className="overflow-x-hidden">
+                      <MarkdownContent content={msg.content} />
+                    </span>
                   ) : (
-                    engines.map(engine => (
-                      <button
-                        key={engine.id}
-                        onClick={() => {
-                          setActiveEngine(engine)
-                          setShowModelDropdown(false)
-                        }}
-                        className={`w-full px-3 py-2 text-left hover:bg-white/5 transition-colors ${
-                          activeEngine?.id === engine.id ? 'bg-cyan-500/10' : ''
-                        }`}
-                      >
-                        <div className={`text-xs ${activeEngine?.id === engine.id ? 'text-cyan-400' : 'text-white'}`}>
-                          {engine.alias}
-                        </div>
-                      </button>
-                    ))
+                    <pre className="inline whitespace-pre-wrap break-words overflow-hidden">{msg.content}</pre>
+                  )}
+                  {msg.role === 'assistant' && isStreaming && idx === taskMessages.length - 1 && (
+                    <span className="inline-flex ml-1">
+                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
+                    </span>
                   )}
                 </div>
+              ))
+            )}
+            
+            {taskMessages.length > 0 && !conversationSummary && (
+              <div className="flex gap-2 mt-4">
+                <Button
+                  onClick={handleSummarize}
+                  disabled={isSummarizing || isStreaming}
+                  className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                >
+                  {isSummarizing ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin mr-2" />
+                      Summarizing...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3 h-3 mr-2" />
+                      Summarize & Create Task
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleClearChat}
+                  disabled={isStreaming}
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
+            
+            {conversationSummary && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Check className="w-4 h-4 text-green-400" />
+                  <span className="text-xs text-green-400 font-geist font-medium">Task Ready</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
+                    <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
+                    <p className="text-sm text-white font-geist mt-1 break-words">{conversationSummary.title}</p>
+                  </div>
+                  {conversationSummary.description && (
+                    <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
+                      <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
+                      <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{conversationSummary.description}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    onClick={handleCreateTask}
+                    disabled={isCreating || createdSuccess}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    {createdSuccess ? 'Created!' : isCreating ? 'Creating...' : 'Create Task'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setConversationSummary(null)}
+                  >
+                    Edit
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+
+        <div className="p-4 border-t border-white/5">
+          {showFileSuggestions && filteredFiles.length > 0 && (
+            <div className="mb-2 bg-[#252526] rounded-lg border border-white/10 shadow-xl max-h-48 overflow-y-auto">
+              <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-white/5 font-geist">
+                Files (↑↓ navigate, Enter to insert)
+              </div>
+              {filteredFiles.map((file, idx) => (
+                <Button
+                  key={file.path}
+                  variant="ghost"
+                  className={`w-full justify-start h-auto py-2 rounded-none ${idx === selectedFileIndex ? 'bg-cyan-500/10' : ''}`}
+                  onClick={() => insertFileReference(file)}
+                >
+                  <FileIcon className="w-3 h-3 mr-2 text-neutral-400" />
+                  <span className="text-white">{file.name}</span>
+                  <span className="text-neutral-500 text-xs ml-2">
+                    {file.path.replace(activeWorkspace?.folder_path || '', '')}
+                  </span>
+                </Button>
+              ))}
+            </div>
+          )}
+          
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={message}
+              onChange={handleMessageChange}
+              onKeyDown={handleKeyDown}
+              placeholder={activeEngine ? "Describe what you want to build..." : "Select a model first"}
+              disabled={!activeEngine || isStreaming}
+              className="w-full px-4 py-3 pb-10 rounded-xl text-sm bg-[#252526] text-white placeholder-neutral-600 border border-white/10 focus:outline-none focus:border-cyan-500/50 resize-none transition-all"
+              rows={3}
+            />
+            
+            <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowModelDropdown(!showModelDropdown)}
+                >
+                  <span className="text-xs">
+                    {activeEngine?.alias || 'Model'}
+                  </span>
+                  <ChevronDown className="w-3 h-3 ml-1.5 text-neutral-500" />
+                </Button>
+                
+                {showModelDropdown && (
+                  <div className="absolute left-0 bottom-full mb-1 bg-[#252526] rounded-lg border border-white/10 shadow-xl max-h-48 overflow-y-auto min-w-[140px]">
+                    {engines.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-neutral-500">
+                        No engines
+                      </div>
+                    ) : (
+                      engines.map(engine => (
+                        <Button
+                          key={engine.id}
+                          variant="ghost"
+                          className={`w-full justify-start rounded-none ${activeEngine?.id === engine.id ? 'bg-cyan-500/10' : ''}`}
+                          onClick={() => {
+                            setActiveEngine(engine)
+                            setShowModelDropdown(false)
+                          }}
+                        >
+                          <span className={`text-xs ${activeEngine?.id === engine.id ? 'text-cyan-400' : 'text-white'}`}>
+                            {engine.alias}
+                          </span>
+                        </Button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {isStreaming ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleStop}
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleSend}
+                  disabled={!message.trim() || !activeEngine || isStreaming}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
               )}
             </div>
-            
-            {/* Send / Stop Button */}
-            {isStreaming ? (
-              <button
-                onClick={handleStop}
-                className="p-1.5 text-neutral-400 hover:text-white transition-colors"
-                title="Stop"
-              >
-                <Square className="w-4 h-4" fill="currentColor" />
-              </button>
-            ) : (
-              <button
-                onClick={handleSend}
-                disabled={!message.trim() || !activeEngine || isStreaming}
-                className="p-1.5 text-neutral-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            )}
           </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   )
 }

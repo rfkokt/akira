@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { X, Copy, Check, ChevronDown, ChevronRight, Loader2, Plus, Minus, FileText, GitBranch, AlertCircle, Eye, EyeOff, RefreshCw, Clock } from 'lucide-react';
 import type { Task } from '@/types';
 import type { AITaskState } from '@/store/aiChatStore';
+import { Button } from '@/components/ui/button';
 
 interface FileChange {
   path: string;
@@ -351,49 +352,46 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
           <div className="flex items-center gap-2">
             {parsedFiles.length > 0 && (
               <div className="flex items-center bg-white/5 rounded-md p-0.5 mr-2">
-                <button
+                <Button
+                  size="sm"
                   onClick={() => setViewMode('summary')}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                    viewMode === 'summary'
-                      ? 'bg-[#0e639c] text-white'
-                      : 'text-neutral-400 hover:text-white'
-                  }`}
+                  className={viewMode === 'summary' ? 'bg-[#0e639c]' : 'bg-transparent'}
                 >
                   Ringkasan
-                </button>
-                <button
+                </Button>
+                <Button
+                  size="sm"
                   onClick={() => setViewMode('detail')}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                    viewMode === 'detail'
-                      ? 'bg-[#0e639c] text-white'
-                      : 'text-neutral-400 hover:text-white'
-                  }`}
+                  className={viewMode === 'detail' ? 'bg-[#0e639c]' : 'bg-transparent'}
                 >
                   Detail
-                </button>
+                </Button>
               </div>
             )}
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setShowContext(!showContext)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-neutral-400 hover:text-white hover:bg-white/5 transition-colors font-geist"
             >
               {showContext ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
               {showContext ? 'Sembunyikan' : 'Tampilkan'} konteks
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleCopy}
               disabled={parsedFiles.length === 0}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-neutral-400 hover:text-white hover:bg-white/5 transition-colors font-geist disabled:opacity-50"
             >
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               {copied ? 'Tersalin!' : 'Salin'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onClose}
-              className="p-1 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -441,20 +439,22 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
               </span>
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
+                size="sm"
                 onClick={() => setShowDiscardConfirm(true)}
                 disabled={discarding}
-                className="px-3 py-1.5 rounded text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 font-geist transition-colors disabled:opacity-50 flex items-center gap-1"
+                className="text-red-400 bg-red-500/10 hover:bg-red-500/20"
               >
                 {discarding ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                 Batalkan Semua
-              </button>
-              <button
+              </Button>
+              <Button
+                size="sm"
                 onClick={onClose}
-                className="px-4 py-1.5 rounded text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors"
+                className="bg-[#0e639c] hover:bg-[#1177bb]"
               >
                 Tutup
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -471,20 +471,20 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
               </p>
             </div>
             <div className="px-4 py-3 border-t border-white/5 flex justify-end gap-2">
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => setShowDiscardConfirm(false)}
-                className="px-4 py-2 rounded text-xs font-medium text-neutral-400 hover:text-white font-geist transition-colors"
               >
                 Batal
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleDiscard}
                 disabled={discarding}
-                className="px-4 py-2 rounded text-xs font-medium text-white bg-red-600 hover:bg-red-700 font-geist transition-colors disabled:opacity-50 flex items-center gap-1"
+                className="bg-red-600 hover:bg-red-700"
               >
                 {discarding && <Loader2 className="w-3 h-3 animate-spin" />}
                 Ya, Batalkan
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -509,11 +509,12 @@ function SummaryView({
           key={file.path}
           className="bg-[#252526] rounded-lg border border-white/5 overflow-hidden"
         >
-          <button
+          <Button
+            variant="ghost"
+            className="w-full justify-start h-auto py-3 px-4 rounded-none"
             onClick={() => toggleFile(file.path)}
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 w-full">
               {expandedFiles.has(file.path) ? (
                 <ChevronDown className="w-4 h-4 text-neutral-500" />
               ) : (
@@ -521,18 +522,18 @@ function SummaryView({
               )}
               <FileText className="w-4 h-4 text-[#0e639c]" />
               <span className="text-sm text-white font-medium font-geist">{file.path}</span>
+              <div className="flex items-center gap-3 text-xs ml-auto">
+                <span className="flex items-center gap-1 text-green-400">
+                  <Plus className="w-3 h-3" />
+                  {file.additions}
+                </span>
+                <span className="flex items-center gap-1 text-red-400">
+                  <Minus className="w-3 h-3" />
+                  {file.deletions}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1 text-green-400">
-                <Plus className="w-3 h-3" />
-                {file.additions}
-              </span>
-              <span className="flex items-center gap-1 text-red-400">
-                <Minus className="w-3 h-3" />
-                {file.deletions}
-              </span>
-            </div>
-          </button>
+          </Button>
 
           {expandedFiles.has(file.path) && (
             <div className="px-4 py-3 border-t border-white/5 bg-[#1e1e1e]">
@@ -584,22 +585,25 @@ function DetailView({
     <div className="font-mono text-xs">
       {parsedFiles.map((file) => (
         <div key={file.path}>
-          <button
+          <Button
+            variant="ghost"
+            className="w-full justify-start h-auto py-2 px-4 rounded-none bg-[#252526] hover:bg-[#2a2d2e] sticky top-0 z-10"
             onClick={() => toggleFile(file.path)}
-            className="w-full px-4 py-2 flex items-center gap-3 bg-[#252526] hover:bg-[#2a2d2e] transition-colors sticky top-0 z-10 border-b border-white/5"
           >
-            {expandedFiles.has(file.path) ? (
-              <ChevronDown className="w-4 h-4 text-neutral-500" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-neutral-500" />
-            )}
-            <FileText className="w-4 h-4 text-[#0e639c]" />
-            <span className="text-[#0e639c]">{file.path}</span>
-            <span className="flex items-center gap-2 ml-auto text-xs">
-              <span className="text-green-400">+{file.additions}</span>
-              <span className="text-red-400">-{file.deletions}</span>
-            </span>
-          </button>
+            <div className="flex items-center gap-3 w-full">
+              {expandedFiles.has(file.path) ? (
+                <ChevronDown className="w-4 h-4 text-neutral-500" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-neutral-500" />
+              )}
+              <FileText className="w-4 h-4 text-[#0e639c]" />
+              <span className="text-[#0e639c]">{file.path}</span>
+              <span className="flex items-center gap-2 ml-auto text-xs">
+                <span className="text-green-400">+{file.additions}</span>
+                <span className="text-red-400">-{file.deletions}</span>
+              </span>
+            </div>
+          </Button>
 
           {expandedFiles.has(file.path) && (
             <div>

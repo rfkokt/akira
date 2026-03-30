@@ -4,6 +4,7 @@ import { useAIChatStore, useEngineStore } from '@/store'
 import type { Task } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Button } from '@/components/ui/button'
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
@@ -27,9 +28,10 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
             {language || 'code'}
           </span>
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-neutral-500 hover:text-white hover:bg-white/5 transition-colors"
         >
           {copied ? (
             <>
@@ -42,7 +44,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
               <span>Copy</span>
             </>
           )}
-        </button>
+        </Button>
       </div>
       <pre className="p-3 overflow-x-auto text-xs font-mono leading-relaxed text-neutral-300">
         <code>{code}</code>
@@ -186,12 +188,13 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
             {task.title}
           </p>
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onClose}
-          className="p-1 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
         >
           <X className="w-3.5 h-3.5" />
-        </button>
+        </Button>
       </div>
 
       <div className="px-3 py-1.5 bg-[#1e1e1e] border-b border-white/5">
@@ -263,17 +266,18 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
             rows={1}
             style={{ minHeight: '40px', maxHeight: '100px' }}
           />
-          <button
+          <Button
+            size="icon"
             onClick={handleSend}
             disabled={!message.trim() || !activeEngine || isTaskStreaming}
-            className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30"
+            className="bg-gradient-to-br from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30"
           >
             {isTaskStreaming ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <Send className="w-5 h-5" />
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

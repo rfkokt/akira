@@ -5,6 +5,13 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { invoke } from '@tauri-apps/api/core'
 import { Minus, Maximize2, X, Terminal as TerminalIcon } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface PtyTerminalProps {
   sessionId: string
@@ -151,37 +158,53 @@ export function PtyTerminal({
   }, [sessionId, startPty, stopPty])
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] rounded-md overflow-hidden border border-white/10">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#323232] border-b border-white/10">
-        <div className="flex items-center gap-2">
-          <TerminalIcon className="w-3.5 h-3.5 text-neutral-400" />
-          <span className="text-xs text-neutral-300 font-medium">
-            {title || `${binary} ${args.join(' ')}`}
-          </span>
-          {!isMaximized && (
-            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-yellow-400'}`} />
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onMaximize}
-            className="p-1 rounded text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            {isMaximized ? (
-              <Minus className="w-3 h-3" />
-            ) : (
-              <Maximize2 className="w-3 h-3" />
+    <TooltipProvider>
+      <div className="flex flex-col h-full bg-[#1e1e1e] rounded-md overflow-hidden border border-white/10">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-[#323232] border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <TerminalIcon className="w-3.5 h-3.5 text-neutral-400" />
+            <span className="text-xs text-neutral-300 font-medium">
+              {title || `${binary} ${args.join(' ')}`}
+            </span>
+            {!isMaximized && (
+              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-yellow-400'}`} />
             )}
-          </button>
-          <button
-            onClick={onClose}
-            className="p-1 rounded text-neutral-400 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-          >
-            <X className="w-3 h-3" />
-          </button>
+          </div>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onMaximize}
+                  className="h-7 w-7"
+                >
+                  {isMaximized ? (
+                    <Minus className="w-3 h-3" />
+                  ) : (
+                    <Maximize2 className="w-3 h-3" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{isMaximized ? 'Minimize' : 'Maximize'}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  className="h-7 w-7 hover:bg-red-400/10"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Close</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
+        <div ref={terminalRef} className="flex-1 p-1" />
       </div>
-      <div ref={terminalRef} className="flex-1 p-1" />
-    </div>
+    </TooltipProvider>
   )
 }

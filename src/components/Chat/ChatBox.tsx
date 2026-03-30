@@ -21,6 +21,15 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useEngineStore } from '@/store/engineStore'
 import { dbService } from '@/lib/db'
 import type { CliOutputEvent, CliCompleteEvent, ChatMessage, RouterProviderInfo } from '@/types'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -352,7 +361,6 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     }])
     setIsStreaming(true)
 
-    // Build conversation context from previous messages
     const conversationContext = messages
       .filter(msg => !msg.isStreaming)
       .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
@@ -364,7 +372,6 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
 
     try {
       if (useRouter) {
-        // Use CLI Router
         const request = {
           task_id: taskId || '',
           provider_alias: selectedRouterProvider!,
@@ -393,7 +400,6 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
         
         setCurrentSessionId(response.session_id)
       } else {
-        // Use direct CLI (legacy mode)
         let args: string[] = []
         if (activeEngine!.args) {
           args = activeEngine!.args.split(' ').filter(Boolean)
@@ -450,12 +456,13 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
 
   if (!isOpen) {
     return (
-      <button
+      <Button
+        size="icon"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 w-10 h-10 bg-[#0e639c] hover:bg-[#1177bb] text-white flex items-center justify-center transition-colors z-50 shadow-lg"
+        className="fixed bottom-4 right-4 w-10 h-10 bg-[#0e639c] hover:bg-[#1177bb]"
       >
         <MessageSquare className="w-4 h-4" />
-      </button>
+      </Button>
     )
   }
 
@@ -466,296 +473,330 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
       : 'h-[480px]'
 
   return (
-    <div 
-      className={`fixed right-4 bottom-4 bg-[#252526] border border-white/10 shadow-2xl z-50 flex flex-col ${mainHeight} ${
-        isExpanded ? 'w-[800px]' : 'w-[420px]'
-      }`}
-    >
-      {/* Header - VS Code Style */}
-      <div className="flex items-center justify-between px-3 h-9 bg-[#2d2d2d] border-b border-white/5 select-none">
-        <div className="flex items-center gap-2">
-          {showTerminal ? (
-            <Terminal className="w-3.5 h-3.5 text-[#858585]" />
-          ) : (
-            <Bot className="w-3.5 h-3.5 text-[#858585]" />
-          )}
-          <span className="text-xs text-[#cccccc] font-geist">
-            {showTerminal ? 'Terminal' : 'Chat'}
-          </span>
-          {useRouter ? (
-            <span className="text-xs text-[#0e639c] flex items-center gap-1">
-              <Zap className="w-3 h-3" />
-              Router: {selectedRouterProvider || 'None'}
+    <TooltipProvider delay={0}>
+      <div 
+        className={`fixed right-4 bottom-4 bg-[#252526] border border-white/10 shadow-2xl z-50 flex flex-col ${mainHeight} ${
+          isExpanded ? 'w-[800px]' : 'w-[420px]'
+        }`}
+      >
+        <div className="flex items-center justify-between px-3 h-9 bg-[#2d2d2d] border-b border-white/5 select-none">
+          <div className="flex items-center gap-2">
+            {showTerminal ? (
+              <Terminal className="w-3.5 h-3.5 text-[#858585]" />
+            ) : (
+              <Bot className="w-3.5 h-3.5 text-[#858585]" />
+            )}
+            <span className="text-xs text-[#cccccc] font-geist">
+              {showTerminal ? 'Terminal' : 'Chat'}
             </span>
-          ) : (
-            activeEngine && (
-              <span className="text-xs text-[#858585]">
-                ({activeEngine.alias}{activeEngine.model && ` • ${activeEngine.model}`})
-              </span>
-            )
-          )}
-          {isStreaming && (
-            <button 
-              onClick={handleStop}
-              className="flex items-center gap-1 text-xs text-[#c75450] hover:text-[#d75550] hover:underline cursor-pointer"
-              title="Click to stop"
-            >
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Running (click to stop)
-            </button>
-          )}
+            {useRouter ? (
+              <Badge variant="secondary" className="text-xs bg-[#0e639c]/20 text-[#0e639c]">
+                <Zap className="w-3 h-3 mr-1" />
+                Router: {selectedRouterProvider || 'None'}
+              </Badge>
+            ) : (
+              activeEngine && (
+                <span className="text-xs text-[#858585]">
+                  ({activeEngine.alias}{activeEngine.model && ` • ${activeEngine.model}`})
+                </span>
+              )
+            )}
+            {isStreaming && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleStop}
+                className="h-5 text-[#c75450] hover:text-[#d75550] hover:bg-transparent text-xs"
+              >
+                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                Running
+              </Button>
+            )}
+          </div>
+
+          <div className="flex items-center">
+            {!isMinimized && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowTerminal(!showTerminal)}
+                      className={showTerminal ? 'text-[#0e639c]' : 'text-[#858585]'}
+                    >
+                      {showTerminal ? <Bot className="w-3.5 h-3.5" /> : <Terminal className="w-3.5 h-3.5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{showTerminal ? 'Show Chat' : 'Show Terminal'}</TooltipContent>
+                </Tooltip>
+                <div className="w-px h-4 bg-white/10 mx-1" />
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsExpanded(!isExpanded)}
+                    >
+                      {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isExpanded ? 'Minimize' : 'Maximize'}</TooltipContent>
+                </Tooltip>
+              </>
+            )}
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsMinimized(!isMinimized)}
+                    >
+                      {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{isMinimized ? "Show" : "Hide"}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsOpen(false)}
+                      className="hover:bg-[#c75450]"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Close</TooltipContent>
+                </Tooltip>
+          </div>
         </div>
 
-        <div className="flex items-center">
-          {!isMinimized && (
-            <>
-              <button 
-                onClick={() => setShowTerminal(!showTerminal)}
-                className={`p-1.5 hover:bg-white/5 transition-colors ${showTerminal ? 'text-[#0e639c]' : 'text-[#858585] hover:text-[#cccccc]'}`}
-                title={showTerminal ? 'Show Chat' : 'Show Terminal'}
-              >
-                {showTerminal ? <Bot className="w-3.5 h-3.5" /> : <Terminal className="w-3.5 h-3.5" />}
-              </button>
-              <div className="w-px h-4 bg-white/10 mx-1" />
-              <button 
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1.5 text-[#858585] hover:text-[#cccccc] hover:bg-white/5 transition-colors"
-              >
-                {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              </button>
-            </>
-          )}
-          <button 
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="p-1.5 text-[#858585] hover:text-[#cccccc] hover:bg-white/5 transition-colors"
-            title={isMinimized ? "Show" : "Hide to sidebar"}
-          >
-            {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
-          </button>
-          <button 
-            onClick={() => setIsOpen(false)}
-            className="p-1.5 text-[#858585] hover:text-white hover:bg-[#c75450] transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {!isMinimized && (
-        <>
-          {/* Error Banner */}
-          {error && !showTerminal && (
-            <div className="px-3 py-2 bg-[#5a1d1d] border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-3.5 h-3.5 text-[#f48771] flex-shrink-0" />
-                <p className="text-xs text-[#f48771] font-geist flex-1">{error}</p>
-                <button 
-                  onClick={() => setShowTerminal(true)}
-                  className="text-xs text-[#0e639c] hover:underline"
-                >
-                  View terminal
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Content */}
-          <div className="flex-1 flex overflow-hidden">
-            {/* Chat Panel */}
-            <div className={`flex flex-col ${showTerminal ? 'w-1/2 border-r border-white/5' : 'w-full'}`}>
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
-                    <Bot className="w-12 h-12 mb-3 opacity-30" />
-                    <p className="text-xs text-[#858585] font-geist">
-                      {activeEngine ? 'Start a conversation' : 'Configure an engine in Settings'}
-                    </p>
-                  </div>
-                ) : (
-                  messages.map((msg, idx) => (
-                    <div 
-                      key={idx}
-                      className={`font-geist text-xs leading-relaxed whitespace-pre-wrap ${
-                        msg.role === 'user' 
-                          ? 'text-[#0e639c]' 
-                          : 'text-[#cccccc]'
-                      }`}
-                    >
-                      <span className="text-[#6e6e6e] mr-2">{msg.role}:</span>
-                      {stripToolCalls(msg.content) || (msg.isStreaming && (
-                        <span className="inline-flex items-center gap-0.5">
-                          <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                        </span>
-                      ))}
-                      {msg.isStreaming && msg.content && (
-                        <span className="inline-block w-0.5 h-3 bg-[#0e639c] animate-pulse ml-0.5" />
-                      )}
-                    </div>
-                  ))
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Input */}
-              {!showTerminal && (
-                <div className="p-2 bg-[#252526] border-t border-white/5">
-                  {/* Router Toggle */}
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setUseRouter(!useRouter)}
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
-                          useRouter 
-                            ? 'bg-[#0e639c]/20 text-[#0e639c]' 
-                            : 'bg-[#3c3c3c] text-[#858585]'
-                        }`}
-                      >
-                        <Zap className="w-3 h-3" />
-                        Router {useRouter ? 'ON' : 'OFF'}
-                      </button>
-                      {useRouter && (
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={selectedRouterProvider || ''}
-                            onChange={(e) => setSelectedRouterProvider(e.target.value)}
-                            className="bg-[#3c3c3c] text-xs text-[#cccccc] px-2 py-1 rounded border border-white/10 outline-none focus:border-[#0e639c]"
-                          >
-                            {routerProviders.filter(p => p.enabled).map(p => (
-                              <option key={p.alias} value={p.alias}>
-                                {p.alias} ({p.status})
-                              </option>
-                            ))}
-                          </select>
-                          {pendingSwitch && (
-                            <span className="text-xs text-yellow-400 animate-pulse">
-                              Switched to {pendingSwitch.newProvider}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {!useRouter && (
-                      <span className="text-xs text-[#858585]">
-                        Engine: {activeEngine?.alias || 'None'}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="flex items-end gap-2">
-                    <textarea
-                      ref={inputRef}
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder={
-                        useRouter 
-                          ? (selectedRouterProvider ? 'Type a message...' : 'Select a provider first...')
-                          : (activeEngine ? 'Type a message...' : 'Configure engine first...')
-                      }
-                      disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || isStreaming}
-                      rows={1}
-                      className="flex-1 bg-[#3c3c3c] text-xs text-[#cccccc] placeholder-[#6e6e6e] font-geist resize-none outline-none px-2.5 py-2 max-h-24 min-h-[32px] border border-transparent focus:border-[#0e639c] disabled:opacity-50"
-                    />
-                    {isStreaming ? (
-                      <button
-                        onClick={handleStop}
-                        className="p-2 bg-[#c75450] hover:bg-[#d75550] text-white transition-colors animate-pulse"
-                        title="Stop generation"
-                      >
-                        <Square className="w-3.5 h-3.5 fill-current" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleSend}
-                        disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || !message.trim()}
-                        className="p-2 bg-[#0e639c] hover:bg-[#1177bb] disabled:bg-[#3c3c3c] disabled:opacity-50 text-white transition-colors"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between mt-1.5 px-0.5">
-                    <span className="text-xs text-[#6e6e6e]">
-                      Press Enter to send
-                    </span>
-                    <button 
-                      onClick={() => setShowTerminal(true)}
-                      className="text-xs text-[#6e6e6e] hover:text-[#0e639c] transition-colors"
-                    >
-                      Show terminal
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Terminal Panel */}
-            {showTerminal && (
-              <div className="w-1/2 flex flex-col bg-[#1e1e1e]">
-                {/* Terminal Toolbar */}
-                <div className="flex items-center justify-between px-2 py-1.5 bg-[#2d2d2d] border-b border-white/5">
-                  <div className="flex items-center gap-2">
-                    <Terminal className="w-3 h-3 text-[#858585]" />
-                    <span className="text-xs text-[#858585] uppercase">Output</span>
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    <button 
-                      onClick={copyTerminal}
-                      className="p-1 text-[#858585] hover:text-[#cccccc] hover:bg-white/5 transition-colors"
-                      title="Copy"
-                    >
-                      {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                    </button>
-                    <button 
-                      onClick={clearTerminal}
-                      className="p-1 text-[#858585] hover:text-[#f48771] hover:bg-white/5 transition-colors"
-                      title="Clear"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Terminal Content */}
-                <div className="flex-1 overflow-y-auto p-2 font-mono text-xs leading-relaxed bg-[#1e1e1e]">
-                  {terminalLines.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
-                      <ScrollText className="w-8 h-8 mb-2 opacity-30" />
-                      <span className="text-xs">No output</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-0.5">
-                      {terminalLines.map((line, idx) => (
-                        <div 
-                          key={idx}
-                          className={`${
-                            line.type === 'command' ? 'text-[#9cdcfe]' :
-                            line.type === 'stderr' ? 'text-[#f48771]' :
-                            line.type === 'error' ? 'text-[#f48771] bg-[#5a1d1d]/30' :
-                            line.type === 'system' ? 'text-[#6e6e6e]' :
-                            'text-[#cccccc]'
-                          }`}
-                        >
-                          <span className="break-all">{line.content}</span>
-                        </div>
-                      ))}
-                      {isStreaming && (
-                        <div className="text-[#6e6e6e] animate-pulse">
-                          <span>...</span>
-                        </div>
-                      )}
-                      <div ref={terminalEndRef} />
-                    </div>
-                  )}
+        {!isMinimized && (
+          <>
+            {error && !showTerminal && (
+              <div className="px-3 py-2 bg-[#5a1d1d] border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-[#f48771] flex-shrink-0" />
+                  <p className="text-xs text-[#f48771] font-geist flex-1">{error}</p>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={() => setShowTerminal(true)}
+                    className="text-xs text-[#0e639c] h-auto p-0"
+                  >
+                    View terminal
+                  </Button>
                 </div>
               </div>
             )}
-          </div>
-        </>
-      )}
-    </div>
+
+            <div className="flex-1 flex overflow-hidden">
+              <div className={`flex flex-col ${showTerminal ? 'w-1/2 border-r border-white/5' : 'w-full'}`}>
+                <ScrollArea className="flex-1 p-3">
+                  <div className="space-y-3">
+                    {messages.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
+                        <Bot className="w-12 h-12 mb-3 opacity-30" />
+                        <p className="text-xs text-[#858585] font-geist">
+                          {activeEngine ? 'Start a conversation' : 'Configure an engine in Settings'}
+                        </p>
+                      </div>
+                    ) : (
+                      messages.map((msg, idx) => (
+                        <div 
+                          key={idx}
+                          className={`font-geist text-xs leading-relaxed whitespace-pre-wrap ${
+                            msg.role === 'user' 
+                              ? 'text-[#0e639c]' 
+                              : 'text-[#cccccc]'
+                          }`}
+                        >
+                          <span className="text-[#6e6e6e] mr-2">{msg.role}:</span>
+                          {stripToolCalls(msg.content) || (msg.isStreaming && (
+                            <span className="inline-flex items-center gap-0.5">
+                              <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                          ))}
+                          {msg.isStreaming && msg.content && (
+                            <span className="inline-block w-0.5 h-3 bg-[#0e639c] animate-pulse ml-0.5" />
+                          )}
+                        </div>
+                      ))
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                </ScrollArea>
+
+                {!showTerminal && (
+                  <div className="p-2 bg-[#252526] border-t border-white/5">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={useRouter ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => setUseRouter(!useRouter)}
+                          className={`h-7 text-xs ${useRouter ? 'bg-[#0e639c]/20 text-[#0e639c]' : ''}`}
+                        >
+                          <Zap className="w-3 h-3 mr-1.5" />
+                          Router {useRouter ? 'ON' : 'OFF'}
+                        </Button>
+                        {useRouter && (
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={selectedRouterProvider || ''}
+                              onChange={(e) => setSelectedRouterProvider(e.target.value)}
+                              className="bg-[#3c3c3c] text-xs text-[#cccccc] px-2 py-1 rounded border border-white/10 outline-none focus:border-[#0e639c]"
+                            >
+                              {routerProviders.filter(p => p.enabled).map(p => (
+                                <option key={p.alias} value={p.alias}>
+                                  {p.alias} ({p.status})
+                                </option>
+                              ))}
+                            </select>
+                            {pendingSwitch && (
+                              <span className="text-xs text-yellow-400 animate-pulse">
+                                Switched to {pendingSwitch.newProvider}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {!useRouter && (
+                        <span className="text-xs text-[#858585]">
+                          Engine: {activeEngine?.alias || 'None'}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-end gap-2">
+                      <textarea
+                        ref={inputRef}
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={
+                          useRouter 
+                            ? (selectedRouterProvider ? 'Type a message...' : 'Select a provider first...')
+                            : (activeEngine ? 'Type a message...' : 'Configure engine first...')
+                        }
+                        disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || isStreaming}
+                        rows={1}
+                        className="flex-1 bg-[#3c3c3c] text-xs text-[#cccccc] placeholder-[#6e6e6e] font-geist resize-none outline-none px-2.5 py-2 max-h-24 min-h-[32px] border border-transparent focus:border-[#0e639c] disabled:opacity-50"
+                      />
+                      {isStreaming ? (
+                        <Button
+                          size="icon"
+                          onClick={handleStop}
+                          className="bg-[#c75450] hover:bg-[#d75550] animate-pulse"
+                        >
+                          <Square className="w-3.5 h-3.5 fill-current" />
+                        </Button>
+                      ) : (
+                        <Button
+                          size="icon"
+                          onClick={handleSend}
+                          disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || !message.trim()}
+                          className="bg-[#0e639c] hover:bg-[#1177bb]"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 px-0.5">
+                      <span className="text-xs text-[#6e6e6e]">
+                        Press Enter to send
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowTerminal(true)}
+                        className="h-5 text-xs text-[#6e6e6e] hover:text-[#0e639c]"
+                      >
+                        Show terminal
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {showTerminal && (
+                <div className="w-1/2 flex flex-col bg-[#1e1e1e]">
+                  <div className="flex items-center justify-between px-2 py-1.5 bg-[#2d2d2d] border-b border-white/5">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="w-3 h-3 text-[#858585]" />
+                      <span className="text-xs text-[#858585] uppercase">Output</span>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={copyTerminal}
+                          className="h-7 w-7"
+                        >
+                          {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={clearTerminal}
+                          className="h-7 w-7 text-[#858585] hover:text-[#f48771]"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Clear</TooltipContent>
+                    </Tooltip>
+                    </div>
+                  </div>
+
+                  <ScrollArea className="flex-1 p-2 font-mono text-xs leading-relaxed bg-[#1e1e1e]">
+                    {terminalLines.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
+                        <ScrollText className="w-8 h-8 mb-2 opacity-30" />
+                        <span className="text-xs">No output</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {terminalLines.map((line, idx) => (
+                          <div 
+                            key={idx}
+                            className={`${
+                              line.type === 'command' ? 'text-[#9cdcfe]' :
+                              line.type === 'stderr' ? 'text-[#f48771]' :
+                              line.type === 'error' ? 'text-[#f48771] bg-[#5a1d1d]/30' :
+                              line.type === 'system' ? 'text-[#6e6e6e]' :
+                              'text-[#cccccc]'
+                            }`}
+                          >
+                            <span className="break-all">{line.content}</span>
+                          </div>
+                        ))}
+                        {isStreaming && (
+                          <div className="text-[#6e6e6e] animate-pulse">
+                            <span>...</span>
+                          </div>
+                        )}
+                        <div ref={terminalEndRef} />
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </TooltipProvider>
   )
 }

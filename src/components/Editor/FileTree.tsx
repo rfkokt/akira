@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 interface FileEntry {
   name: string
@@ -153,12 +154,11 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
 
     return (
       <div key={node.path}>
-        <button
-          onClick={() => toggleDir(node)}
-          className={`w-full flex items-center gap-1 py-1 text-left hover:bg-white/5 transition-colors group ${
-            isSelected ? 'bg-[#0e639c]/20' : ''
-          }`}
+        <Button
+          variant="ghost"
+          className={`w-full justify-start h-auto py-1 text-left group ${isSelected ? 'bg-[#0e639c]/20' : ''}`}
           style={{ paddingLeft: `${paddingLeft}px` }}
+          onClick={() => toggleDir(node)}
         >
           {node.is_dir && (
             <span className="text-neutral-500 w-3 flex-shrink-0">
@@ -190,7 +190,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
               {formatSize(node.size)}
             </span>
           )}
-        </button>
+        </Button>
         
         {/* Render children if expanded */}
         {node.is_dir && isExpanded && node.children && (
@@ -228,7 +228,9 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
         ) : (
           <div>
             {/* Root Folder */}
-            <button
+            <Button
+              variant="ghost"
+              className="w-full justify-start h-auto py-1 px-3"
               onClick={() => {
                 const newExpanded = new Set(expandedDirs)
                 if (newExpanded.has(rootPath)) {
@@ -238,7 +240,6 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
                 }
                 setExpandedDirs(newExpanded)
               }}
-              className="w-full flex items-center gap-1 px-3 py-1 text-left hover:bg-white/5 transition-colors"
             >
               <span className="text-neutral-500 w-3 flex-shrink-0">
                 {expandedDirs.has(rootPath) ? (
@@ -251,7 +252,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
               <span className="flex-1 truncate text-xs font-medium text-white font-geist">
                 {rootName || rootPath.split('/').pop() || rootPath}
               </span>
-            </button>
+            </Button>
             
             {/* Children */}
             {expandedDirs.has(rootPath) && (

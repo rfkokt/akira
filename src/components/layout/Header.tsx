@@ -5,6 +5,19 @@ import { CostTrackingDashboard } from '@/components/Router/CostTrackingDashboard
 import { useAIChatStore } from '@/store'
 import { dbService } from '@/lib/db'
 import type { RouterProviderInfo } from '@/types'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 export function Header() {
   const [showSettings, setShowSettings] = useState(false)
@@ -35,87 +48,94 @@ export function Header() {
   }
 
   return (
-    <>
+    <TooltipProvider>
       <header className="h-10 bg-[#252526] border-b border-white/5 flex items-center justify-between px-4 shrink-0">
-        {/* Left - Navigation */}
         <nav className="flex items-center gap-1">
-          <button className="px-3 py-1.5 text-sm font-medium text-white bg-white/10 rounded-md transition-colors font-geist">
+          <Button variant="secondary" size="sm" className="text-white bg-white/10">
             Tasks
-          </button>
-          <button className="px-3 py-1.5 text-sm font-medium text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist">
+          </Button>
+          <Button variant="ghost" size="sm">
             Files
-          </button>
-          <button className="px-3 py-1.5 text-sm font-medium text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist">
+          </Button>
+          <Button variant="ghost" size="sm">
             Git
-          </button>
+          </Button>
         </nav>
         
-        {/* Center - CLI Router Toggle */}
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleToggleRouter}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors font-geist ${
-              useRouter 
-                ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30' 
-                : 'bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10'
-            }`}
+            className={useRouter ? 'bg-yellow-500/20 text-yellow-400' : ''}
             title={useRouter ? 'Disable CLI Router' : 'Enable CLI Router'}
           >
-            <Zap className="w-3.5 h-3.5" />
+            <Zap className="w-3.5 h-3.5 mr-1.5" />
             Router
-          </button>
+          </Button>
           
           {useRouter && (
-            <div className="relative group">
-              <button className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium bg-white/5 text-neutral-300 hover:text-white hover:bg-white/10 rounded-md transition-colors font-geist">
-                {routerProvider || 'Select Provider'}
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              
-              <div className="absolute top-full left-0 mt-1 bg-[#252526] border border-white/10 rounded-md shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 min-w-[160px]">
+            <DropdownMenu>
+              <DropdownMenuTrigger>
+                <Button variant="ghost" size="sm">
+                  {routerProvider || 'Select Provider'}
+                  <ChevronDown className="w-3 h-3 ml-1.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[160px]">
                 {providers.length > 0 ? (
                   providers.map((provider) => (
-                    <button
+                    <DropdownMenuItem
                       key={provider.alias}
                       onClick={() => handleSelectProvider(provider.alias)}
-                      className={`w-full px-3 py-2 text-xs text-left hover:bg-white/5 transition-colors first:rounded-t-md last:rounded-b-md ${
-                        routerProvider === provider.alias ? 'text-yellow-400 bg-white/5' : 'text-neutral-300'
-                      }`}
+                      className={routerProvider === provider.alias ? 'text-yellow-400' : ''}
                     >
-                      <div className="font-medium">{provider.alias}</div>
-                      <div className="text-neutral-500 text-[10px] mt-0.5">{provider.binary_path}</div>
-                    </button>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{provider.alias}</span>
+                        <span className="text-[10px] text-neutral-500">{provider.binary_path}</span>
+                      </div>
+                    </DropdownMenuItem>
                   ))
                 ) : (
                   <div className="px-3 py-2 text-xs text-neutral-500">No providers available</div>
                 )}
-              </div>
-            </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
         
-        {/* Right - Settings */}
         <div className="flex items-center gap-2">
           {useRouter && (
-            <button
-              onClick={() => setShowCostDashboard(true)}
-              className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
-              title="Cost Tracking Dashboard"
-            >
-              <DollarSign className="w-4 h-4" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowCostDashboard(true)}
+                >
+                  <DollarSign className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Cost Tracking Dashboard</TooltipContent>
+            </Tooltip>
           )}
-          <button 
-            onClick={() => setShowSettings(true)}
-            className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
       <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
       <CostTrackingDashboard isOpen={showCostDashboard} onClose={() => setShowCostDashboard(false)} />
-    </>
+    </TooltipProvider>
   )
 }

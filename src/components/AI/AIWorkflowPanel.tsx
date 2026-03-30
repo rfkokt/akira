@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Bot, Play, CheckCircle, GitBranch, MessageSquare, FileDiff, X } from 'lucide-react';
 import type { Task } from '@/types';
 import { useEngineStore } from '@/store/engineStore';
+import { Button } from '@/components/ui/button';
 
 interface AIWorkflowPanelProps {
   task: Task;
@@ -36,14 +37,14 @@ export function AIWorkflowPanel({
                   AI will analyze and implement this task
                 </p>
               </div>
-              <button
+              <Button
                 onClick={onStartAI}
                 disabled={!activeEngine}
-                className="flex items-center gap-2 px-4 py-2 bg-[#0e639c] hover:bg-[#1177bb] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md text-sm font-medium font-geist transition-colors"
+                className="bg-[#0e639c] hover:bg-[#1177bb]"
               >
                 <Play className="w-4 h-4" />
                 Start
-              </button>
+              </Button>
             </div>
             {!activeEngine && (
               <p className="text-xs text-yellow-500 font-geist text-center">
@@ -67,13 +68,14 @@ export function AIWorkflowPanel({
                 </p>
               </div>
             </div>
-            <button
+            <Button
+              variant="outline"
+              className="w-full"
               onClick={onOpenChat}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-neutral-300 rounded-md text-sm font-medium font-geist transition-colors"
             >
               <MessageSquare className="w-4 h-4" />
               Open Chat
-            </button>
+            </Button>
           </div>
         );
 
@@ -91,29 +93,29 @@ export function AIWorkflowPanel({
             </div>
             
             <div className="grid grid-cols-2 gap-2">
-              <button
+              <Button
+                variant="outline"
                 onClick={onViewDiff}
-                className="flex items-center justify-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 text-neutral-300 rounded-md text-sm font-medium font-geist transition-colors"
               >
                 <FileDiff className="w-4 h-4" />
                 View Diff
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
                 onClick={onOpenChat}
-                className="flex items-center justify-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 text-neutral-300 rounded-md text-sm font-medium font-geist transition-colors"
               >
                 <MessageSquare className="w-4 h-4" />
                 Chat
-              </button>
+              </Button>
             </div>
 
-            <button
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700"
               onClick={() => setShowGitFlow(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm font-medium font-geist transition-colors"
             >
               <GitBranch className="w-4 h-4" />
               Complete & Push
-            </button>
+            </Button>
           </div>
         );
 
@@ -129,12 +131,13 @@ export function AIWorkflowPanel({
           <h3 className="text-sm font-semibold text-white font-geist">
             AI Workflow: {task.title}
           </h3>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="p-1 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <div className="p-4">
@@ -258,18 +261,18 @@ function GitPushFlow({ task, onClose, onComplete }: GitPushFlowProps) {
 
           {/* Actions */}
           <div className="flex justify-end gap-2">
-            <button
+            <Button
+              variant="ghost"
               onClick={onClose}
-              className="px-4 py-2 rounded text-sm font-medium text-neutral-400 hover:text-white font-geist transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleNext}
-              className="px-4 py-2 rounded text-sm font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors"
+              className="bg-[#0e639c] hover:bg-[#1177bb]"
             >
               {step === 4 ? 'Complete' : 'Next'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

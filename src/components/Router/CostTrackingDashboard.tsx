@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
-import { X, TrendingUp, DollarSign, Activity } from 'lucide-react';
+import { TrendingUp, DollarSign, Activity } from 'lucide-react';
 import { dbService } from '@/lib/db';
 import type { RouterProviderInfo } from '@/types';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface CostTrackingDashboardProps {
   isOpen: boolean;
@@ -68,85 +76,71 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
   const totalCost = providerStats.reduce((sum, p) => sum + p.totalCost, 0);
   const totalTokens = providerStats.reduce((sum, p) => sum + p.totalInputTokens + p.totalOutputTokens, 0);
 
-  if (!isOpen) return null;
-
   const filteredStats = selectedProvider
     ? providerStats.filter(p => p.alias === selectedProvider)
     : providerStats;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-[#1e1e1e] rounded-lg w-[800px] max-h-[80vh] overflow-hidden border border-white/10">
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5" />
             Cost Tracking Dashboard
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-white/10 rounded transition-colors"
-          >
-            <X className="w-5 h-5 text-[#cccccc]" />
-          </button>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="bg-[#2d2d2d] rounded-lg p-4">
+            <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
+              <DollarSign className="w-4 h-4" />
+              Total Cost
+            </div>
+            <div className="text-2xl font-bold text-white">
+              ${totalCost.toFixed(4)}
+            </div>
+          </div>
+          <div className="bg-[#2d2d2d] rounded-lg p-4">
+            <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
+              <Activity className="w-4 h-4" />
+              Total Requests
+            </div>
+            <div className="text-2xl font-bold text-white">
+              {providerStats.reduce((sum, p) => sum + p.totalRequests, 0)}
+            </div>
+          </div>
+          <div className="bg-[#2d2d2d] rounded-lg p-4">
+            <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
+              <TrendingUp className="w-4 h-4" />
+              Total Tokens
+            </div>
+            <div className="text-2xl font-bold text-white">
+              {totalTokens.toLocaleString()}
+            </div>
+          </div>
         </div>
 
-        <div className="p-4">
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-[#2d2d2d] rounded-lg p-4">
-              <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
-                <DollarSign className="w-4 h-4" />
-                Total Cost
-              </div>
-              <div className="text-2xl font-bold text-white">
-                ${totalCost.toFixed(4)}
-              </div>
-            </div>
-            <div className="bg-[#2d2d2d] rounded-lg p-4">
-              <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
-                <Activity className="w-4 h-4" />
-                Total Requests
-              </div>
-              <div className="text-2xl font-bold text-white">
-                {providerStats.reduce((sum, p) => sum + p.totalRequests, 0)}
-              </div>
-            </div>
-            <div className="bg-[#2d2d2d] rounded-lg p-4">
-              <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
-                <TrendingUp className="w-4 h-4" />
-                Total Tokens
-              </div>
-              <div className="text-2xl font-bold text-white">
-                {totalTokens.toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-4 flex gap-2 flex-wrap">
-            <button
-              onClick={() => setSelectedProvider(null)}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                !selectedProvider
-                  ? 'bg-[#0e639c] text-white'
-                  : 'bg-[#3c3c3c] text-[#cccccc] hover:bg-[#4c4c4c]'
-              }`}
+        <div className="mb-4 flex gap-2 flex-wrap">
+          <Button
+            variant={!selectedProvider ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setSelectedProvider(null)}
+          >
+            All Providers
+          </Button>
+          {providers.map(p => (
+            <Button
+              key={p.alias}
+              variant={selectedProvider === p.alias ? "default" : "secondary"}
+              size="sm"
+              onClick={() => setSelectedProvider(p.alias)}
             >
-              All Providers
-            </button>
-            {providers.map(p => (
-              <button
-                key={p.alias}
-                onClick={() => setSelectedProvider(p.alias)}
-                className={`px-3 py-1 rounded text-sm transition-colors ${
-                  selectedProvider === p.alias
-                    ? 'bg-[#0e639c] text-white'
-                    : 'bg-[#3c3c3c] text-[#cccccc] hover:bg-[#4c4c4c]'
-                }`}
-              >
-                {p.alias}
-              </button>
-            ))}
-          </div>
+              {p.alias}
+            </Button>
+          ))}
+        </div>
 
+        <ScrollArea className="h-[300px]">
           {loading ? (
             <div className="text-center py-8 text-[#858585]">Loading...</div>
           ) : filteredStats.length === 0 ? (
@@ -154,7 +148,7 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
               No cost data available
             </div>
           ) : (
-            <div className="space-y-3 max-h-[300px] overflow-y-auto">
+            <div className="space-y-3 pr-4">
               {filteredStats.map(stat => {
                 const provider = providers.find(p => p.alias === stat.alias);
                 const avgCost = stat.totalRequests > 0 
@@ -207,8 +201,8 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
               })}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,6 +1,7 @@
 import { X, Copy, Check } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
 import { useState, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
 
 interface PromptPreviewProps {
   onClose: () => void;
@@ -40,29 +41,33 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
           </div>
           
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist"
+              className="text-neutral-300 hover:text-white"
             >
               {copied ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-green-400" />
+                  <Check className="w-3.5 h-3.5 text-green-400 mr-1.5" />
                   <span className="text-green-400">Copied!</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5" />
+                  <Copy className="w-3.5 h-3.5 mr-1.5" />
                   Copy
                 </>
               )}
-            </button>
+            </Button>
             
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onClose}
-              className="p-1.5 text-neutral-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
+              className="h-8 w-8 text-neutral-400 hover:text-white"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -113,12 +118,13 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
           <div className="text-xs text-neutral-500 font-geist">
             Project: Workspace Config
           </div>
-          <button
+          <Button
+            size="sm"
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] rounded-md transition-colors font-geist"
+            className="bg-[#0e639c] hover:bg-[#1177bb]"
           >
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </div>

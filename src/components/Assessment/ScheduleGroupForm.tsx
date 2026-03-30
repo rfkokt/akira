@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Calendar } from 'lucide-react';
 import { useAssessmentStore } from '@/store';
+import { Button } from '@/components/ui/button';
 
 export function ScheduleGroupForm() {
   const {
@@ -113,13 +114,13 @@ export function ScheduleGroupForm() {
 
   if (!isFormOpen) {
     return (
-      <button
+      <Button
         onClick={handleOpenForm}
-        className="w-full px-4 py-3 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded-lg transition-colors font-geist text-sm font-medium flex items-center justify-center gap-2"
+        className="w-full bg-[#0e639c] hover:bg-[#1177bb]"
       >
         <Plus className="w-4 h-4" />
         Buat Jadwal Group
-      </button>
+      </Button>
     );
   }
 
@@ -127,12 +128,13 @@ export function ScheduleGroupForm() {
     <div className="bg-[#252526] border border-white/10 rounded-lg p-4">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-white font-geist">Buat Jadwal Group</h3>
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={handleCloseForm}
-          className="p-1 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
         >
           <X className="w-4 h-4" />
-        </button>
+        </Button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -193,13 +195,12 @@ export function ScheduleGroupForm() {
               placeholder="Nama atau NIP peserta"
               className="flex-1 px-3 py-2 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 font-geist text-sm"
             />
-            <button
+            <Button
               type="button"
               onClick={handleAddParticipant}
-              className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
 
           {/* Participants List */}
@@ -211,13 +212,15 @@ export function ScheduleGroupForm() {
                   className="flex items-center justify-between px-3 py-1.5 bg-[#1e1e1e] rounded-lg"
                 >
                   <span className="text-sm text-neutral-300 font-geist">{participant}</span>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleRemoveParticipant(participant)}
-                    className="p-1 rounded text-neutral-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    className="text-neutral-500 hover:text-red-400 hover:bg-red-500/10"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>
@@ -233,19 +236,20 @@ export function ScheduleGroupForm() {
 
         {/* Actions */}
         <div className="flex gap-2 pt-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={handleCloseForm}
-            className="flex-1 px-4 py-2 bg-neutral-700 hover:bg-neutral-600 text-white rounded-lg transition-colors font-geist text-sm"
+            className="flex-1"
           >
             Batal
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
-            className="flex-1 px-4 py-2 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded-lg transition-colors font-geist text-sm"
+            className="flex-1 bg-[#0e639c] hover:bg-[#1177bb]"
           >
             Simpan
-          </button>
+          </Button>
         </div>
       </form>
     </div>

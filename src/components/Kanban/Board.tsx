@@ -6,6 +6,7 @@ import type { AITaskState } from '@/store/aiChatStore'
 import { invoke } from '@tauri-apps/api/core'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'
+import { Button } from '@/components/ui/button'
 import { TaskChatBox } from '@/components/Chat/TaskChatBox'
 import { DiffViewer } from '@/components/DiffViewer/DiffViewer'
 import { DescriptionWithFileTag } from '@/components/DescriptionWithFileTag'
@@ -303,12 +304,13 @@ function TaskDetailModal({
             <div className={`w-2 h-2 rounded-full ${getStatusColor(task.status)}`} />
             <h3 className="text-sm font-semibold text-white font-geist">Task Details</h3>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="p-1 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Content */}
@@ -429,29 +431,33 @@ function TaskDetailModal({
             {/* Left: Delete Button */}
             <div>
               {!showDeleteConfirm ? (
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors font-geist"
+                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Delete
-                </button>
+                </Button>
               ) : (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-neutral-400 font-geist">Are you sure?</span>
-                  <button
+                  <Button
+                    size="sm"
                     onClick={handleDelete}
                     disabled={isDeleting}
-                    className="px-2 py-1 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 font-geist"
+                    className="bg-red-600 hover:bg-red-700"
                   >
                     {isDeleting ? '...' : 'Yes'}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowDeleteConfirm(false)}
-                    className="px-2 py-1 rounded text-xs font-medium text-neutral-400 hover:text-white font-geist"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -460,75 +466,81 @@ function TaskDetailModal({
             <div className="flex items-center gap-2">
               {/* Status-specific actions */}
               {task.status === 'todo' && (
-                <button
+                <Button
+                  size="sm"
                   onClick={() => {
                     onStartAI(task)
                     onClose()
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-[#0e639c] hover:bg-[#1177bb] text-white transition-colors font-geist"
+                  className="bg-[#0e639c] hover:bg-[#1177bb]"
                 >
                   <Play className="w-3.5 h-3.5" />
                   Start AI
-                </button>
+                </Button>
               )}
 
               {task.status === 'in-progress' && (
-                <button
+                <Button
+                  size="sm"
                   onClick={() => {
                     onOpenChat(task)
                     onClose()
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600/30 transition-colors font-geist"
+                  className="bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600/30"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   View Chat
-                </button>
+                </Button>
               )}
 
               {task.status === 'review' && (
                 <>
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       onViewDiff(task)
                       onClose()
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-white/5 text-neutral-300 hover:bg-white/10 transition-colors font-geist"
                   >
                     <FileDiff className="w-3.5 h-3.5" />
                     View Diff
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    size="sm"
                     onClick={() => {
                       onComplete(task)
                       onClose()
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-[#0e639c] text-white hover:bg-[#1177bb] transition-colors font-geist"
+                    className="bg-[#0e639c] hover:bg-[#1177bb]"
                   >
                     <GitMerge className="w-3.5 h-3.5" />
                     Merge
-                  </button>
+                  </Button>
                 </>
               )}
 
               {task.status === 'failed' && (
-                <button
+                <Button
+                  size="sm"
                   onClick={() => {
                     onRetry(task)
                     onClose()
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors font-geist"
+                  className="bg-red-600 hover:bg-red-700"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Retry
-                </button>
+                </Button>
               )}
 
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={onClose}
-                className="px-4 py-1.5 rounded text-xs font-medium text-neutral-300 hover:text-white font-geist transition-colors"
               >
                 Close
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -614,13 +626,14 @@ function TaskCard({
         <div className="flex items-center gap-1.5">
           {/* Action buttons based on status */}
           {task.status === 'todo' && (
-            <button
+            <Button
+              size="sm"
               onClick={(e) => {
                 e.stopPropagation()
                 onStartAI(task)
               }}
               disabled={processingTasks.has(task.id)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[#0e639c] hover:bg-[#1177bb] disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors font-geist"
+              className="bg-[#0e639c] hover:bg-[#1177bb] disabled:opacity-50"
               title="Start AI"
             >
               {processingTasks.has(task.id) ? (
@@ -629,41 +642,44 @@ function TaskCard({
                 <Play className="w-3 h-3" />
               )}
               {processingTasks.has(task.id) ? 'Starting...' : 'Start'}
-            </button>
+            </Button>
           )}
 
           {task.status === 'review' && (
             <>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={(e) => {
                   e.stopPropagation()
                   onViewDiff(task)
                 }}
-                className="p-1.5 rounded text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
                 title="View Diff"
               >
                 <FileDiff className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={(e) => {
                   e.stopPropagation()
                   onOpenChat(task)
                 }}
-                className="p-1.5 rounded text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
                 title="Chat"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </Button>
+              <Button
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation()
                   onComplete(task)
                 }}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors font-geist"
+                className="bg-green-600 hover:bg-green-700"
               >
                 <GitMerge className="w-3 h-3" />
                 Merge
-              </button>
+              </Button>
             </>
           )}
 
@@ -676,27 +692,29 @@ function TaskCard({
 
           {task.status === 'failed' && (
             <>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={(e) => {
                   e.stopPropagation()
                   onOpenChat(task)
                 }}
-                className="p-1.5 rounded text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
                 title="View Error"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </Button>
+              <Button
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation()
                   onRetry(task)
                 }}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white transition-colors font-geist"
+                className="bg-red-600 hover:bg-red-700"
                 title="Retry Task"
               >
                 <RefreshCw className="w-3 h-3" />
                 Retry
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -789,30 +807,32 @@ function KanbanColumn({
         {column.id === 'todo' && (
           <div className="flex items-center gap-1">
             {onImport && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={onImport}
-                className="p-1.5 rounded text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
                 title="Import Tasks"
               >
                 <Upload className="w-4 h-4" />
-              </button>
+              </Button>
             )}
             {onAddTask && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={onAddTask}
-                className="p-1.5 rounded text-neutral-500 hover:text-white hover:bg-white/10 transition-colors"
                 title="Add Task"
               >
                 <Plus className="w-4 h-4" />
-              </button>
+              </Button>
             )}
           </div>
         )}
         
         {column.id !== 'todo' && (
-          <button className="p-1 rounded text-neutral-500 hover:text-white hover:bg-white/5 transition-colors">
+          <Button variant="ghost" size="icon">
             <MoreHorizontal className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         )}
       </div>
 
@@ -823,13 +843,14 @@ function KanbanColumn({
 
       {/* Add Task Button - Only show for TODO column */}
       {column.id === 'todo' && onAddTask && (
-        <button 
+        <Button 
+          variant="outline"
+          className="mx-4 mb-4 gap-2 shrink-0 border-dashed"
           onClick={onAddTask}
-          className="mx-4 mb-4 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium text-neutral-500 hover:text-neutral-300 hover:bg-white/5 transition-colors font-geist shrink-0 border border-dashed border-white/10 hover:border-white/20"
         >
           <Plus className="w-4 h-4" />
           Add task
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -1109,12 +1130,13 @@ export function KanbanBoard() {
           <div className="bg-[#252526] rounded-lg border border-white/10 w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
               <h3 className="text-sm font-semibold text-white font-geist">New Task</h3>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setShowAddModal(false)}
-                className="p-1 rounded text-neutral-500 hover:text-white hover:bg-white/5"
               >
                 <X className="w-4 h-4" />
-              </button>
+              </Button>
             </div>
 
             <form onSubmit={handleCreateTask} className="p-4 space-y-3">
@@ -1184,19 +1206,19 @@ export function KanbanBoard() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-1.5 rounded text-sm font-medium text-neutral-300 hover:text-white hover:bg-white/5 font-geist transition-colors"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="px-4 py-1.5 rounded text-sm font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors"
+                  className="bg-[#0e639c] hover:bg-[#1177bb]"
                 >
                   Create Task
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -1748,7 +1770,9 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                   <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={currentBranch}>
                     {currentBranch}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={async () => {
                       const branchResult = await runGit(['branch', '--show-current'])
                       if (branchResult.success) {
@@ -1756,10 +1780,10 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                         setMergeSourceBranch(branchResult.output.trim())
                       }
                     }}
-                    className="text-xs text-[#0e639c] hover:text-[#1177bb] px-2 py-1"
+                    className="text-[#0e639c] hover:text-[#1177bb]"
                   >
                     ↻ Refresh
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -1825,10 +1849,12 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs text-neutral-400 font-geist">Commit Message</label>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => generateCommitMessage(true)}
                 disabled={isGenerating || !useEngineStore.getState().activeEngine}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-[#0e639c] hover:text-[#1177bb] hover:bg-[#0e639c]/10 transition-colors disabled:opacity-50"
+                className="text-[#0e639c] hover:text-[#1177bb]"
               >
                 {isGenerating ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -1836,7 +1862,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                   <Sparkles className="w-3 h-3" />
                 )}
                 Regenerate
-              </button>
+              </Button>
             </div>
             <textarea
               value={commitMsg}
@@ -1868,18 +1894,15 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
             <div className="flex gap-2">
               <div className="flex gap-1">
                 {(['patch', 'minor', 'major'] as const).map(type => (
-                  <button
+                  <Button
                     key={type}
+                    size="sm"
                     onClick={() => setTagType(type)}
                     disabled={!createTag}
-                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      tagType === type 
-                        ? 'bg-[#0e639c] text-white' 
-                        : 'bg-[#3c3c3c] text-neutral-400 hover:text-white'
-                    } ${!createTag ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={tagType === type ? 'bg-[#0e639c]' : 'bg-[#3c3c3c]'}
                   >
                     {type}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <input
@@ -1920,19 +1943,19 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
 
         {/* Actions */}
         <div className="px-4 py-3 border-t border-white/5 flex justify-between">
-          <button
+          <Button
+            variant="ghost"
             onClick={onClose}
             disabled={loading}
-            className="px-4 py-2 rounded text-sm font-medium text-neutral-400 hover:text-white font-geist transition-colors disabled:opacity-50"
           >
             {isPRCreated ? 'Close' : 'Cancel'}
-          </button>
+          </Button>
           <div className="flex gap-2">
             {!isPRCreated && (
-              <button
+              <Button
                 onClick={createPR}
                 disabled={loading || changedFiles.length === 0}
-                className="px-4 py-2 rounded text-sm font-medium text-white bg-[#238636] hover:bg-[#2ea043] font-geist transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="bg-[#238636] hover:bg-[#2ea043]"
               >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -1940,12 +1963,12 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                   <GitBranch className="w-4 h-4" />
                 )}
                 Create PR
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               onClick={executeMerge}
               disabled={loading || changedFiles.length === 0}
-              className="px-4 py-2 rounded text-sm font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors disabled:opacity-50 flex items-center gap-2"
+              className="bg-[#0e639c] hover:bg-[#1177bb]"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -1953,7 +1976,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 <GitMerge className="w-4 h-4" />
               )}
               Merge
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -1,9 +1,23 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Cpu, Zap, ChevronRight, Loader2, AlertTriangle, Check, Wallet } from 'lucide-react'
+import { Plus, Trash2, Cpu, Zap, ChevronRight, Loader2, AlertTriangle, Check, Wallet } from 'lucide-react'
 import { useEngineStore } from '@/store'
 import { invoke } from '@tauri-apps/api/core'
 import { dbService } from '@/lib/db'
 import type { CreateEngineRequest, RouterProviderInfo } from '@/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -37,28 +51,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { engines, fetchEngines, createEngine, deleteEngine, toggleEngine, seedDefaultEngines, isLoading, error } = useEngineStore()
   const [showAddEngine, setShowAddEngine] = useState(false)
   const [isSeeding, setIsSeeding] = useState(false)
-  const [activeTab, setActiveTab] = useState<'engines' | 'rtk' | 'router'>('engines')
-  const [newEngine, setNewEngine] = useState<CreateEngineRequest>({
-    alias: '',
-    binary_path: '',
-    model: '',
-    args: '',
-  })
 
   useEffect(() => {
     if (isOpen) {
       fetchEngines()
     }
   }, [isOpen, fetchEngines])
-
-  const handleAddEngine = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newEngine.alias.trim() || !newEngine.binary_path.trim()) return
-    
-    await createEngine(newEngine)
-    setNewEngine({ alias: '', binary_path: '', model: '', args: '' })
-    setShowAddEngine(false)
-  }
 
   const handleSeedDefaults = async () => {
     setIsSeeding(true)
@@ -74,241 +72,216 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-[#252526] border border-white/10 rounded-lg w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#2d2d2d]">
-          <h2 className="text-sm font-semibold text-white font-geist">Settings</h2>
-          <button 
-            onClick={onClose}
-            className="p-1 rounded text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-white/5">
-          <button
-            onClick={() => setActiveTab('engines')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors font-geist ${
-              activeTab === 'engines'
-                ? 'text-white border-b-2 border-[#0e639c]'
-                : 'text-neutral-400 hover:text-white'
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            CLI Engines
-          </button>
-          <button
-            onClick={() => setActiveTab('rtk')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors font-geist ${
-              activeTab === 'rtk'
-                ? 'text-white border-b-2 border-[#0e639c]'
-                : 'text-neutral-400 hover:text-white'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            RTK
-          </button>
-          <button
-            onClick={() => setActiveTab('router')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium transition-colors font-geist ${
-              activeTab === 'router'
-                ? 'text-white border-b-2 border-[#0e639c]'
-                : 'text-neutral-400 hover:text-white'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            Router
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-4 overflow-y-auto max-h-[60vh]">
-          {activeTab === 'engines' && (
-            <EnginesTab
-              engines={engines}
-              isLoading={isLoading}
-              error={error}
-              showAddEngine={showAddEngine}
-              newEngine={newEngine}
-              setShowAddEngine={setShowAddEngine}
-              setNewEngine={setNewEngine}
-              handleAddEngine={handleAddEngine}
-              toggleEngine={toggleEngine}
-              deleteEngine={deleteEngine}
-              handleSeedDefaults={handleSeedDefaults}
-              isSeeding={isSeeding}
-            />
-          )}
-          {activeTab === 'rtk' && (
-            <RTKTab />
-          )}
-          {activeTab === 'router' && (
-            <RouterTab />
-          )}
-        </div>
-      </div>
-    </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[80vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Cpu className="size-4" />
+            Settings
+          </DialogTitle>
+        </DialogHeader>
+        
+        <ScrollArea className="h-[60vh] pr-4">
+          <Tabs defaultValue="engines" className="w-full">
+            <TabsList className="w-full grid grid-cols-3">
+              <TabsTrigger value="engines" className="gap-1.5">
+                <Cpu className="size-3.5" />
+                CLI Engines
+              </TabsTrigger>
+              <TabsTrigger value="rtk" className="gap-1.5">
+                <Zap className="size-3.5" />
+                RTK
+              </TabsTrigger>
+              <TabsTrigger value="router" className="gap-1.5">
+                <Zap className="size-3.5" />
+                Router
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="engines" className="mt-4">
+              <EnginesTab
+                engines={engines}
+                isLoading={isLoading}
+                error={error}
+                showAddEngine={showAddEngine}
+                setShowAddEngine={setShowAddEngine}
+                createEngine={createEngine}
+                toggleEngine={toggleEngine}
+                deleteEngine={deleteEngine}
+                handleSeedDefaults={handleSeedDefaults}
+                isSeeding={isSeeding}
+              />
+            </TabsContent>
+            
+            <TabsContent value="rtk" className="mt-4">
+              <RTKTab />
+            </TabsContent>
+            
+            <TabsContent value="router" className="mt-4">
+              <RouterTab />
+            </TabsContent>
+          </Tabs>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-function EnginesTab({ engines, isLoading, error, showAddEngine, newEngine, setShowAddEngine, setNewEngine, handleAddEngine, toggleEngine, deleteEngine, handleSeedDefaults, isSeeding }: {
+function EnginesTab({ engines, isLoading, error, showAddEngine, setShowAddEngine, createEngine, toggleEngine, deleteEngine, handleSeedDefaults, isSeeding }: {
   engines: any[]
   isLoading: boolean
   error: string | null
   showAddEngine: boolean
-  newEngine: CreateEngineRequest
   setShowAddEngine: (v: boolean) => void
-  setNewEngine: (v: CreateEngineRequest) => void
-  handleAddEngine: (e: React.FormEvent) => void
+  createEngine: (engine: CreateEngineRequest) => Promise<void>
   toggleEngine: (id: number, enabled: boolean) => void
   deleteEngine: (id: number) => void
   handleSeedDefaults: () => void
   isSeeding: boolean
 }) {
+  const [newEngine, setNewEngine] = useState<CreateEngineRequest>({
+    alias: '',
+    binary_path: '',
+    model: '',
+    args: '',
+  })
+
+  const handleAddEngine = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newEngine.alias.trim() || !newEngine.binary_path.trim()) return
+    
+    await createEngine(newEngine)
+    setNewEngine({ alias: '', binary_path: '', model: '', args: '' })
+    setShowAddEngine(false)
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">CLI Engines</h3>
         <div className="flex items-center gap-2">
-          <Cpu className="w-4 h-4 text-neutral-400" />
-          <h3 className="text-sm font-medium text-white font-geist">CLI Engines</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowAddEngine(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] rounded-md transition-colors font-geist"
-          >
-            <Plus className="w-3.5 h-3.5" />
+          <Button variant="outline" size="sm" onClick={handleSeedDefaults} disabled={isSeeding}>
+            {isSeeding ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Seeding...
+              </>
+            ) : (
+              'Seed Defaults'
+            )}
+          </Button>
+          <Button size="sm" onClick={() => setShowAddEngine(true)}>
+            <Plus className="size-3.5" />
             Add Engine
-          </button>
-          <button
-            onClick={handleSeedDefaults}
-            disabled={isSeeding}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 rounded-md transition-colors font-geist disabled:opacity-50"
-          >
-            {isSeeding ? 'Seeding...' : 'Seed Defaults'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {error && (
-        <div className="text-xs text-red-400 bg-red-400/10 p-2 rounded mb-2">
+        <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
           Error: {error}
         </div>
       )}
 
       {isLoading ? (
-        <div className="text-sm text-neutral-400 font-geist">Loading engines...</div>
+        <div className="text-sm text-muted-foreground">Loading engines...</div>
       ) : engines.length === 0 ? (
-        <div className="text-sm text-neutral-500 font-geist py-4">
+        <div className="text-sm text-muted-foreground py-4">
           No engines configured. Add your first CLI engine below.
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-2">
           {engines.map(engine => (
             <div 
               key={engine.id}
-              className="flex items-center justify-between p-2.5 bg-[#2d2d2d] rounded-md hover:bg-[#3c3c3c] transition-colors"
+              className="flex items-center justify-between p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={engine.enabled}
-                  onChange={(e) => toggleEngine(engine.id, e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-white/20 bg-[#3c3c3c] text-[#0e639c] focus:ring-0"
+                  onCheckedChange={(checked) => toggleEngine(engine.id, !!checked)}
                 />
                 <div>
-                  <div className="text-sm font-medium text-white font-geist capitalize flex items-center gap-2">
-                    {engine.alias}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium capitalize">{engine.alias}</span>
                     {engine.model && (
-                      <span className="text-xs px-1.5 py-0.5 bg-[#0e639c]/20 text-[#0e639c] rounded">
-                        {engine.model}
-                      </span>
+                      <Badge variant="secondary" className="text-[10px]">{engine.model}</Badge>
                     )}
                   </div>
-                  <div className="text-xs text-neutral-500 font-geist">
+                  <div className="text-xs text-muted-foreground">
                     {engine.binary_path} {engine.args}
                   </div>
                 </div>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => deleteEngine(engine.id)}
-                className="p-1.5 rounded text-neutral-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+                <Trash2 className="size-3.5 text-destructive" />
+              </Button>
             </div>
           ))}
         </div>
       )}
 
-      {showAddEngine && (
-        <form onSubmit={handleAddEngine} className="mt-3 p-3 bg-[#2d2d2d] rounded-md space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">Alias</label>
-              <input
-                type="text"
-                value={newEngine.alias}
-                onChange={(e) => setNewEngine({ ...newEngine, alias: e.target.value })}
-                placeholder="e.g. claude"
-                className="w-full px-2.5 py-1.5 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
-                required
-              />
+      <Dialog open={showAddEngine} onOpenChange={(open) => !open && setShowAddEngine(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Engine</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddEngine} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="alias">Alias</Label>
+                <Input
+                  id="alias"
+                  value={newEngine.alias}
+                  onChange={(e) => setNewEngine({ ...newEngine, alias: e.target.value })}
+                  placeholder="e.g. claude"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="binary">Binary Path</Label>
+                <Input
+                  id="binary"
+                  value={newEngine.binary_path}
+                  onChange={(e) => setNewEngine({ ...newEngine, binary_path: e.target.value })}
+                  placeholder="e.g. claude"
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">Binary Path</label>
-              <input
-                type="text"
-                value={newEngine.binary_path}
-                onChange={(e) => setNewEngine({ ...newEngine, binary_path: e.target.value })}
-                placeholder="e.g. claude"
-                className="w-full px-2.5 py-1.5 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
-                required
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="model">Model (optional)</Label>
+                <Input
+                  id="model"
+                  value={newEngine.model}
+                  onChange={(e) => setNewEngine({ ...newEngine, model: e.target.value })}
+                  placeholder="e.g. claude-3-5-sonnet-20241022"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="args">Args</Label>
+                <Input
+                  id="args"
+                  value={newEngine.args}
+                  onChange={(e) => setNewEngine({ ...newEngine, args: e.target.value })}
+                  placeholder="e.g. --dangerously-skip-permissions"
+                />
+              </div>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">Model (optional)</label>
-              <input
-                type="text"
-                value={newEngine.model}
-                onChange={(e) => setNewEngine({ ...newEngine, model: e.target.value })}
-                placeholder="e.g. claude-3-5-sonnet-20241022"
-                className="w-full px-2.5 py-1.5 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
-              />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setShowAddEngine(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Add Engine</Button>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">Args</label>
-              <input
-                type="text"
-                value={newEngine.args}
-                onChange={(e) => setNewEngine({ ...newEngine, args: e.target.value })}
-                placeholder="e.g. --dangerously-skip-permissions"
-                className="w-full px-2.5 py-1.5 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAddEngine(false)}
-              className="px-3 py-1.5 rounded text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 font-geist transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-3 py-1.5 rounded text-xs font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] font-geist transition-colors"
-            >
-              Add Engine
-            </button>
-          </div>
-        </form>
-      )}
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -365,21 +338,15 @@ function RTKTab() {
     setTestResult(null)
     setTestOutput('Running git log --oneline -10...')
     try {
-      // Use akira project folder as git repo
       const cwd = '/Volumes/External M4/Project/ars-ai/akira'
-      console.log('[RTK Test] Starting with cwd:', cwd)
-      
       const result = await invoke<RtkCommandResult>('run_rtk_command', {
         subcommand: 'git',
         args: ['diff', 'HEAD~5'],
         cwd: cwd
       })
-      
-      console.log('[RTK Test] Result:', result)
       setTestResult(result)
       setTestOutput(result.output || 'No output')
     } catch (e) {
-      console.error('[RTK Test] Error:', e)
       setTestOutput(`Error: ${e}`)
     }
     setIsTesting(false)
@@ -400,153 +367,132 @@ function RTKTab() {
 
   return (
     <div className="space-y-4">
-      {/* Status Section */}
-      <div className="p-3 bg-[#2d2d2d] rounded-md">
-        <div className="flex items-center justify-between mb-2">
+      <div className="p-4 bg-muted rounded-lg space-y-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-yellow-500" />
-            <h3 className="text-sm font-medium text-white font-geist">RTK Status</h3>
+            <Zap className="size-4 text-yellow-500" />
+            <h3 className="text-sm font-medium">RTK Status</h3>
           </div>
-          <button
-            onClick={checkStatus}
-            disabled={isChecking}
-            className="px-2.5 py-1 text-xs rounded bg-white/5 text-neutral-300 hover:bg-white/10 font-geist transition-colors disabled:opacity-50"
-          >
+          <Button variant="outline" size="sm" onClick={checkStatus} disabled={isChecking}>
             {isChecking ? 'Checking...' : 'Refresh'}
-          </button>
+          </Button>
         </div>
 
-        <div className="space-y-1.5 text-xs font-geist">
+        <div className="space-y-1.5 text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-neutral-400">Status:</span>
-            <span className={rtkStatus?.installed ? 'text-green-400' : 'text-red-400'}>
-              {rtkStatus?.installed ? '✅ Installed' : '❌ Not installed'}
+            <span className="text-muted-foreground">Status:</span>
+            <span className={rtkStatus?.installed ? 'text-green-500' : 'text-red-500'}>
+              {rtkStatus?.installed ? 'Installed' : 'Not installed'}
             </span>
           </div>
           {rtkStatus?.version && (
             <div className="flex items-center gap-2">
-              <span className="text-neutral-400">Version:</span>
-              <span className="text-white">{rtkStatus.version}</span>
+              <span className="text-muted-foreground">Version:</span>
+              <span>{rtkStatus.version}</span>
             </div>
           )}
           {rtkStatus?.path && (
             <div className="flex items-center gap-2">
-              <span className="text-neutral-400">Path:</span>
-              <span className="text-white/60 font-mono text-[10px]">{rtkStatus.path}</span>
+              <span className="text-muted-foreground">Path:</span>
+              <span className="font-mono text-[10px] text-muted-foreground/60">{rtkStatus.path}</span>
             </div>
           )}
           {rtkStatus?.error && (
-            <div className="text-red-400">Error: {rtkStatus.error}</div>
+            <div className="text-destructive">Error: {rtkStatus.error}</div>
           )}
         </div>
 
         {!rtkStatus?.installed && (
-          <button
-            onClick={installRTK}
-            disabled={isInstalling}
-            className="mt-3 w-full px-3 py-2 text-xs rounded bg-yellow-600 hover:bg-yellow-500 text-white font-medium font-geist transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
+          <Button onClick={installRTK} disabled={isInstalling} className="w-full gap-2">
             {isInstalling ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
                 Installing RTK...
               </>
             ) : (
               <>
-                <Zap className="w-3.5 h-3.5" />
+                <Zap className="size-3.5" />
                 Install RTK v0.34.1
               </>
             )}
-          </button>
+          </Button>
         )}
       </div>
 
-      {/* RTK Init Guidance */}
       {rtkStatus?.installed && (
-        <div className="p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-md">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
-            <div className="flex-1 space-y-1.5 text-xs font-geist">
-              <p className="text-yellow-200 font-medium">Important: Run `rtk init -g` for maximum savings!</p>
-              <p className="text-neutral-400">
-                Without initialization, savings are minimal (~1-5%). 
-                With <code className="text-yellow-400 bg-black/30 px-1 rounded">rtk init -g</code>, savings reach 60-90%.
-              </p>
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={initRTK}
-                  disabled={isInitializing}
-                  className="px-3 py-1.5 text-xs rounded bg-yellow-600 hover:bg-yellow-500 text-white font-medium font-geist transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {isInitializing ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Initializing...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-3 h-3" />
-                      Initialize RTK
-                    </>
+        <>
+          <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="size-4 text-yellow-500 mt-0.5 shrink-0" />
+              <div className="flex-1 space-y-1.5 text-xs">
+                <p className="font-medium">Important: Run `rtk init -g` for maximum savings!</p>
+                <p className="text-muted-foreground">
+                  Without initialization, savings are minimal (~1-5%). 
+                  With <code className="text-yellow-400 bg-black/30 px-1 rounded">rtk init -g</code>, savings reach 60-90%.
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Button size="sm" onClick={initRTK} disabled={isInitializing} className="gap-1.5">
+                    {isInitializing ? (
+                      <>
+                        <Loader2 className="size-3 animate-spin" />
+                        Initializing...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="size-3" />
+                        Initialize RTK
+                      </>
+                    )}
+                  </Button>
+                  {initMessage && (
+                    <span className={`text-xs ${initMessage.includes('Error') ? 'text-destructive' : 'text-green-500'}`}>
+                      {initMessage}
+                    </span>
                   )}
-                </button>
-                {initMessage && (
-                  <span className={`text-xs ${initMessage.includes('Error') ? 'text-red-400' : 'text-green-400'}`}>
-                    {initMessage}
-                  </span>
-                )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Quick Test Section */}
-      {rtkStatus?.installed && (
-        <>
-          <div className="p-3 bg-[#2d2d2d] rounded-md">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-white font-geist">Quick Test</h3>
-              <button
-                onClick={runTest}
-                disabled={isTesting}
-                className="px-3 py-1.5 text-xs rounded bg-[#0e639c] hover:bg-[#1177bb] text-white font-medium font-geist transition-colors disabled:opacity-50 flex items-center gap-1.5"
-              >
+          <div className="p-4 bg-muted rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Quick Test</h3>
+              <Button onClick={runTest} disabled={isTesting} size="sm" className="gap-1.5">
                 {isTesting ? (
                   <>
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin" />
                     Running...
                   </>
                 ) : (
                   <>
-                    <Zap className="w-3 h-3" />
+                    <Zap className="size-3" />
                     Run git diff
                   </>
                 )}
-              </button>
+              </Button>
             </div>
 
             {testResult && (
               <div className="space-y-2">
-                <div className="grid grid-cols-3 gap-2 text-xs font-geist">
-                  <div className="p-2 bg-[#3c3c3c] rounded">
-                    <div className="text-neutral-400">Input</div>
-                    <div className="text-white font-mono">{testResult.input_tokens} tok</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="p-2 bg-background rounded-lg text-center">
+                    <div className="text-muted-foreground text-xs">Input</div>
+                    <div className="font-mono">{testResult.input_tokens} tok</div>
                   </div>
-                  <div className="p-2 bg-[#3c3c3c] rounded">
-                    <div className="text-neutral-400">Output</div>
-                    <div className="text-white font-mono">{testResult.output_tokens} tok</div>
+                  <div className="p-2 bg-background rounded-lg text-center">
+                    <div className="text-muted-foreground text-xs">Output</div>
+                    <div className="font-mono">{testResult.output_tokens} tok</div>
                   </div>
-                  <div className="p-2 bg-[#3c3c3c] rounded">
-                    <div className="text-neutral-400">Saved</div>
-                    <div className="text-green-400 font-mono font-bold">{testResult.savings_pct.toFixed(1)}%</div>
+                  <div className="p-2 bg-background rounded-lg text-center">
+                    <div className="text-muted-foreground text-xs">Saved</div>
+                    <div className="text-green-500 font-mono font-bold">{testResult.savings_pct.toFixed(1)}%</div>
                   </div>
                 </div>
 
                 {testOutput && (
                   <div>
-                    <div className="text-xs text-neutral-400 mb-1 font-geist">Output:</div>
-                    <pre className="p-2 bg-[#1e1e1e] rounded text-xs text-green-400 font-mono overflow-x-auto max-h-40 overflow-y-auto">
+                    <div className="text-xs text-muted-foreground mb-1">Output:</div>
+                    <pre className="p-2 bg-background rounded text-xs text-green-500 font-mono overflow-x-auto max-h-40 overflow-y-auto">
                       {testOutput}
                     </pre>
                   </div>
@@ -555,50 +501,48 @@ function RTKTab() {
             )}
           </div>
 
-          {/* Statistics Section */}
-          <div className="p-3 bg-[#2d2d2d] rounded-md">
-            <div className="flex items-center justify-between mb-2">
-              <button
+          <div className="p-4 bg-muted rounded-lg">
+            <div className="flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setExpandedSection(expandedSection === 'stats' ? null : 'stats')}
-                className="flex items-center gap-2 hover:text-white transition-colors"
+                className="gap-2"
               >
-                <ChevronRight className={`w-3 h-3 text-neutral-400 transition-transform ${expandedSection === 'stats' ? 'rotate-90' : ''}`} />
-                <h3 className="text-sm font-medium text-white font-geist">Statistics (30 days)</h3>
-              </button>
-              <button
-                onClick={() => getStats()}
-                className="px-2 py-1 text-xs rounded bg-white/5 text-neutral-300 hover:bg-white/10 font-geist"
-              >
+                <ChevronRight className={`size-3 text-muted-foreground transition-transform ${expandedSection === 'stats' ? 'rotate-90' : ''}`} />
+                <h3 className="text-sm font-medium">Statistics (30 days)</h3>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => getStats()}>
                 Refresh
-              </button>
+              </Button>
             </div>
 
             {expandedSection === 'stats' && stats && (
-              <div className="mt-3 space-y-2 text-xs font-geist">
+              <div className="mt-3 space-y-2 text-xs">
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="p-2 bg-[#3c3c3c] rounded">
-                    <div className="text-neutral-400">Commands</div>
-                    <div className="text-white font-medium">{stats.total_commands}</div>
+                  <div className="p-2 bg-background rounded-lg text-center">
+                    <div className="text-muted-foreground">Commands</div>
+                    <div className="font-medium">{stats.total_commands}</div>
                   </div>
-                  <div className="p-2 bg-[#3c3c3c] rounded">
-                    <div className="text-neutral-400">Tokens Saved</div>
-                    <div className="text-green-400 font-medium">{stats.total_saved.toLocaleString()}</div>
+                  <div className="p-2 bg-background rounded-lg text-center">
+                    <div className="text-muted-foreground">Tokens Saved</div>
+                    <div className="text-green-500 font-medium">{stats.total_saved.toLocaleString()}</div>
                   </div>
-                  <div className="p-2 bg-[#3c3c3c] rounded">
-                    <div className="text-neutral-400">Avg Savings</div>
-                    <div className="text-yellow-400 font-medium">{stats.avg_savings.toFixed(1)}%</div>
+                  <div className="p-2 bg-background rounded-lg text-center">
+                    <div className="text-muted-foreground">Avg Savings</div>
+                    <div className="text-yellow-500 font-medium">{stats.avg_savings.toFixed(1)}%</div>
                   </div>
                 </div>
 
                 {stats.top_commands.length > 0 && (
                   <div className="mt-3">
-                    <div className="text-neutral-400 mb-1.5">Top Commands:</div>
+                    <div className="text-muted-foreground mb-1.5">Top Commands:</div>
                     <div className="space-y-1">
                       {stats.top_commands.map((cmd, i) => (
-                        <div key={i} className="flex items-center justify-between p-2 bg-[#3c3c3c] rounded text-xs">
-                          <span className="text-white font-mono truncate flex-1 mr-2">{cmd.cmd}</span>
-                          <span className="text-neutral-400">{cmd.count}x</span>
-                          <span className="text-green-400 ml-2">{cmd.avg_savings.toFixed(0)}%</span>
+                        <div key={i} className="flex items-center justify-between p-2 bg-background rounded-lg text-xs">
+                          <span className="font-mono truncate flex-1 mr-2">{cmd.cmd}</span>
+                          <span className="text-muted-foreground">{cmd.count}x</span>
+                          <span className="text-green-500 ml-2">{cmd.avg_savings.toFixed(0)}%</span>
                         </div>
                       ))}
                     </div>
@@ -606,7 +550,7 @@ function RTKTab() {
                 )}
 
                 {stats.total_commands === 0 && (
-                  <div className="text-center text-neutral-500 py-4">
+                  <div className="text-center text-muted-foreground py-4">
                     No RTK commands recorded yet. Run a test above!
                   </div>
                 )}
@@ -687,211 +631,196 @@ function RouterTab() {
 
   return (
     <div className="space-y-4">
-      <div className="p-3 bg-[#2d2d2d] rounded-md">
-        <div className="flex items-center gap-2 mb-3">
-          <Zap className="w-4 h-4 text-yellow-500" />
-          <h3 className="text-sm font-medium text-white font-geist">Router Configuration</h3>
+      <div className="p-4 bg-muted rounded-lg space-y-3">
+        <div className="flex items-center gap-2">
+          <Zap className="size-4 text-yellow-500" />
+          <h3 className="text-sm font-medium">Router Configuration</h3>
         </div>
 
         <div className="space-y-3">
-          <label className="flex items-center justify-between p-2 bg-[#3c3c3c] rounded cursor-pointer hover:bg-[#4c4c4c] transition-colors">
-            <div>
-              <div className="text-xs text-white font-geist">Auto-Switch Provider</div>
-              <div className="text-[10px] text-neutral-400 font-geist">Automatically switch when token limit is reached</div>
+          <div className="flex items-center justify-between p-3 bg-background rounded-lg">
+            <div className="space-y-0.5">
+              <Label>Auto-Switch Provider</Label>
+              <div className="text-[10px] text-muted-foreground">Automatically switch when token limit is reached</div>
             </div>
-            <div 
-              className={`w-10 h-5 rounded-full transition-colors relative ${autoSwitchEnabled ? 'bg-[#0e639c]' : 'bg-[#5a5a5a]'}`}
-              onClick={() => setAutoSwitchEnabled(!autoSwitchEnabled)}
-            >
-              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${autoSwitchEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-            </div>
-          </label>
+            <Switch
+              checked={autoSwitchEnabled}
+              onCheckedChange={setAutoSwitchEnabled}
+            />
+          </div>
 
           {autoSwitchEnabled && (
-            <label className="flex items-center justify-between p-2 bg-[#3c3c3c] rounded cursor-pointer hover:bg-[#4c4c4c] transition-colors">
-              <div>
-                <div className="text-xs text-white font-geist">Confirm Before Switch</div>
-                <div className="text-[10px] text-neutral-400 font-geist">Ask for confirmation when switching providers</div>
+            <div className="flex items-center justify-between p-3 bg-background rounded-lg">
+              <div className="space-y-0.5">
+                <Label>Confirm Before Switch</Label>
+                <div className="text-[10px] text-muted-foreground">Ask for confirmation when switching providers</div>
               </div>
-              <div 
-                className={`w-10 h-5 rounded-full transition-colors relative ${confirmBeforeSwitch ? 'bg-[#0e639c]' : 'bg-[#5a5a5a]'}`}
-                onClick={() => setConfirmBeforeSwitch(!confirmBeforeSwitch)}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${confirmBeforeSwitch ? 'translate-x-5' : 'translate-x-0.5'}`} />
-              </div>
-            </label>
+              <Switch
+                checked={confirmBeforeSwitch}
+                onCheckedChange={setConfirmBeforeSwitch}
+              />
+            </div>
           )}
 
-          <div className="p-2 bg-[#3c3c3c] rounded">
-            <div className="text-xs text-white font-geist mb-2">Token Limit Threshold</div>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min="50000"
-                max="300000"
-                step="10000"
-                value={tokenLimitThreshold}
-                onChange={(e) => setTokenLimitThreshold(parseInt(e.target.value))}
-                className="flex-1 h-1.5 bg-[#5a5a5a] rounded-full appearance-none cursor-pointer accent-[#0e639c]"
-              />
-              <span className="text-xs text-white font-mono w-20 text-right">
+          <div className="p-3 bg-background rounded-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Token Limit Threshold</Label>
+              <span className="text-xs font-mono text-muted-foreground">
                 {tokenLimitThreshold.toLocaleString()}
               </span>
             </div>
+            <Input
+              type="range"
+              min="50000"
+              max="300000"
+              step="10000"
+              value={tokenLimitThreshold}
+              onChange={(e) => setTokenLimitThreshold(parseInt(e.target.value))}
+              className="h-1.5"
+            />
           </div>
 
-          <div className="p-2 bg-[#3c3c3c] rounded">
-            <div className="flex items-center justify-between mb-2">
+          <div className="p-3 bg-background rounded-lg space-y-2">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Wallet className="w-3.5 h-3.5 text-yellow-500" />
-                <div className="text-xs text-white font-geist">Budget Limit</div>
+                <Wallet className="size-3.5 text-yellow-500" />
+                <Label className="text-xs">Budget Limit</Label>
               </div>
-              <span className="text-xs text-yellow-400 font-mono">
+              <span className="text-xs text-yellow-500 font-mono">
                 {budgetLimit === 0 ? 'Unlimited' : `$${budgetLimit.toFixed(2)}`}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="5"
-                value={budgetLimit}
-                onChange={(e) => setBudgetLimit(parseInt(e.target.value))}
-                className="flex-1 h-1.5 bg-[#5a5a5a] rounded-full appearance-none cursor-pointer accent-yellow-500"
-              />
-              <span className="text-xs text-neutral-400 font-mono w-12 text-right">
-                {budgetLimit === 0 ? 'Off' : `$${budgetLimit}`}
-              </span>
-            </div>
-            <div className="text-[10px] text-neutral-500 mt-1.5">
+            <Input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={budgetLimit}
+              onChange={(e) => setBudgetLimit(parseInt(e.target.value))}
+              className="h-1.5"
+            />
+            <div className="text-[10px] text-muted-foreground">
               Set to 0 for unlimited budget
             </div>
           </div>
 
           {budgetLimit > 0 && (
-            <div className="p-2 bg-[#3c3c3c] rounded">
-              <div className="flex items-center justify-between mb-2">
+            <div className="p-3 bg-background rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />
-                  <div className="text-xs text-white font-geist">Alert Threshold</div>
+                  <AlertTriangle className="size-3.5 text-orange-500" />
+                  <Label className="text-xs">Alert Threshold</Label>
                 </div>
-                <span className="text-xs text-orange-400 font-mono">
+                <span className="text-xs text-orange-500 font-mono">
                   {(budgetAlertThreshold * 100).toFixed(0)}%
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="50"
-                  max="95"
-                  step="5"
-                  value={budgetAlertThreshold * 100}
-                  onChange={(e) => setBudgetAlertThreshold(parseInt(e.target.value) / 100)}
-                  className="flex-1 h-1.5 bg-[#5a5a5a] rounded-full appearance-none cursor-pointer accent-orange-500"
-                />
-                <span className="text-xs text-neutral-400 font-mono w-12 text-right">
-                  {(budgetAlertThreshold * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="text-[10px] text-neutral-500 mt-1.5">
-                Alert when {(budgetLimit * budgetAlertThreshold).toFixed(2)} spent
+              <Input
+                type="range"
+                min="50"
+                max="95"
+                step="5"
+                value={budgetAlertThreshold * 100}
+                onChange={(e) => setBudgetAlertThreshold(parseInt(e.target.value) / 100)}
+                className="h-1.5"
+              />
+              <div className="text-[10px] text-muted-foreground">
+                Alert when ${(budgetLimit * budgetAlertThreshold).toFixed(2)} spent
               </div>
             </div>
           )}
 
-          <div className="p-2 bg-[#3c3c3c] rounded">
-            <div className="text-xs text-white font-geist mb-2">Fallback Order</div>
+          <div className="p-3 bg-background rounded-lg space-y-2">
+            <Label className="text-xs">Fallback Order</Label>
             <div className="space-y-1">
               {fallbackOrder.map((alias, index) => (
-                <div key={alias} className="flex items-center justify-between p-1.5 bg-[#2d2d2d] rounded">
-                  <span className="text-xs text-white font-geist">{alias}</span>
+                <div key={alias} className="flex items-center justify-between p-2 bg-muted rounded">
+                  <span className="text-xs">{alias}</span>
                   <div className="flex items-center gap-0.5">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
                       onClick={() => moveProvider(index, 'up')}
                       disabled={index === 0}
-                      className="p-1 text-neutral-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      <ChevronRight className="w-3 h-3 rotate-180" />
-                    </button>
-                    <button
+                      <ChevronRight className="size-3 rotate-180" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
                       onClick={() => moveProvider(index, 'down')}
                       disabled={index === fallbackOrder.length - 1}
-                      className="p-1 text-neutral-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
+                      <ChevronRight className="size-3" />
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="text-[10px] text-neutral-500 mt-1.5 font-geist">
+            <div className="text-[10px] text-muted-foreground">
               Providers at top have higher priority
             </div>
           </div>
         </div>
 
-        <button
+        <Button
           onClick={handleSave}
           disabled={isSaving}
-          className={`mt-3 w-full px-3 py-2 text-xs rounded font-medium font-geist transition-colors flex items-center justify-center gap-2 ${
-            saveSuccess 
-              ? 'bg-green-600 text-white' 
-              : 'bg-[#0e639c] hover:bg-[#1177bb] text-white'
-          }`}
+          className={`w-full gap-2 ${saveSuccess ? 'bg-green-600 hover:bg-green-600' : ''}`}
         >
           {isSaving ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="size-3.5 animate-spin" />
               Saving...
             </>
           ) : saveSuccess ? (
             <>
-              <Check className="w-3.5 h-3.5" />
+              <Check className="size-3.5" />
               Saved!
             </>
           ) : (
             'Save Configuration'
           )}
-        </button>
+        </Button>
       </div>
 
-      <div className="p-3 bg-[#2d2d2d] rounded-md">
+      <div className="p-4 bg-muted rounded-lg">
         <div className="flex items-center gap-2 mb-3">
-          <Cpu className="w-4 h-4 text-neutral-400" />
-          <h3 className="text-sm font-medium text-white font-geist">Registered Providers</h3>
+          <Cpu className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">Registered Providers</h3>
         </div>
         
-        <div className="space-y-1">
+        <div className="space-y-2">
           {providers.map(provider => (
             <div 
               key={provider.alias}
-              className="flex items-center justify-between p-2 bg-[#3c3c3c] rounded"
+              className="flex items-center justify-between p-3 bg-background rounded-lg"
             >
               <div>
-                <div className="text-xs text-white font-geist capitalize">{provider.alias}</div>
-                <div className="text-[10px] text-neutral-500 font-mono">{provider.binary_path}</div>
+                <div className="text-xs font-medium capitalize">{provider.alias}</div>
+                <div className="text-[10px] text-muted-foreground font-mono">{provider.binary_path}</div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                  provider.status === 'idle' ? 'bg-green-500/20 text-green-400' :
-                  provider.status === 'running' ? 'bg-blue-500/20 text-blue-400' :
-                  provider.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                  'bg-yellow-500/20 text-yellow-400'
-                }`}>
+                <Badge 
+                  variant={provider.status === 'idle' ? 'default' : provider.status === 'running' ? 'secondary' : 'destructive'}
+                  className="text-[10px]"
+                >
                   {provider.status}
-                </span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                  provider.enabled ? 'bg-green-500/20 text-green-400' : 'bg-neutral-500/20 text-neutral-400'
-                }`}>
+                </Badge>
+                <Badge 
+                  variant={provider.enabled ? 'default' : 'outline'}
+                  className="text-[10px]"
+                >
                   {provider.enabled ? 'enabled' : 'disabled'}
-                </span>
+                </Badge>
               </div>
             </div>
           ))}
           
           {providers.length === 0 && (
-            <div className="text-xs text-neutral-500 text-center py-3">
+            <div className="text-xs text-muted-foreground text-center py-3">
               No providers registered. Add engines in the CLI Engines tab.
             </div>
           )}
