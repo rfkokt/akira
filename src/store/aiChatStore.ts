@@ -755,7 +755,6 @@ Start working on this now.`;
 
     let responseContent = '';
 
-    // Build context-aware prompt
     const chatPrompt = `You are helping with a task called "${taskTitle}".
     
 Previous conversation:
@@ -768,7 +767,12 @@ Please respond helpfully and concisely.`;
     try {
       const { listen } = await import('@tauri-apps/api/event');
       
-      const unlisten = await listen('cli-output', (event: { payload: { line: string } }) => {
+      const unlistenFns: { output: (() => void) | null; complete: (() => void) | null } = {
+        output: null,
+        complete: null,
+      };
+
+      unlistenFns.output = await listen('cli-output', (event: { payload: { line: string } }) => {
         const { messages } = get();
         const taskMessages = messages[taskId] || [];
         const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
@@ -790,6 +794,15 @@ Please respond helpfully and concisely.`;
         }
       });
 
+      const completionPromise = new Promise<string>((resolve) => {
+        const handleComplete = (_event: { payload: { success: boolean; exit_code?: number; error_message?: string } }) => {
+          resolve(responseContent);
+        };
+        listen('cli-complete', handleComplete).then((fn) => {
+          unlistenFns.complete = fn;
+        });
+      });
+
       const workspace = useWorkspaceStore.getState().activeWorkspace;
       const cwd = workspace?.folder_path || null;
 
@@ -800,11 +813,16 @@ Please respond helpfully and concisely.`;
         cwd: cwd,
       });
 
-      // Save assistant response to database
-      if (responseContent) {
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout waiting for CLI')), 5 * 60 * 1000);
+      });
+
+      const finalContent = await Promise.race([completionPromise, timeoutPromise]);
+
+      if (finalContent) {
         try {
-          await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
-          console.log('[sendMessage] Saved assistant message to DB, length:', responseContent.length);
+          await dbService.createChatMessage(taskId, 'assistant', finalContent.trim(), engine.alias);
+          console.log('[sendMessage] Saved assistant message to DB, length:', finalContent.length);
         } catch (err) {
           console.error('Failed to save assistant message:', err);
         }
@@ -812,17 +830,13 @@ Please respond helpfully and concisely.`;
         console.log('[sendMessage] No response content to save');
       }
 
-      // Clear streaming state
-      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+      if (unlistenFns.output) unlistenFns.output();
+      if (unlistenFns.complete) unlistenFns.complete();
 
-      // Wait a bit then cleanup
-      setTimeout(() => {
-        unlisten();
-      }, 500);
+      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
 
     } catch (error) {
       console.error('Error sending message:', error);
-      // Clear streaming state on error
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
     }
   },
@@ -848,12 +862,6 @@ Please respond helpfully and concisely.`;
 
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return '';
-    
-    try {
-      await dbService.createChatMessage(taskId, 'user', prompt, engine.alias);
-    } catch (err) {
-      console.error('Failed to save user message:', err);
-    }
 
     const aiMessageId = `msg-${Date.now()}-ai`;
     const aiMessage: ChatMessage = {
