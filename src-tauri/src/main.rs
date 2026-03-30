@@ -2523,10 +2523,27 @@ fn main() {
             let conn = db::init_db(&app_dir)
                 .expect("Failed to initialize database");
             
-            // Seed default engines (optional)
             match db::seed_default_engines(&conn) {
                 Ok(_) => println!("✅ Default engines seeded successfully"),
                 Err(e) => eprintln!("⚠️ Failed to seed default engines: {}", e),
+            }
+            
+            let cli_router = Arc::new(CliRouter::new());
+            
+            if let Ok(engines) = cli_router::queries::get_enabled_engines(&conn) {
+                for engine in &engines {
+                    let provider = ProviderInfo {
+                        alias: engine.alias.clone(),
+                        binary_path: engine.binary_path.clone(),
+                        model: engine.model.clone(),
+                        args: engine.args.split_whitespace().map(|s| s.to_string()).collect(),
+                        enabled: engine.enabled,
+                        status: ProviderStatus::Idle,
+                        current_task_id: None,
+                    };
+                    cli_router.add_provider(provider);
+                }
+                println!("✅ Synced {} engines to router", engines.len());
             }
             
             app.manage(AppState { 
@@ -2534,7 +2551,7 @@ fn main() {
                 running_process: Mutex::new(None),
                 should_stop: Mutex::new(HashMap::new()),
                 rtk_path: Mutex::new(get_rtk_path()),
-                cli_router: Arc::new(CliRouter::new()),
+                cli_router,
                 pty_manager: Arc::new(PtyManager::new()),
             });
             

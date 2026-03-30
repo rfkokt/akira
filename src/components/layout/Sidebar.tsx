@@ -8,11 +8,11 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { id: 'kanban', label: 'Board', icon: <LayoutGrid className="w-4 h-4" /> },
-  { id: 'files', label: 'Files', icon: <FileCode className="w-4 h-4" /> },
-  { id: 'git', label: 'Source Control', icon: <GitBranch className="w-4 h-4" /> },
-  { id: 'skills', label: 'Skills', icon: <Puzzle className="w-4 h-4" /> },
-  { id: 'mcp', label: 'MCP', icon: <Plug className="w-4 h-4" /> },
+  // { id: 'kanban', label: 'Board', icon: <LayoutGrid className="w-3.5 h-3.5" /> },
+  // { id: 'files', label: 'Files', icon: <FileCode className="w-3.5 h-3.5" /> },
+  // { id: 'git', label: 'Source Control', icon: <GitBranch className="w-3.5 h-3.5" /> },
+  // { id: 'skills', label: 'Skills', icon: <Puzzle className="w-3.5 h-3.5" /> },
+  // { id: 'mcp', label: 'MCP', icon: <Plug className="w-3.5 h-3.5" /> },
 ]
 
 export function Sidebar() {
@@ -32,7 +32,7 @@ export function Sidebar() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`relative flex items-center gap-3 px-3 py-2 text-sm transition-colors font-geist ${
+              className={`relative flex items-center gap-3 px-4 py-2.5 text-xs transition-colors font-geist ${
                 activeTab === item.id
                   ? 'text-white'
                   : 'text-neutral-500 hover:text-neutral-300'

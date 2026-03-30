@@ -384,14 +384,14 @@ function App() {
               <button
                 key={item.id}
                 onClick={() => setCurrentPage(item.id)}
-                className={`relative w-10 h-10 flex items-center justify-center rounded-md transition-all group ${
+                className={`relative w-8 h-8 flex items-center justify-center rounded-md transition-all group ${
                   isActive 
                     ? 'text-white bg-white/10' 
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
                 }`}
                 title={item.label}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-4 h-4" />
                 
                 {/* Active indicator */}
                 {isActive && (

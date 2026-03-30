@@ -30,6 +30,22 @@ interface Message {
   timestamp?: Date
 }
 
+const TOOL_CALL_REGEX = /\[Tool:\s*[\w ]+\]/gi;
+const TOOL_CALL_LINE_REGEX = /^\s*\[Tool:\s*[\w ]+\]\s*$/g;
+
+const isToolCallLine = (line: string): boolean => {
+  return TOOL_CALL_LINE_REGEX.test(line.trim());
+};
+
+const stripToolCalls = (text: string): string => {
+  return text.split('\n')
+    .filter(line => !isToolCallLine(line))
+    .map(line => line.replace(TOOL_CALL_REGEX, '').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 interface TerminalLine {
   type: 'command' | 'stdout' | 'stderr' | 'system' | 'error' | 'warning'
   content: string
@@ -115,13 +131,18 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
           timestamp: new Date()
         }])
         
+        if (isToolCallLine(line)) return
+        
+        const cleanedLine = stripToolCalls(line)
+        if (!cleanedLine) return
+        
         setMessages(prev => {
           const lastMsg = prev[prev.length - 1]
           if (lastMsg?.role === 'assistant' && lastMsg.isStreaming) {
             const newMessages = [...prev]
             newMessages[newMessages.length - 1] = {
               ...lastMsg,
-              content: lastMsg.content + line + '\n'
+              content: lastMsg.content + cleanedLine + '\n'
             }
             return newMessages
           }
@@ -157,7 +178,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
           const lastMsg = messages[messages.length - 1]
           if (lastMsg?.role === 'assistant') {
             try {
-              await dbService.createChatMessage(taskId, 'assistant', lastMsg.content, activeEngine.alias)
+              await dbService.createChatMessage(taskId, 'assistant', stripToolCalls(lastMsg.content), activeEngine.alias)
             } catch (err) {
               console.error('Failed to save chat message:', err)
             }
@@ -174,13 +195,18 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
           timestamp: new Date()
         }])
         
+        if (isToolCallLine(line)) return
+        
+        const cleanedLine = stripToolCalls(line)
+        if (!cleanedLine) return
+        
         setMessages(prev => {
           const lastMsg = prev[prev.length - 1]
           if (lastMsg?.role === 'assistant' && lastMsg.isStreaming) {
             const newMessages = [...prev]
             newMessages[newMessages.length - 1] = {
               ...lastMsg,
-              content: lastMsg.content + line + '\n'
+              content: lastMsg.content + cleanedLine + '\n'
             }
             return newMessages
           }
@@ -211,11 +237,12 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
           setSelectedRouterProvider(new_provider)
         }
         
-        if (taskId && activeEngine) {
+        if (taskId) {
           const lastMsg = messages[messages.length - 1]
           if (lastMsg?.role === 'assistant') {
             try {
-              await dbService.createChatMessage(taskId, 'assistant', lastMsg.content, activeEngine.alias)
+              const engineAlias = useRouter ? selectedRouterProvider! : activeEngine!.alias
+              await dbService.createChatMessage(taskId, 'assistant', stripToolCalls(lastMsg.content), engineAlias)
             } catch (err) {
               console.error('Failed to save chat message:', err)
             }
@@ -554,56 +581,24 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                 ) : (
                   messages.map((msg, idx) => (
                     <div 
-                      key={idx} 
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      key={idx}
+                      className={`font-geist text-xs leading-relaxed whitespace-pre-wrap ${
+                        msg.role === 'user' 
+                          ? 'text-[#0e639c]' 
+                          : 'text-[#cccccc]'
+                      }`}
                     >
-                      <div 
-                        className={`max-w-[95%] ${
-                          msg.role === 'user'
-                            ? 'bg-[#0e639c] text-white'
-                            : 'bg-[#3c3c3c] text-[#cccccc] border border-white/5'
-                        }`}
-                      >
-                        {/* Message Header */}
-                        <div className={`flex items-center gap-2 px-2.5 py-1.5 border-b ${
-                          msg.role === 'user' 
-                            ? 'border-white/10' 
-                            : 'border-white/5'
-                        }`}>
-                          {msg.role === 'assistant' ? (
-                            <Bot className="w-3 h-3 text-[#858585]" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 text-white/60" />
-                          )}
-                          <span className="text-xs uppercase tracking-wide text-[#858585]">
-                            {msg.role}
-                          </span>
-                          {msg.timestamp && (
-                            <span className="ml-auto text-xs text-[#6e6e6e]">
-                              {formatTime(msg.timestamp)}
-                            </span>
-                          )}
-                        </div>
-                        
-                        {/* Content */}
-                        <div className="px-2.5 py-2">
-                          <div className="text-xs font-geist leading-relaxed whitespace-pre-wrap">
-                            {msg.content || (msg.isStreaming && (
-                              <span className="inline-flex items-center gap-1">
-                                <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {msg.isStreaming && msg.content && (
-                          <div className="px-2.5 pb-2">
-                            <span className="inline-block w-0.5 h-3 bg-[#0e639c] animate-pulse" />
-                          </div>
-                        )}
-                      </div>
+                      <span className="text-[#6e6e6e] mr-2">{msg.role}:</span>
+                      {stripToolCalls(msg.content) || (msg.isStreaming && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      ))}
+                      {msg.isStreaming && msg.content && (
+                        <span className="inline-block w-0.5 h-3 bg-[#0e639c] animate-pulse ml-0.5" />
+                      )}
                     </div>
                   ))
                 )}

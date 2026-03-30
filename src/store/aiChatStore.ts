@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useEngineStore } from './engineStore';
 import { useTaskStore } from './taskStore';
 import { useWorkspaceStore } from './workspaceStore';
+import { dbService } from '@/lib/db';
 
 export interface ChatMessage {
   id: string;
@@ -56,6 +57,7 @@ interface AIChatState {
   stopMessage: (taskId: string) => Promise<void>;
   clearMessages: (taskId: string) => void;
   getMessages: (taskId: string) => ChatMessage[];
+  setMessages: (taskId: string, msgs: ChatMessage[]) => void;
   getTaskState: (taskId: string) => AITaskState;
   isStreaming: (taskId: string) => boolean;
   autoCreatePR: (taskId: string, taskTitle: string) => Promise<{ branch: string; prUrl?: string } | null>;
@@ -822,6 +824,12 @@ Please respond helpfully and concisely.`;
 
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return '';
+    
+    try {
+      await dbService.createChatMessage(taskId, 'user', prompt, engine.alias);
+    } catch (err) {
+      console.error('Failed to save user message:', err);
+    }
 
     const aiMessageId = `msg-${Date.now()}-ai`;
     const aiMessage: ChatMessage = {
@@ -915,6 +923,15 @@ Please respond helpfully and concisely.`;
         cwd: cwd,
       });
 
+      // Save assistant response to database
+      if (responseContent) {
+        try {
+          await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
+        } catch (err) {
+          console.error('Failed to save assistant message:', err);
+        }
+      }
+
       // Cleanup after a short delay
       setTimeout(() => {
         if (unlisten) unlisten();
@@ -960,6 +977,10 @@ Please respond helpfully and concisely.`;
 
   getMessages: (taskId: string) => {
     return get().messages[taskId] || [];
+  },
+
+  setMessages: (taskId: string, msgs: ChatMessage[]) => {
+    set({ messages: { ...get().messages, [taskId]: msgs } });
   },
 
   getTaskState: (taskId: string) => {

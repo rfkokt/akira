@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2, History, X } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
+import { dbService } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -35,8 +36,8 @@ function MarkdownContent({ content }: { content: string }) {
           }
           
           return (
-            <pre className="my-2 rounded-lg overflow-hidden border border-white/10 bg-[#1e1e1e] p-3">
-              <code className="text-xs font-mono leading-relaxed text-neutral-300">{String(children).replace(/\n$/, '')}</code>
+            <pre className="my-2 rounded-lg overflow-x-auto border border-white/10 bg-[#1e1e1e] p-3">
+              <code className="text-xs font-mono leading-relaxed text-neutral-300 whitespace-pre">{String(children).replace(/\n$/, '')}</code>
             </pre>
           );
         },
@@ -49,6 +50,9 @@ function MarkdownContent({ content }: { content: string }) {
         },
         p({ children }) {
           return <p className="mb-2 last:mb-0">{children}</p>;
+        },
+        hr() {
+          return <hr className="my-3 border-white/10" />;
         },
         ul({ children }) {
           return <ul className="list-disc list-inside space-y-1 ml-2">{children}</ul>;
@@ -74,6 +78,8 @@ export function TaskCreatorChat() {
   const [isCreating, setIsCreating] = useState(false)
   const [createdSuccess, setCreatedSuccess] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [historyList, setHistoryList] = useState<{ task_id: string; created_at: string; role: string; preview: string; content: string }[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
   const [showFileSuggestions, setShowFileSuggestions] = useState(false)
   const [selectedFileIndex, setSelectedFileIndex] = useState(0)
@@ -81,7 +87,7 @@ export function TaskCreatorChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const aiChatStore = useAIChatStore()
-  const { sendSimpleMessage, stopMessage, getMessages, clearMessages } = aiChatStore
+  const { sendSimpleMessage, stopMessage, getMessages, setMessages, clearMessages } = aiChatStore
   const { activeEngine, engines, setActiveEngine } = useEngineStore()
   const { createTask } = useTaskStore()
   const { activeWorkspace } = useWorkspaceStore()
@@ -117,6 +123,58 @@ export function TaskCreatorChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [taskMessages])
+
+  const loadAllHistory = useCallback(async () => {
+    try {
+      const history = await dbService.getChatHistory(taskId)
+      const grouped = history.reduce((acc: Record<string, { task_id: string; created_at: string; role: string; content: string }[]>, msg) => {
+        const key = msg.task_id
+        if (!acc[key]) acc[key] = []
+        acc[key].push(msg)
+        return acc
+      }, {})
+      
+      const list = Object.entries(grouped).map(([tid, msgs]) => {
+        const sorted = msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        const first = sorted[0]
+        const preview = first?.content?.substring(0, 50) || ''
+        return {
+          task_id: tid,
+          created_at: first?.created_at || '',
+          role: first?.role || '',
+          preview: preview + (first?.content?.length > 50 ? '...' : ''),
+          content: first?.content || ''
+        }
+      }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      
+      setHistoryList(list)
+    } catch (err) {
+      console.error('Failed to load history:', err)
+    }
+  }, [taskId])
+
+  const loadChatHistory = useCallback(async () => {
+    if (!taskId) return
+    try {
+      const history = await dbService.getChatHistory(taskId)
+      if (history.length > 0) {
+        const loadedMessages: { id: string; taskId: string; role: 'user' | 'assistant' | 'system'; content: string; timestamp: number }[] = history.map((msg: { role: string; content: string; created_at: string }) => ({
+          id: `db-${Date.now()}-${Math.random()}`,
+          taskId,
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+          timestamp: new Date(msg.created_at).getTime(),
+        }))
+        setMessages(taskId, loadedMessages)
+      }
+    } catch (err) {
+      console.error('Failed to load chat history:', err)
+    }
+  }, [taskId, setMessages])
+
+  useEffect(() => {
+    loadChatHistory()
+  }, [loadChatHistory])
 
   const filterFiles = (query: string): FileEntry[] => {
     if (!query) return files.slice(0, 10)
@@ -355,12 +413,60 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e] rounded-lg border border-white/10 overflow-hidden">
       {/* Header - minimal */}
-      <div className="px-4 py-2 border-b border-white/5">
+      <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white font-geist">Task Creator</h3>
+        <button
+          onClick={() => { loadAllHistory(); setShowHistoryModal(true); }}
+          className="p-1.5 hover:bg-white/10 rounded-md transition-colors"
+          title="View History"
+        >
+          <History className="w-4 h-4 text-neutral-400" />
+        </button>
       </div>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* History Modal */}
+        {showHistoryModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-[#252526] rounded-lg border border-white/10 w-full max-w-md max-h-[70vh] overflow-hidden">
+              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white font-geist">Chat History</h3>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="p-1 hover:bg-white/10 rounded"
+                >
+                  <X className="w-4 h-4 text-neutral-400" />
+                </button>
+              </div>
+              <div className="overflow-y-auto max-h-[60vh]">
+                {historyList.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-neutral-500">No history yet</div>
+                ) : (
+                  historyList.map((item, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        clearMessages(taskId)
+                        setMessages(taskId, [])
+                        setShowHistoryModal(false)
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-white/5 border-b border-white/5 last:border-0"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-cyan-400 capitalize">{item.role}</span>
+                        <span className="text-[10px] text-neutral-500">
+                          {new Date(item.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-300 truncate">{item.preview}</p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         {taskMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
             <div>
@@ -390,30 +496,25 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
           taskMessages.map((msg, idx) => (
             <div
               key={idx}
-              className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+              className={`font-geist text-xs leading-relaxed ${
+                msg.role === 'user' ? 'text-blue-400' : 'text-neutral-200'
+              }`}
             >
-              <div
-                className={`max-w-[75%] rounded-2xl px-4 py-3 ${
-                  msg.role === 'user'
-                    ? 'bg-blue-600 text-white rounded-br-md'
-                    : 'bg-[#252526] text-neutral-200 border border-white/5 rounded-bl-md'
-                }`}
-              >
-                {msg.role === 'assistant' ? (
-                  <div className="text-xs leading-relaxed">
-                    <MarkdownContent content={msg.content} />
-                  </div>
-                ) : (
-                  <pre className="whitespace-pre-wrap text-xs leading-relaxed">{msg.content}</pre>
-                )}
-                {msg.role === 'assistant' && isStreaming && idx === taskMessages.length - 1 && (
-                  <span className="inline-flex ml-1">
-                    <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
-                  </span>
-                )}
-              </div>
+              <span className="text-neutral-500 mr-2">{msg.role}:</span>
+              {msg.role === 'assistant' ? (
+                <span className="overflow-x-hidden">
+                  <MarkdownContent content={msg.content} />
+                </span>
+              ) : (
+                <pre className="inline whitespace-pre-wrap break-words overflow-hidden">{msg.content}</pre>
+              )}
+              {msg.role === 'assistant' && isStreaming && idx === taskMessages.length - 1 && (
+                <span className="inline-flex ml-1">
+                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
+                </span>
+              )}
             </div>
           ))
         )}
