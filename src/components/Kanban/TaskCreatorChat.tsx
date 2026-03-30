@@ -94,13 +94,14 @@ export function TaskCreatorChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const aiChatStore = useAIChatStore()
-  const { sendSimpleMessage, stopMessage, getMessages, setMessages, clearMessages } = aiChatStore
+  const { sendSimpleMessage, stopMessage, getMessages, setMessages, clearMessages, streamingMessageId } = aiChatStore
   const { activeEngine, engines, setActiveEngine } = useEngineStore()
   const { createTask } = useTaskStore()
   const { activeWorkspace } = useWorkspaceStore()
 
   const taskId = '__task_creator__'
   const taskMessages = getMessages(taskId)
+  const currentStreamingId = streamingMessageId[taskId]
 
   const fetchFiles = useCallback(async (path: string) => {
     if (!path) return
@@ -501,7 +502,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                   ) : (
                     <pre className="inline whitespace-pre-wrap break-words overflow-hidden">{msg.content}</pre>
                   )}
-                  {msg.role === 'assistant' && isStreaming && idx === taskMessages.length - 1 && (
+                  {msg.role === 'assistant' && currentStreamingId === msg.id && (
                     <span className="inline-flex ml-1">
                       <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />

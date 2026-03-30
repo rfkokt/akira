@@ -46,6 +46,8 @@ interface AIChatState {
   useRouter: boolean;
   routerProvider: string | null;
   currentSessionId: string | null;
+  streamingMessageId: Record<string, string | null>;
+  stopStreaming: (taskId: string) => void;
   
   // Actions
   enqueueTask: (taskId: string, taskTitle: string, taskDescription?: string) => Promise<void>;
@@ -186,6 +188,10 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
   useRouter: true,
   routerProvider: null,
   currentSessionId: null,
+  streamingMessageId: {},
+  stopStreaming: (taskId: string) => {
+    set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+  },
 
   enqueueTask: async (taskId: string, taskTitle: string, taskDescription?: string) => {
     const { taskQueue, taskStates } = get();
@@ -744,6 +750,7 @@ Start working on this now.`;
         ...get().messages,
         [taskId]: [...(get().messages[taskId] || []), aiMessage],
       },
+      streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId },
     });
 
     let responseContent = '';
@@ -797,10 +804,16 @@ Please respond helpfully and concisely.`;
       if (responseContent) {
         try {
           await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
+          console.log('[sendMessage] Saved assistant message to DB, length:', responseContent.length);
         } catch (err) {
           console.error('Failed to save assistant message:', err);
         }
+      } else {
+        console.log('[sendMessage] No response content to save');
       }
+
+      // Clear streaming state
+      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
 
       // Wait a bit then cleanup
       setTimeout(() => {
@@ -809,6 +822,8 @@ Please respond helpfully and concisely.`;
 
     } catch (error) {
       console.error('Error sending message:', error);
+      // Clear streaming state on error
+      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
     }
   },
 
@@ -854,6 +869,7 @@ Please respond helpfully and concisely.`;
         ...get().messages,
         [taskId]: [...(get().messages[taskId] || []), aiMessage],
       },
+      streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId },
     });
 
     let responseContent = '';
@@ -861,9 +877,24 @@ Please respond helpfully and concisely.`;
     try {
       const { listen } = await import('@tauri-apps/api/event');
       
-      let unlisten: (() => void) | null = null;
-      
-      unlisten = await listen('cli-output', (event: { payload: { line: string; is_error: boolean } }) => {
+      const unlistenFns: { output: (() => void) | null; complete: (() => void) | null } = {
+        output: null,
+        complete: null,
+      };
+
+      // Create completion promise FIRST
+      const completionPromise = new Promise<string>((resolve) => {
+        const handleComplete = (_event: { payload: { success: boolean; exit_code?: number; error_message?: string } }) => {
+          resolve(responseContent);
+        };
+        
+        listen('cli-complete', handleComplete).then((fn) => {
+          unlistenFns.complete = fn;
+        });
+      });
+
+      // Setup output listener
+      unlistenFns.output = await listen('cli-output', (event: { payload: { line: string; is_error: boolean } }) => {
         const { messages } = get();
         const taskMessages = messages[taskId] || [];
         const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
@@ -925,6 +956,7 @@ Please respond helpfully and concisely.`;
         actualPrompt = prompt;
       }
 
+      // Start CLI
       await invoke('run_cli', {
         binary: engine.binary_path,
         args: args,
@@ -932,22 +964,46 @@ Please respond helpfully and concisely.`;
         cwd: cwd,
       });
 
-      // Save assistant response to database
+      // Wait for completion with timeout
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout waiting for CLI')), 5 * 60 * 1000);
+      });
+
+      const finalContent = await Promise.race([completionPromise, timeoutPromise]);
+
+      // Save assistant response to database after completion
+      if (finalContent) {
+        try {
+          await dbService.createChatMessage(taskId, 'assistant', finalContent.trim(), engine.alias);
+          console.log('[sendSimpleMessage] Saved assistant message to DB, length:', finalContent.length);
+        } catch (err) {
+          console.error('Failed to save assistant message:', err);
+        }
+      } else {
+        console.log('[sendSimpleMessage] No response content to save');
+      }
+
+      // Cleanup
+      if (unlistenFns.output) unlistenFns.output();
+      if (unlistenFns.complete) unlistenFns.complete();
+
+      // Clear streaming state
+      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+
+      return finalContent;
+
+    } catch (error) {
+      console.error('Error sending simple message:', error);
+      // Cleanup on error
       if (responseContent) {
         try {
           await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
         } catch (err) {
-          console.error('Failed to save assistant message:', err);
+          console.error('Failed to save partial assistant message:', err);
         }
       }
-
-      // Cleanup after a short delay
-      setTimeout(() => {
-        if (unlisten) unlisten();
-      }, 500);
-
-    } catch (error) {
-      console.error('Error sending simple message:', error);
+      // Clear streaming state on error
+      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
     }
 
     return responseContent;

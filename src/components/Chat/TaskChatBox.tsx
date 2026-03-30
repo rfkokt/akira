@@ -147,40 +147,47 @@ interface TaskChatBoxProps {
 
 export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   const [message, setMessage] = useState('')
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const aiChatStore = useAIChatStore()
-  const { sendMessage, getMessages, isStreaming, setMessages } = aiChatStore
+  const { sendMessage, getMessages, isStreaming, setMessages, streamingMessageId } = aiChatStore
   const { activeEngine } = useEngineStore()
   
   const taskMessages = getMessages(task.id)
   const isTaskStreaming = isStreaming(task.id)
+  const currentStreamingId = streamingMessageId[task.id]
 
   useEffect(() => {
-    if (!task.id) return
+    if (!task.id || historyLoaded) return
     
     const loadHistory = async () => {
       try {
         const history = await dbService.getChatHistory(task.id)
+        console.log('[TaskChatBox] Loaded history from DB:', history.length, 'messages')
         if (history && history.length > 0) {
           const existingMessages = getMessages(task.id)
+          console.log('[TaskChatBox] Existing messages in store:', existingMessages.length)
           if (existingMessages.length === 0) {
             const storeMessages = history.map((msg: DbChatMessage) => ({
               id: `db-${msg.id}`,
               taskId: msg.task_id,
-              role: msg.role,
+              role: msg.role as 'user' | 'assistant' | 'system',
               content: msg.content,
               timestamp: new Date(msg.created_at).getTime(),
             }))
+            console.log('[TaskChatBox] Setting messages to store:', storeMessages.length)
             setMessages(task.id, storeMessages)
           }
         }
+        setHistoryLoaded(true)
       } catch (err) {
         console.error('Failed to load chat history:', err)
+        setHistoryLoaded(true)
       }
     }
     
     loadHistory()
-  }, [task.id])
+  }, [task.id, historyLoaded])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -194,6 +201,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     
     try {
       await dbService.createChatMessage(task.id, 'user', msg, activeEngine.alias)
+      console.log('[TaskChatBox] Saved user message to DB')
     } catch (err) {
       console.error('Failed to save user message:', err)
     }
@@ -275,7 +283,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
                 ) : (
                   <pre className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</pre>
                 )}
-                {msg.role === 'assistant' && isTaskStreaming && idx === taskMessages.length - 1 && (
+                {msg.role === 'assistant' && currentStreamingId === msg.id && (
                   <span className="inline-flex ml-1">
                     <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />

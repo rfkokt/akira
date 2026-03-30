@@ -311,14 +311,12 @@ function App() {
         <div className="flex items-center gap-1 pr-4 relative z-10" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* Engine Selector */}
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs">
-                <Cpu className="size-3.5" />
-                <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
-                {activeEngine?.model && (
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1">{activeEngine.model}</Badge>
-                )}
-              </Button>
+            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-7 px-2 text-xs rounded-md hover:bg-accent hover:text-accent-foreground">
+              <Cpu className="size-3.5" />
+              <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
+              {activeEngine?.model && (
+                <Badge variant="secondary" className="text-[10px] h-4 px-1">{activeEngine.model}</Badge>
+              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               {enabledEngines.length === 0 ? (

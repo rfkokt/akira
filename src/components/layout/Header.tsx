@@ -76,11 +76,9 @@ export function Header() {
           
           {useRouter && (
             <DropdownMenu>
-              <DropdownMenuTrigger>
-                <Button variant="ghost" size="sm">
-                  {routerProvider || 'Select Provider'}
-                  <ChevronDown className="w-3 h-3 ml-1.5" />
-                </Button>
+              <DropdownMenuTrigger className="inline-flex items-center h-8 px-2 text-sm rounded-md hover:bg-accent hover:text-accent-foreground">
+                {routerProvider || 'Select Provider'}
+                <ChevronDown className="w-3 h-3 ml-1.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-[160px]">
                 {providers.length > 0 ? (

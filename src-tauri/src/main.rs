@@ -907,6 +907,26 @@ fn create_chat_message(
     engine_alias: String,
 ) -> Result<i64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    // Ensure task exists before inserting chat message
+    // If task doesn't exist, create a placeholder entry
+    let task_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM tasks WHERE id = ?1",
+            [&task_id],
+            |row| row.get::<_, i32>(0),
+        )
+        .unwrap_or(0) > 0;
+    
+    if !task_exists {
+        // Create placeholder task with minimal info
+        // This is needed because chat_history has FK constraint to tasks
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status) VALUES (?1, ?2, ?3)",
+            rusqlite::params![&task_id, format!("Task {}", &task_id[..8.min(task_id.len())]), "todo"],
+        ).map_err(|e: rusqlite::Error| e.to_string())?;
+    }
+    
     queries::create_chat_message(&conn, &task_id, &role, &content, &engine_alias)
         .map_err(|e: rusqlite::Error| e.to_string())
 }
