@@ -1,3 +1,6 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -17,27 +20,26 @@
     --vscode-text: #cccccc;
     --vscode-text-inactive: #858585;
     --vscode-selection: #264f78;
-    
-    --background: 0 0% 12%;
-    --foreground: 0 0% 80%;
-    --card: 0 0% 15%;
-    --card-foreground: 'hsl(var(--card-foreground))',
-    --popover: 0 0% 15%;
-    --popover-foreground: 0 0% 80%;
-    --primary: 207 84% 34%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 20%;
-    --secondary-foreground: 0 0% 80%;
-    --muted: 0 0% 20%;
-    --muted-foreground: 0 0% 52%;
-    --accent: 0 0% 20%;
-    --accent-foreground: 0 0% 80%;
-    --destructive: 0 84% 60%;
+
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 20%;
-    --input: 0 0% 24%;
-    --ring: 207 84% 34%;
-    --radius: 0.25rem;
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --radius: 0.625rem;
 
     /* Fluid font sizes - scales smoothly from 1024px to 2560px */
     --font-size-xs: clamp(11px, 0.6rem + 0.6vw, 18px);
@@ -46,6 +48,66 @@
     --font-size-lg: clamp(15px, 0.9rem + 0.9vw, 24px);
     --font-size-xl: clamp(18px, 1.1rem + 1vw, 28px);
     --font-size-2xl: clamp(22px, 1.4rem + 1.2vw, 34px);
+    --popover: oklch(1 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+  }
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+  }
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
@@ -53,7 +115,7 @@
   * {
     @apply border-border;
   }
-  
+
   html, body, #root {
     margin: 0;
     padding: 0;
@@ -64,7 +126,7 @@
     font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: clamp(14px, 0.8rem + 0.8vw, 22px);
   }
-  
+
   body {
     @apply text-[#cccccc] antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -124,40 +186,40 @@ button {
   .text-vscode {
     color: #cccccc;
   }
-  
+
   .text-vscode-inactive {
     color: #858585;
   }
-  
+
   .bg-vscode {
     background-color: #1e1e1e;
   }
-  
+
   .bg-vscode-sidebar {
     background-color: #252526;
   }
-  
+
   .bg-vscode-input {
     background-color: #3c3c3c;
   }
-  
+
   .border-vscode {
     border-color: #5a5a5a;
   }
-  
+
   .accent-vscode {
     background-color: #0e639c;
   }
-  
+
   .accent-vscode-hover:hover {
     background-color: #1177bb;
   }
-  
+
   @keyframes shimmer {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
   }
-  
+
   .animate-shimmer {
     animation: shimmer 1.5s infinite;
   }
