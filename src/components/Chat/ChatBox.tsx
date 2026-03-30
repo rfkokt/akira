@@ -329,14 +329,14 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
             {showTerminal ? 'Terminal' : 'Chat'}
           </span>
           {activeEngine && (
-            <span className="text-[10px] text-[#858585]">
+            <span className="text-xs text-[#858585]">
               ({activeEngine.alias}{activeEngine.model && ` • ${activeEngine.model}`})
             </span>
           )}
           {isStreaming && (
             <button 
               onClick={handleStop}
-              className="flex items-center gap-1 text-[10px] text-[#c75450] hover:text-[#d75550] hover:underline cursor-pointer"
+              className="flex items-center gap-1 text-xs text-[#c75450] hover:text-[#d75550] hover:underline cursor-pointer"
               title="Click to stop"
             >
               <Loader2 className="w-3 h-3 animate-spin" />
@@ -390,7 +390,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                 <p className="text-xs text-[#f48771] font-geist flex-1">{error}</p>
                 <button 
                   onClick={() => setShowTerminal(true)}
-                  className="text-[10px] text-[#0e639c] hover:underline"
+                  className="text-xs text-[#0e639c] hover:underline"
                 >
                   View terminal
                 </button>
@@ -435,11 +435,11 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                           ) : (
                             <ChevronRight className="w-3 h-3 text-white/60" />
                           )}
-                          <span className="text-[10px] uppercase tracking-wide text-[#858585]">
+                          <span className="text-xs uppercase tracking-wide text-[#858585]">
                             {msg.role}
                           </span>
                           {msg.timestamp && (
-                            <span className="ml-auto text-[9px] text-[#6e6e6e]">
+                            <span className="ml-auto text-xs text-[#6e6e6e]">
                               {formatTime(msg.timestamp)}
                             </span>
                           )}
@@ -503,12 +503,12 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                     )}
                   </div>
                   <div className="flex items-center justify-between mt-1.5 px-0.5">
-                    <span className="text-[9px] text-[#6e6e6e]">
+                    <span className="text-xs text-[#6e6e6e]">
                       Press Enter to send
                     </span>
                     <button 
                       onClick={() => setShowTerminal(true)}
-                      className="text-[9px] text-[#6e6e6e] hover:text-[#0e639c] transition-colors"
+                      className="text-xs text-[#6e6e6e] hover:text-[#0e639c] transition-colors"
                     >
                       Show terminal
                     </button>
@@ -524,7 +524,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                 <div className="flex items-center justify-between px-2 py-1.5 bg-[#2d2d2d] border-b border-white/5">
                   <div className="flex items-center gap-2">
                     <Terminal className="w-3 h-3 text-[#858585]" />
-                    <span className="text-[10px] text-[#858585] uppercase">Output</span>
+                    <span className="text-xs text-[#858585] uppercase">Output</span>
                   </div>
                   <div className="flex items-center gap-0.5">
                     <button 
@@ -545,11 +545,11 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                 </div>
 
                 {/* Terminal Content */}
-                <div className="flex-1 overflow-y-auto p-2 font-mono text-[11px] leading-relaxed bg-[#1e1e1e]">
+                <div className="flex-1 overflow-y-auto p-2 font-mono text-xs leading-relaxed bg-[#1e1e1e]">
                   {terminalLines.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
                       <ScrollText className="w-8 h-8 mb-2 opacity-30" />
-                      <span className="text-[10px]">No output</span>
+                      <span className="text-xs">No output</span>
                     </div>
                   ) : (
                     <div className="space-y-0.5">

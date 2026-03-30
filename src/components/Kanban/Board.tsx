@@ -117,7 +117,7 @@ function AIActivityIndicator({ taskId, taskState, showTerminal = false, maxHeigh
       {/* Status Header */}
       <div className="flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-        <span className="text-[11px] font-medium text-cyan-400 font-geist">
+        <span className="text-xs font-medium text-cyan-400 font-geist">
           {getCurrentAction()}
         </span>
       </div>
@@ -126,20 +126,20 @@ function AIActivityIndicator({ taskId, taskState, showTerminal = false, maxHeigh
       {(showTerminal || taskState?.status === 'running') && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-neutral-500 font-geist">Output</span>
+            <span className="text-xs text-neutral-500 font-geist">Output</span>
             {taskState?.currentFile && (
-              <span className="text-[10px] text-blue-400 font-mono truncate max-w-[150px]">
+              <span className="text-xs text-blue-400 font-mono truncate max-w-[150px]">
                 {formatFileName(taskState.currentFile)}
               </span>
             )}
           </div>
           <div 
-            className="bg-[#0d0d0d] rounded border border-white/5 p-2 font-mono text-[10px] overflow-y-auto"
+            className="bg-[#0d0d0d] rounded border border-white/5 p-2 font-mono text-xs overflow-y-auto"
             style={{ maxHeight: maxHeight === 'auto' ? '120px' : maxHeight }}
           >
             {latestOutput ? (
               <div className="space-y-0.5">
-                <div className="text-yellow-500/70 text-[9px] mb-1 border-b border-white/5 pb-1">
+                <div className="text-yellow-500/70 text-xs mb-1 border-b border-white/5 pb-1">
                   {getCurrentAction()}
                 </div>
                 {getLastOutputLines().map((line, idx) => (
@@ -166,7 +166,7 @@ function AIActivityIndicator({ taskId, taskState, showTerminal = false, maxHeigh
       {!showTerminal && taskState?.status === 'running' && (
         <div className="flex items-start gap-1.5">
           <Terminal className="w-3 h-3 text-neutral-500 mt-0.5 flex-shrink-0" />
-          <p className="text-[10px] text-neutral-400 font-geist line-clamp-1">
+          <p className="text-xs text-neutral-400 font-geist line-clamp-1">
             {taskState.currentFile ? `Editing ${formatFileName(taskState.currentFile)}...` : latestOutput ? 'Processing...' : 'Initializing...'}
           </p>
         </div>
@@ -315,14 +315,14 @@ function TaskDetailModal({
         <div className="p-4 space-y-4 overflow-y-auto flex-1">
           {/* Title */}
           <div>
-            <label className="block text-[10px] text-neutral-500 font-geist mb-1">Title</label>
+            <label className="block text-xs text-neutral-500 font-geist mb-1">Title</label>
             <h2 className="text-base font-medium text-white font-geist">{task.title}</h2>
           </div>
 
           {/* Description */}
           {task.description && (
             <div>
-              <label className="block text-[10px] text-neutral-500 font-geist mb-1">Description</label>
+              <label className="block text-xs text-neutral-500 font-geist mb-1">Description</label>
               <p className="text-sm text-neutral-300 font-geist whitespace-pre-wrap">{task.description}</p>
             </div>
           )}
@@ -330,14 +330,14 @@ function TaskDetailModal({
           {/* Status & Priority */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] text-neutral-500 font-geist mb-1">Status</label>
+              <label className="block text-xs text-neutral-500 font-geist mb-1">Status</label>
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${getStatusColor(task.status)}`} />
                 <span className="text-sm text-white font-geist">{getStatusLabel(task.status)}</span>
               </div>
             </div>
             <div>
-              <label className="block text-[10px] text-neutral-500 font-geist mb-1">Priority</label>
+              <label className="block text-xs text-neutral-500 font-geist mb-1">Priority</label>
               <span className={`text-sm font-geist capitalize ${
                 task.priority === 'high' ? 'text-red-400' :
                 task.priority === 'medium' ? 'text-yellow-400' : 'text-green-400'
@@ -348,7 +348,7 @@ function TaskDetailModal({
           {/* AI Status (if applicable) */}
           {(taskState?.status === 'running' || taskState?.status === 'queued' || taskState?.status === 'error') && (
             <div className="bg-yellow-500/5 border border-yellow-500/10 rounded-lg p-3">
-              <label className="block text-[10px] text-yellow-500 font-geist mb-2">AI Processing Status</label>
+              <label className="block text-xs text-yellow-500 font-geist mb-2">AI Processing Status</label>
               <AIActivityIndicator 
                 taskId={task.id} 
                 taskState={taskState} 
@@ -361,16 +361,16 @@ function TaskDetailModal({
           {/* Actual Git Changes in Workspace */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-[10px] text-neutral-500 font-geist">Actual Workspace Changes</label>
+              <label className="block text-xs text-neutral-500 font-geist">Actual Workspace Changes</label>
               {loadingGitChanges ? (
                 <Loader2 className="w-3 h-3 animate-spin text-neutral-500" />
               ) : actualGitChanges.length > 0 ? (
-                <span className="text-[10px] text-green-400 flex items-center gap-1">
+                <span className="text-xs text-green-400 flex items-center gap-1">
                   <Check className="w-3 h-3" />
                   {actualGitChanges.length} file(s)
                 </span>
               ) : (
-                <span className="text-[10px] text-neutral-500">0 files</span>
+                <span className="text-xs text-neutral-500">0 files</span>
               )}
             </div>
             {actualGitChanges.length > 0 ? (
@@ -383,7 +383,7 @@ function TaskDetailModal({
                 ))}
               </div>
             ) : !loadingGitChanges && (
-              <div className="text-[10px] text-neutral-600 italic bg-neutral-500/5 rounded-lg p-2">
+              <div className="text-xs text-neutral-600 italic bg-neutral-500/5 rounded-lg p-2">
                 No uncommitted changes found in workspace
               </div>
             )}
@@ -394,9 +394,9 @@ function TaskDetailModal({
             <div className="mt-2">
               <div className="flex items-center gap-2 mb-1">
                 <AlertTriangle className="w-3 h-3 text-yellow-500" />
-                <label className="block text-[10px] text-yellow-500 font-geist">AI Reported Files</label>
+                <label className="block text-xs text-yellow-500 font-geist">AI Reported Files</label>
               </div>
-              <p className="text-[9px] text-yellow-500/60 font-geist mb-2 italic">
+              <p className="text-xs text-yellow-500/60 font-geist mb-2 italic">
                 These are extracted from AI output - may not match actual changes
               </p>
               <div className="space-y-1 max-h-24 overflow-y-auto bg-yellow-500/5 rounded-lg p-2">
@@ -413,11 +413,11 @@ function TaskDetailModal({
           {/* Timestamps */}
           <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
             <div>
-              <label className="block text-[10px] text-neutral-500 font-geist mb-1">Created</label>
+              <label className="block text-xs text-neutral-500 font-geist mb-1">Created</label>
               <span className="text-xs text-neutral-400 font-geist">{formatDate(task.created_at)}</span>
             </div>
             <div>
-              <label className="block text-[10px] text-neutral-500 font-geist mb-1">Updated</label>
+              <label className="block text-xs text-neutral-500 font-geist mb-1">Updated</label>
               <span className="text-xs text-neutral-400 font-geist">{formatDate(task.updated_at)}</span>
             </div>
           </div>
@@ -607,7 +607,7 @@ function TaskCard({
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <span className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(task.priority)} font-geist`}>
+        <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(task.priority)} font-geist`}>
           {task.priority}
         </span>
 
@@ -620,7 +620,7 @@ function TaskCard({
                 onStartAI(task)
               }}
               disabled={processingTasks.has(task.id)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-[#0e639c] hover:bg-[#1177bb] disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors font-geist"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[#0e639c] hover:bg-[#1177bb] disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors font-geist"
               title="Start AI"
             >
               {processingTasks.has(task.id) ? (
@@ -659,7 +659,7 @@ function TaskCard({
                   e.stopPropagation()
                   onComplete(task)
                 }}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-green-600 hover:bg-green-700 text-white transition-colors font-geist"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors font-geist"
               >
                 <GitMerge className="w-3 h-3" />
                 Merge
@@ -668,7 +668,7 @@ function TaskCard({
           )}
 
           {task.status === 'done' && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-green-500/20 text-green-400 font-geist">
+            <div className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400 font-geist">
               <CheckCircle className="w-3 h-3" />
               Done
             </div>
@@ -691,7 +691,7 @@ function TaskCard({
                   e.stopPropagation()
                   onRetry(task)
                 }}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-600 hover:bg-red-700 text-white transition-colors font-geist"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white transition-colors font-geist"
                 title="Retry Task"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -723,7 +723,7 @@ function TaskCard({
       {/* PR Info Badge for Review tasks */}
       {task.status === 'review' && taskStates[task.id]?.prBranch && (
         <div className="mt-2 pt-2 border-t border-green-500/20">
-          <div className="flex items-center gap-1.5 text-[9px] text-green-400">
+          <div className="flex items-center gap-1.5 text-xs text-green-400">
             <GitBranch className="w-3 h-3" />
             <span className="font-mono truncate">{taskStates[task.id].prBranch}</span>
           </div>
@@ -733,7 +733,7 @@ function TaskCard({
                 href={taskStates[task.id].prUrl} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-[9px] text-[#0e639c] hover:text-[#1177bb] underline truncate block"
+                className="text-xs text-[#0e639c] hover:text-[#1177bb] underline truncate block"
                 onClick={(e) => e.stopPropagation()}
               >
                 View PR
@@ -771,7 +771,7 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="bg-[#252526] rounded-lg flex flex-col w-[320px] shrink-0 h-full overflow-hidden"
+      className="bg-[#252526] rounded-lg flex flex-col w-[400px] shrink-0 h-full overflow-hidden"
     >
       {/* Column Header */}
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/5 shrink-0">
@@ -1039,7 +1039,7 @@ export function KanbanBoard() {
   return (
     <div className="flex gap-4 h-full">
       {/* Task Creator Panel - Left Sidebar (Fixed, no scroll) */}
-      <div className="w-[280px] shrink-0 h-full">
+      <div className="w-[480px] shrink-0 h-full">
         <TaskCreatorChat />
       </div>
 
@@ -1090,7 +1090,7 @@ export function KanbanBoard() {
               <div className="bg-[#3c3c3c] rounded-md p-3 border border-white/20 shadow-xl opacity-90 rotate-2">
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <span
-                    className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(activeTask.priority)} font-geist`}
+                    className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(activeTask.priority)} font-geist`}
                   >
                     {activeTask.priority}
                   </span>
@@ -1683,7 +1683,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
       <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
         <div className="px-4 py-3 border-b border-white/5">
           <h3 className="text-sm font-semibold text-white font-geist">Git Workflow</h3>
-          <p className="text-[10px] text-neutral-500 font-geist mt-0.5">{task.title}</p>
+          <p className="text-xs text-neutral-500 font-geist mt-0.5">{task.title}</p>
         </div>
 
         <div className="p-4 space-y-4 flex-1 overflow-y-auto">
@@ -1694,11 +1694,11 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 <Check className="w-4 h-4 text-green-500" />
                 <span className="text-xs text-green-400 font-geist font-medium">PR Created</span>
               </div>
-              <p className="text-[10px] text-neutral-400 font-geist mt-1">
+              <p className="text-xs text-neutral-400 font-geist mt-1">
                 Branch: <span className="text-white font-mono">{prBranch}</span>
               </p>
               {prUrl && (
-                <p className="text-[10px] text-[#0e639c] font-geist mt-1">
+                <p className="text-xs text-[#0e639c] font-geist mt-1">
                   {prUrl}
                 </p>
               )}
@@ -1712,10 +1712,10 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 <Check className="w-4 h-4 text-blue-500" />
                 <span className="text-xs text-blue-400 font-geist font-medium">PR Merged</span>
               </div>
-              <p className="text-[10px] text-neutral-400 font-geist mt-1">
+              <p className="text-xs text-neutral-400 font-geist mt-1">
                 {prBranch} → {targetBranch}
               </p>
-              <p className="text-[10px] text-blue-400 font-geist mt-1">
+              <p className="text-xs text-blue-400 font-geist mt-1">
                 ✓ Branch {targetBranch} sekarang mengandung perubahan task ini
               </p>
             </div>
@@ -1756,7 +1756,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                         setMergeSourceBranch(branchResult.output.trim())
                       }
                     }}
-                    className="text-[10px] text-[#0e639c] hover:text-[#1177bb] px-2 py-1"
+                    className="text-xs text-[#0e639c] hover:text-[#1177bb] px-2 py-1"
                   >
                     ↻ Refresh
                   </button>
@@ -1784,7 +1784,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 </div>
                 <div className="flex items-center justify-end gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <span className="text-[10px] text-neutral-500 font-geist">Double merge</span>
+                    <span className="text-xs text-neutral-500 font-geist">Double merge</span>
                     <input
                       type="checkbox"
                       checked={!singleMerge}
@@ -1792,7 +1792,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                       className="w-4 h-4 rounded border-neutral-500 bg-[#3c3c3c] text-[#0e639c] focus:ring-[#0e639c]"
                     />
                   </label>
-                  <span className="text-[10px] text-yellow-500 font-geist">
+                  <span className="text-xs text-yellow-500 font-geist">
                     {!singleMerge ? 'Merge to target + main' : 'Merge to target only'}
                   </span>
                 </div>
@@ -1828,7 +1828,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
               <button
                 onClick={() => generateCommitMessage(true)}
                 disabled={isGenerating || !useEngineStore.getState().activeEngine}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-[#0e639c] hover:text-[#1177bb] hover:bg-[#0e639c]/10 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-[#0e639c] hover:text-[#1177bb] hover:bg-[#0e639c]/10 transition-colors disabled:opacity-50"
               >
                 {isGenerating ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -1872,7 +1872,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                     key={type}
                     onClick={() => setTagType(type)}
                     disabled={!createTag}
-                    className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                       tagType === type 
                         ? 'bg-[#0e639c] text-white' 
                         : 'bg-[#3c3c3c] text-neutral-400 hover:text-white'

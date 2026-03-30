@@ -82,7 +82,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
 
   if (error) {
     return (
-      <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 font-geist">
+      <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-geist">
         <GitBranch className="w-3 h-3" />
         <span>No git repo</span>
       </div>
@@ -91,7 +91,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
 
   if (!branchInfo) {
     return (
-      <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 font-geist">
+      <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-geist">
         <GitBranch className="w-3 h-3 animate-pulse" />
         <span>Loading...</span>
       </div>
@@ -103,7 +103,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading}
-        className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium text-neutral-300 hover:text-white hover:bg-white/5 transition-colors font-geist"
+        className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium text-neutral-300 hover:text-white hover:bg-white/5 transition-colors font-geist"
       >
         <GitBranch className="w-3 h-3 text-[#0e639c]" />
         <span className="max-w-[100px] truncate">{branchInfo.current}</span>
@@ -118,7 +118,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
           />
           <div className="absolute top-full left-0 mt-1 w-56 bg-[#252526] border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
             <div className="px-3 py-2 border-b border-white/5">
-              <span className="text-[10px] text-neutral-500 font-geist">Select Branch</span>
+              <span className="text-xs text-neutral-500 font-geist">Select Branch</span>
             </div>
             
             <div className="max-h-48 overflow-y-auto">
@@ -126,7 +126,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
                 <button
                   key={branch}
                   onClick={() => handleBranchChange(branch)}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-[11px] font-geist transition-colors ${
+                  className={`w-full flex items-center justify-between px-3 py-2 text-xs font-geist transition-colors ${
                     branch === branchInfo.current
                       ? 'bg-[#0e639c]/20 text-white'
                       : 'text-neutral-300 hover:bg-white/5'
@@ -148,7 +148,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
                     value={newBranchName}
                     onChange={(e) => setNewBranchName(e.target.value)}
                     placeholder="Branch name"
-                    className="flex-1 px-2 py-1 rounded text-[10px] bg-[#1e1e1e] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
+                    className="flex-1 px-2 py-1 rounded text-xs bg-[#1e1e1e] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleCreateBranch();
                       if (e.key === 'Escape') {
@@ -169,7 +169,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
               ) : (
                 <button
                   onClick={() => setShowNewBranchInput(true)}
-                  className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-[10px] text-neutral-400 hover:text-white hover:bg-white/5 transition-colors font-geist"
+                  className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-white/5 transition-colors font-geist"
                 >
                   <Plus className="w-3 h-3" />
                   Create new branch

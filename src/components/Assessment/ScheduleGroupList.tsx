@@ -91,7 +91,7 @@ export function ScheduleGroupList() {
                       {group.name}
                     </h4>
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-medium ${status.textColor} ${status.color}/20 font-geist`}
+                      className={`px-2 py-0.5 rounded text-xs font-medium ${status.textColor} ${status.color}/20 font-geist`}
                     >
                       {status.label}
                     </span>
@@ -157,7 +157,7 @@ export function ScheduleGroupList() {
             {isExpanded && (
               <div className="border-t border-white/5 p-4 bg-[#1e1e1e]">
                 <div className="mb-3">
-                  <p className="text-[10px] text-neutral-500 font-geist mb-2">DAFTAR PESERTA</p>
+                  <p className="text-xs text-neutral-500 font-geist mb-2">DAFTAR PESERTA</p>
                   <div className="space-y-1">
                     {group.participants.map((participant, index) => (
                       <div
@@ -170,7 +170,7 @@ export function ScheduleGroupList() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-[10px] text-neutral-500 font-geist">
+                <div className="flex items-center gap-4 text-xs text-neutral-500 font-geist">
                   <span>
                     Dibuat: {formatDate(group.createdAt)} {formatTime(group.createdAt)}
                   </span>

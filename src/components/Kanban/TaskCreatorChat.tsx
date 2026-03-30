@@ -29,7 +29,7 @@ function MarkdownContent({ content }: { content: string }) {
           
           if (isInline) {
             return (
-              <code className="px-1.5 py-0.5 rounded bg-white/10 text-blue-300 font-mono text-[11px]" {...props}>
+              <code className="px-1.5 py-0.5 rounded bg-white/10 text-blue-300 font-mono text-xs" {...props}>
                 {children}
               </code>
             );
@@ -322,10 +322,10 @@ Focus on understanding the user's intent and breaking it down into actionable st
               <p className="text-sm text-neutral-300 font-geist">
                 Describe your task in plain English
               </p>
-              <p className="text-[10px] text-neutral-500 font-geist mt-1">
+              <p className="text-xs text-neutral-500 font-geist mt-1">
                 AI will create a structured task for you
               </p>
-              <p className="text-[10px] text-cyan-500 font-geist mt-2">
+              <p className="text-xs text-cyan-500 font-geist mt-2">
                 Type @ to reference files
               </p>
             </div>
@@ -334,7 +334,7 @@ Focus on understanding the user's intent and breaking it down into actionable st
                 <button
                   key={idx}
                   onClick={() => setMessage(prompt)}
-                  className="px-3 py-2 text-[10px] text-neutral-400 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 text-left transition-colors font-geist"
+                  className="px-3 py-2 text-xs text-neutral-400 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 text-left transition-colors font-geist"
                 >
                   {prompt}
                 </button>
@@ -348,7 +348,7 @@ Focus on understanding the user's intent and breaking it down into actionable st
               className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                className={`max-w-[75%] rounded-2xl px-4 py-3 ${
                   msg.role === 'user'
                     ? 'bg-blue-600 text-white rounded-br-md'
                     : 'bg-[#252526] text-neutral-200 border border-white/5 rounded-bl-md'
@@ -381,12 +381,12 @@ Focus on understanding the user's intent and breaking it down into actionable st
             </div>
             <div className="space-y-2">
               <div>
-                <label className="text-[10px] text-neutral-500 font-geist">Title</label>
+                <label className="text-xs text-neutral-500 font-geist">Title</label>
                 <p className="text-sm text-white font-geist">{parsedTask.title}</p>
               </div>
               {parsedTask.description && (
                 <div>
-                  <label className="text-[10px] text-neutral-500 font-geist">Description</label>
+                  <label className="text-xs text-neutral-500 font-geist">Description</label>
                   <p className="text-xs text-neutral-300 font-geist line-clamp-3">{parsedTask.description}</p>
                 </div>
               )}
@@ -417,7 +417,7 @@ Focus on understanding the user's intent and breaking it down into actionable st
         {/* File Suggestions Dropdown */}
         {showFileSuggestions && filteredFiles.length > 0 && (
           <div className="mb-2 bg-[#252526] rounded-lg border border-white/10 shadow-xl max-h-48 overflow-y-auto">
-            <div className="px-2 py-1.5 text-[10px] text-neutral-500 border-b border-white/5 font-geist">
+            <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-white/5 font-geist">
               Files (↑↓ navigate, Enter to insert)
             </div>
             {filteredFiles.map((file, idx) => (
@@ -429,7 +429,7 @@ Focus on understanding the user's intent and breaking it down into actionable st
                 }`}
               >
                 <span className="text-white">{file.name}</span>
-                <span className="text-neutral-500 text-[10px] ml-2">
+                <span className="text-neutral-500 text-xs ml-2">
                   {file.path.replace(activeWorkspace?.folder_path || '', '')}
                 </span>
               </button>
@@ -458,7 +458,7 @@ Focus on understanding the user's intent and breaking it down into actionable st
                 onClick={() => setShowModelDropdown(!showModelDropdown)}
                 className="px-2 py-1 bg-white/5 hover:bg-white/10 rounded-md border border-white/10 hover:border-white/20 transition-colors flex items-center gap-1.5"
               >
-                <span className="text-[10px] text-neutral-400 font-geist">
+                <span className="text-xs text-neutral-400 font-geist">
                   {activeEngine?.alias || 'Model'}
                 </span>
                 <ChevronDown className="w-3 h-3 text-neutral-500" />

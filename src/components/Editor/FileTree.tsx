@@ -186,7 +186,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
             {node.name}
           </span>
           {!node.is_dir && node.size !== undefined && (
-            <span className="text-[10px] text-neutral-600 font-geist pr-2">
+            <span className="text-xs text-neutral-600 font-geist pr-2">
               {formatSize(node.size)}
             </span>
           )}

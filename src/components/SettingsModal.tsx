@@ -99,7 +99,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <div className="text-sm font-medium text-white font-geist capitalize flex items-center gap-2">
                           {engine.alias}
                           {engine.model && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-[#0e639c]/20 text-[#0e639c] rounded">
+                            <span className="text-xs px-1.5 py-0.5 bg-[#0e639c]/20 text-[#0e639c] rounded">
                               {engine.model}
                             </span>
                           )}

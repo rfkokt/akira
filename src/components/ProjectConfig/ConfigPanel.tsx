@@ -111,7 +111,7 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[10px] font-medium transition-colors ${
+              className={`flex-1 flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium transition-colors ${
                 isActive 
                   ? 'text-white bg-white/5 border-b border-[#0e639c]' 
                   : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
@@ -130,12 +130,12 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
           /* Preview Mode */
           <div className="h-full flex flex-col">
             <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between">
-              <span className="text-[10px] text-neutral-400 font-geist uppercase tracking-wide">
+              <span className="text-xs text-neutral-400 font-geist uppercase tracking-wide">
                 System Prompt
               </span>
               <button
                 onClick={handleCopyPrompt}
-                className="text-[10px] text-[#0e639c] hover:text-[#1177bb] font-geist flex items-center gap-1"
+                className="text-xs text-[#0e639c] hover:text-[#1177bb] font-geist flex items-center gap-1"
               >
                 {copied ? (
                   <>
@@ -148,7 +148,7 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
               </button>
             </div>
             <div className="flex-1 overflow-auto p-3">
-              <pre className="text-[11px] text-neutral-300 font-geist whitespace-pre-wrap">
+              <pre className="text-xs text-neutral-300 font-geist whitespace-pre-wrap">
                 {getSystemPrompt()}
               </pre>
             </div>

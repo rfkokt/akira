@@ -168,7 +168,7 @@ export function ScheduleGroupForm() {
             <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
           </div>
           {validDateRange && (
-            <p className="text-[10px] text-neutral-500 font-geist mt-1">
+            <p className="text-xs text-neutral-500 font-geist mt-1">
               Periode: {new Date(validDateRange.startDate).toLocaleDateString('id-ID')} - {new Date(validDateRange.endDate).toLocaleDateString('id-ID')}
             </p>
           )}

@@ -72,13 +72,13 @@ export function AssessmentScheduler() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-[10px] text-neutral-500 font-geist mb-1">Start Potential Date</p>
+              <p className="text-xs text-neutral-500 font-geist mb-1">Start Potential Date</p>
               <p className="text-sm text-neutral-200 font-geist">
                 {formatDate(selectedPeriod.startPotentialDate)}
               </p>
             </div>
             <div>
-              <p className="text-[10px] text-neutral-500 font-geist mb-1">End Potential Date</p>
+              <p className="text-xs text-neutral-500 font-geist mb-1">End Potential Date</p>
               <p className="text-sm text-neutral-200 font-geist">
                 {formatDate(selectedPeriod.endPotentialDate)}
               </p>
@@ -86,7 +86,7 @@ export function AssessmentScheduler() {
           </div>
 
           <div className="mt-3 pt-3 border-t border-white/5">
-            <p className="text-[10px] text-neutral-500 font-geist flex items-center gap-1">
+            <p className="text-xs text-neutral-500 font-geist flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
               Jadwal harus dalam periode: {formatDate(selectedPeriod.startPotentialDate)} - {formatDate(selectedPeriod.endPotentialDate)}
             </p>

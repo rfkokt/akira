@@ -65,7 +65,7 @@ export function MarkdownEditor({ value, onChange, height = '100%' }: MarkdownEdi
       />
       
       {/* Language indicator */}
-      <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-[#1e1e1e] border border-white/10 rounded text-[10px] text-neutral-500 font-geist pointer-events-none">
+      <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-[#1e1e1e] border border-white/10 rounded text-xs text-neutral-500 font-geist pointer-events-none">
         Markdown
       </div>
     </div>

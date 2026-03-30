@@ -165,7 +165,7 @@ export function DescriptionWithFileTag({
 
       {showSuggestions && suggestions.length > 0 && (
         <div className="absolute z-50 mt-1 w-full bg-[#2d2d2d] border border-white/10 rounded-lg shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-          <div className="px-2 py-1.5 text-[10px] text-neutral-500 border-b border-white/5 font-geist">
+          <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-white/5 font-geist">
             File references (↑↓ to navigate, Enter/Tab to insert)
           </div>
           {suggestions.map((file, index) => (
@@ -183,7 +183,7 @@ export function DescriptionWithFileTag({
             >
               <FileCode className="w-3.5 h-3.5 text-[#0e639c] shrink-0" />
               <span className="truncate">{file.name}</span>
-              <span className="text-neutral-500 text-[10px] truncate ml-auto">
+              <span className="text-neutral-500 text-xs truncate ml-auto">
                 {file.path.replace(workspacePath || '', '')}
               </span>
             </button>

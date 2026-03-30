@@ -23,13 +23,13 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
             <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
             <div className="w-3 h-3 rounded-full bg-green-500/80" />
           </div>
-          <span className="text-[10px] text-neutral-500 font-mono">
+          <span className="text-xs text-neutral-500 font-mono">
             {language || 'code'}
           </span>
         </div>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-neutral-500 hover:text-white hover:bg-white/5 transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-neutral-500 hover:text-white hover:bg-white/5 transition-colors"
         >
           {copied ? (
             <>
@@ -62,7 +62,7 @@ function MarkdownContent({ content }: { content: string }) {
           
           if (isInline) {
             return (
-              <code className="px-1.5 py-0.5 rounded bg-white/10 text-blue-300 font-mono text-[11px]" {...props}>
+              <code className="px-1.5 py-0.5 rounded bg-white/10 text-blue-300 font-mono text-xs" {...props}>
                 {children}
               </code>
             );
@@ -182,7 +182,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
           <h3 className="text-xs font-semibold text-white font-geist">
             AI Assistant
           </h3>
-          <p className="text-[10px] text-neutral-500 font-geist truncate max-w-[200px]">
+          <p className="text-xs text-neutral-500 font-geist truncate max-w-[200px]">
             {task.title}
           </p>
         </div>
@@ -197,7 +197,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
       <div className="px-3 py-1.5 bg-[#1e1e1e] border-b border-white/5">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${activeEngine ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-[10px] text-neutral-400 font-geist">
+          <span className="text-xs text-neutral-400 font-geist">
             {activeEngine ? activeEngine.alias : 'No engine selected'}
           </span>
         </div>
@@ -209,7 +209,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
             <p className="text-xs text-neutral-500 font-geist">
               Start a conversation about this task
             </p>
-            <p className="text-[10px] text-neutral-600 font-geist mt-1">
+            <p className="text-xs text-neutral-600 font-geist mt-1">
               AI will help you implement "{task.title}"
             </p>
           </div>
@@ -231,11 +231,11 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
                 }`}
               >
                 {msg.role === 'assistant' ? (
-                  <div className="text-[12px] leading-relaxed">
+                  <div className="text-sm leading-relaxed">
                     <MarkdownContent content={msg.content} />
                   </div>
                 ) : (
-                  <pre className="whitespace-pre-wrap text-[12px] leading-relaxed">{msg.content}</pre>
+                  <pre className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</pre>
                 )}
                 {msg.role === 'assistant' && isTaskStreaming && idx === taskMessages.length - 1 && (
                   <span className="inline-flex ml-1">

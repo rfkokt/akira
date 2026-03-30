@@ -71,7 +71,7 @@ export function Sidebar() {
             <Folder className="w-4 h-4 text-neutral-400" />
             <div className="overflow-hidden">
               <p className="text-xs font-medium text-neutral-300 font-geist truncate">korlap-x</p>
-              <p className="text-[10px] text-neutral-500 font-geist truncate">~/Projects</p>
+              <p className="text-xs text-neutral-500 font-geist truncate">~/Projects</p>
             </div>
           </div>
         </div>

@@ -195,15 +195,15 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
               <div className="mt-6 grid grid-cols-3 gap-3">
                 <div className="flex flex-col items-center p-3 bg-[#1e1e1e] border border-white/5">
                   <FileJson className="w-6 h-6 text-[#858585] mb-2" />
-                  <span className="text-[10px] text-[#858585] font-geist">JSON</span>
+                  <span className="text-xs text-[#858585] font-geist">JSON</span>
                 </div>
                 <div className="flex flex-col items-center p-3 bg-[#1e1e1e] border border-white/5">
                   <FileText className="w-6 h-6 text-[#858585] mb-2" />
-                  <span className="text-[10px] text-[#858585] font-geist">Markdown</span>
+                  <span className="text-xs text-[#858585] font-geist">Markdown</span>
                 </div>
                 <div className="flex flex-col items-center p-3 bg-[#1e1e1e] border border-white/5">
                   <FileSpreadsheet className="w-6 h-6 text-[#858585] mb-2" />
-                  <span className="text-[10px] text-[#858585] font-geist">Excel</span>
+                  <span className="text-xs text-[#858585] font-geist">Excel</span>
                 </div>
               </div>
 
@@ -213,7 +213,7 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
                   <summary className="text-[#858585] cursor-pointer font-geist hover:text-[#cccccc]">
                     View JSON format example
                   </summary>
-                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-[10px] overflow-x-auto border border-white/5">
+                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-xs overflow-x-auto border border-white/5">
 {`[
   {
     "title": "Implement feature X",
@@ -229,7 +229,7 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
                   <summary className="text-[#858585] cursor-pointer font-geist hover:text-[#cccccc]">
                     View Markdown format example
                   </summary>
-                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-[10px] overflow-x-auto border border-white/5">
+                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-xs overflow-x-auto border border-white/5">
 {`# Tasks
 
 ## TODO

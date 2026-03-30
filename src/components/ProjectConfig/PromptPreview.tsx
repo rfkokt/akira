@@ -34,7 +34,7 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
             <h3 className="text-sm font-semibold text-white font-geist">
               System Prompt Preview
             </h3>
-            <p className="text-[10px] text-neutral-500 font-geist mt-0.5">
+            <p className="text-xs text-neutral-500 font-geist mt-0.5">
               This is the full prompt that will be sent to AI
             </p>
           </div>
@@ -79,7 +79,7 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
             sections.map((section, index) => (
               <div key={index} className="bg-[#252526] rounded border border-white/5 overflow-hidden">
                 <div className="px-3 py-2 bg-[#2d2d2d] border-b border-white/5">
-                  <span className="text-[10px] font-medium text-neutral-400 font-geist uppercase tracking-wide">
+                  <span className="text-xs font-medium text-neutral-400 font-geist uppercase tracking-wide">
                     Section {index + 1}
                   </span>
                 </div>
@@ -94,10 +94,10 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
           {sections.length > 0 && (
             <div className="mt-4 pt-4 border-t border-white/5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-medium text-neutral-400 font-geist uppercase tracking-wide">
+                <span className="text-xs font-medium text-neutral-400 font-geist uppercase tracking-wide">
                   Full Prompt
                 </span>
-                <span className="text-[10px] text-neutral-500 font-geist">
+                <span className="text-xs text-neutral-500 font-geist">
                   {systemPrompt.length} characters
                 </span>
               </div>
@@ -110,7 +110,7 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-white/5 bg-[#252526] flex items-center justify-between">
-          <div className="text-[10px] text-neutral-500 font-geist">
+          <div className="text-xs text-neutral-500 font-geist">
             Project: Workspace Config
           </div>
           <button

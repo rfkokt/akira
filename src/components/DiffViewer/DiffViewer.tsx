@@ -331,18 +331,18 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
                 {task.title}
               </h3>
               {loading ? (
-                <p className="text-[10px] text-blue-400 font-geist flex items-center gap-1">
+                <p className="text-xs text-blue-400 font-geist flex items-center gap-1">
                   {loadingMessage}
                   {elapsedTime > 0 && <span className="text-neutral-500">({elapsedTime}s)</span>}
                 </p>
               ) : error ? (
-                <p className="text-[10px] text-yellow-500 font-geist">{error}</p>
+                <p className="text-xs text-yellow-500 font-geist">{error}</p>
               ) : parsedFiles.length > 0 ? (
-                <p className="text-[10px] text-neutral-500 font-geist">
+                <p className="text-xs text-neutral-500 font-geist">
                   {files} file diubah • {additions} penambahan • {deletions} penghapusan
                 </p>
               ) : (
-                <p className="text-[10px] text-neutral-500 font-geist">
+                <p className="text-xs text-neutral-500 font-geist">
                   Tidak ada perubahan
                 </p>
               )}
@@ -426,7 +426,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
         {/* Footer */}
         {parsedFiles.length > 0 && (
           <div className="px-4 py-3 border-t border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-4 text-[10px] text-neutral-500 font-geist">
+            <div className="flex items-center gap-4 text-xs text-neutral-500 font-geist">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-green-500" />
                 {additions} penambahan
@@ -539,7 +539,7 @@ function SummaryView({
               <div className="space-y-2">
                 {file.hunks.map((hunk, hunkIdx) => (
                   <div key={hunkIdx} className="space-y-1">
-                    <div className="text-[10px] text-neutral-500 font-geist px-2">
+                    <div className="text-xs text-neutral-500 font-geist px-2">
                       Baris {hunk.oldStart} - {hunk.oldStart + hunk.lines.filter(l => l.type === 'removed').length + hunk.lines.filter(l => l.type === 'context').length}
                     </div>
                     {hunk.lines.map((line, lineIdx) => (
@@ -719,7 +719,7 @@ function LoadingState({
         </div>
 
         {/* Step labels */}
-        <div className="flex justify-between mt-3 text-[10px] text-neutral-500 font-geist">
+        <div className="flex justify-between mt-3 text-xs text-neutral-500 font-geist">
           <span className={step === 'initial' ? 'text-blue-400' : ''}>Memulai</span>
           <span className={step === 'fetching' ? 'text-blue-400' : ''}>Mengambil Data</span>
           <span className={step === 'parsing' ? 'text-blue-400' : ''}>Memproses</span>

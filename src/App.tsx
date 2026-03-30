@@ -238,7 +238,7 @@ function App() {
                 <span className="text-xs font-medium text-white font-geist select-none">
                   {activeWorkspace.name}
                 </span>
-                <span className="text-[10px] text-neutral-600 font-geist select-none">
+                <span className="text-xs text-neutral-600 font-geist select-none">
                   {activeWorkspace.folder_path.split('/').slice(-2).join('/')}
                 </span>
               </div>
@@ -266,7 +266,7 @@ function App() {
               <Cpu className="w-3.5 h-3.5" />
               <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
               {activeEngine?.model && (
-                <span className="text-[10px] px-1 py-0.5 bg-[#0e639c]/20 text-[#0e639c] rounded">
+                <span className="text-xs px-1 py-0.5 bg-[#0e639c]/20 text-[#0e639c] rounded">
                   {activeEngine.model}
                 </span>
               )}
@@ -297,11 +297,11 @@ function App() {
                         <div className="flex flex-col">
                           <span className="capitalize">{engine.alias}</span>
                           {engine.model && (
-                            <span className="text-[9px] text-neutral-500">{engine.model}</span>
+                            <span className="text-xs text-neutral-500">{engine.model}</span>
                           )}
                         </div>
                         {activeEngine?.id === engine.id && (
-                          <span className="ml-auto text-[10px] text-green-400">●</span>
+                          <span className="ml-auto text-xs text-green-400">●</span>
                         )}
                       </div>
                     </button>
