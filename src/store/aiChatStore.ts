@@ -793,6 +793,15 @@ Please respond helpfully and concisely.`;
         cwd: cwd,
       });
 
+      // Save assistant response to database
+      if (responseContent) {
+        try {
+          await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
+        } catch (err) {
+          console.error('Failed to save assistant message:', err);
+        }
+      }
+
       // Wait a bit then cleanup
       setTimeout(() => {
         unlisten();

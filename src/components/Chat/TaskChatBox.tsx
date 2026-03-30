@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, Loader2, Copy, Check } from 'lucide-react'
 import { useAIChatStore, useEngineStore } from '@/store'
-import type { Task } from '@/types'
+import type { Task, ChatMessage as DbChatMessage } from '@/types'
+import { dbService } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -148,11 +149,38 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   const [message, setMessage] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const aiChatStore = useAIChatStore()
-  const { sendMessage, getMessages, isStreaming } = aiChatStore
+  const { sendMessage, getMessages, isStreaming, setMessages } = aiChatStore
   const { activeEngine } = useEngineStore()
   
   const taskMessages = getMessages(task.id)
   const isTaskStreaming = isStreaming(task.id)
+
+  useEffect(() => {
+    if (!task.id) return
+    
+    const loadHistory = async () => {
+      try {
+        const history = await dbService.getChatHistory(task.id)
+        if (history && history.length > 0) {
+          const existingMessages = getMessages(task.id)
+          if (existingMessages.length === 0) {
+            const storeMessages = history.map((msg: DbChatMessage) => ({
+              id: `db-${msg.id}`,
+              taskId: msg.task_id,
+              role: msg.role,
+              content: msg.content,
+              timestamp: new Date(msg.created_at).getTime(),
+            }))
+            setMessages(task.id, storeMessages)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load chat history:', err)
+      }
+    }
+    
+    loadHistory()
+  }, [task.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -163,6 +191,13 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     
     const msg = message
     setMessage('')
+    
+    try {
+      await dbService.createChatMessage(task.id, 'user', msg, activeEngine.alias)
+    } catch (err) {
+      console.error('Failed to save user message:', err)
+    }
+    
     await sendMessage(task.id, msg)
   }
 
