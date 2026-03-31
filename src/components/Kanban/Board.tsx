@@ -1790,6 +1790,58 @@ function GitPushFlow({ task, taskState, onClose, gitInfoCache, setGitInfoCache }
     fetchGitInfo()
   }, [task.id, activeWorkspace?.folder_path, taskState?.prBranch])
 
+  // Fallback: Fetch branches if still empty after main useEffect
+  useEffect(() => {
+    const fetchBranchesFallback = async () => {
+      if (remoteBranches.length === 0 && activeWorkspace?.folder_path) {
+        console.log('[GitPushFlow] Fallback: Fetching branches...')
+        addLog('Fetching branches...')
+        try {
+          const branchesResult = await invoke<{ current: string; local: string[]; remote: string[] }>('git_get_branches', { 
+            cwd: activeWorkspace.folder_path 
+          })
+          
+          let allBranches: string[] = []
+          if (branchesResult?.remote?.length > 0) {
+            allBranches = branchesResult.remote
+              .map(b => b.replace(/^[^/]+\//, ''))
+              .filter(b => b && !b.includes('HEAD') && !b.startsWith('remotes/'))
+          } else if (branchesResult?.local?.length > 0) {
+            allBranches = branchesResult.local
+              .filter(b => !b.includes('HEAD') && !b.startsWith('remotes/'))
+          }
+          
+          if (allBranches.length > 0) {
+            const uniqueBranches = [...new Set(allBranches)]
+            setRemoteBranches(uniqueBranches)
+            console.log('[GitPushFlow] Fallback: Loaded', uniqueBranches.length, 'branches')
+            addLog(`✓ Loaded ${uniqueBranches.length} branches`)
+            
+            // Auto-select target branch
+            const hasRdev = uniqueBranches.find(b => b.includes('rdev'))
+            const hasDev = uniqueBranches.find(b => b.includes('development'))
+            const hasMain = uniqueBranches.find(b => b === 'main' || b === 'master')
+            
+            let selectedTarget = targetBranch
+            if (hasRdev) selectedTarget = hasRdev
+            else if (hasDev) selectedTarget = hasDev
+            else if (hasMain) selectedTarget = hasMain
+            else selectedTarget = uniqueBranches[0]
+            
+            setTargetBranch(selectedTarget)
+          }
+        } catch (err) {
+          console.error('[GitPushFlow] Fallback fetch failed:', err)
+          addLog('✗ Failed to fetch branches')
+        }
+      }
+    }
+    
+    // Delay to let main useEffect run first
+    const timer = setTimeout(fetchBranchesFallback, 500)
+    return () => clearTimeout(timer)
+  }, [remoteBranches.length, activeWorkspace?.folder_path])
+
   const cleanFilePath = (file: string): string => {
     let cleaned = file
     if (activeWorkspace?.folder_path) {

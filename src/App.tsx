@@ -8,6 +8,7 @@ import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { KanbanBoard } from './components/Kanban/Board'
 import { FileTree } from './components/Editor/FileTree'
+import { FileViewer } from './components/Editor/FileViewer'
 import { GitBranchSelector } from './components/Git/GitBranchSelector'
 import { RecoveryModal } from './components/RecoveryModal'
 import { getSavedRunningTask, useAIChatStore } from './store/aiChatStore'
@@ -184,20 +185,16 @@ function App() {
                 </div>
               )}
             </div>
-            {/* Right: File Content (placeholder) */}
-            <div className="flex-1 flex items-center justify-center text-neutral-500">
+            {/* Right: File Content */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-app-bg relative">
               {selectedFile ? (
-                <div className="text-center">
-                  <p className="text-sm font-geist">Selected: {selectedFile.split('/').pop()}</p>
-                  <p className="text-xs font-geist text-neutral-600 mt-1">{selectedFile}</p>
-                  <p className="text-xs font-geist text-neutral-600 mt-4">
-                    Monaco Editor integration coming soon...
-                  </p>
-                </div>
+                <FileViewer filePath={selectedFile} />
               ) : (
-                <div className="text-center">
-                  <FolderOpen className="w-12 h-12 text-neutral-600 mb-3 mx-auto" />
-                  <p className="text-sm font-geist">Select a file from the explorer</p>
+                <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
+                  <div className="text-center">
+                    <FolderOpen className="w-12 h-12 text-neutral-700/50 mb-3 mx-auto" />
+                    <p className="text-sm font-geist">Select a file from the explorer</p>
+                  </div>
                 </div>
               )}
             </div>

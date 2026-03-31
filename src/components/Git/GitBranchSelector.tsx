@@ -11,7 +11,8 @@ import {
 
 interface GitBranchInfo {
   current: string;
-  branches: string[];
+  local: string[];
+  remote: string[];
 }
 
 interface GitBranchSelectorProps {
@@ -122,18 +123,52 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
         </div>
         
         <div className="max-h-[200px] overflow-y-auto mb-1 custom-scrollbar">
-          {branchInfo?.branches?.map((branch) => (
-            <DropdownMenuItem
-              key={branch}
-              onClick={() => handleBranchChange(branch)}
-              className={branch === branchInfo?.current ? 'bg-app-accent/10 focus:bg-app-accent/20 text-app-accent focus:text-app-accent' : ''}
-            >
-              <span className="truncate flex-1">{branch}</span>
-              {branch === branchInfo?.current && (
-                <Check className="w-3.5 h-3.5 shrink-0" />
-              )}
-            </DropdownMenuItem>
-          ))}
+          {/* Remote branches first */}
+          {branchInfo?.remote?.length > 0 && (
+            <>
+              <div className="px-2 py-1 text-[10px] text-neutral-500 uppercase tracking-wider">
+                Remote
+              </div>
+              {branchInfo.remote.map((branch) => {
+                const branchName = branch.replace(/^[^/]+\//, '')
+                return (
+                  <DropdownMenuItem
+                    key={branch}
+                    onClick={() => handleBranchChange(branchName)}
+                    className={branchName === branchInfo?.current ? 'bg-app-accent/10 focus:bg-app-accent/20 text-app-accent focus:text-app-accent' : ''}
+                  >
+                    <span className="truncate flex-1">{branchName}</span>
+                    {branchName === branchInfo?.current && (
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                  </DropdownMenuItem>
+                )
+              })}
+            </>
+          )}
+          
+          {/* Local branches */}
+          {branchInfo?.local?.length > 0 && (
+            <>
+              <div className="px-2 py-1 text-[10px] text-neutral-500 uppercase tracking-wider mt-1">
+                Local
+              </div>
+              {branchInfo.local
+                .filter(b => !branchInfo.remote.some(r => r.endsWith('/' + b)))
+                .map((branch) => (
+                  <DropdownMenuItem
+                    key={branch}
+                    onClick={() => handleBranchChange(branch)}
+                    className={branch === branchInfo?.current ? 'bg-app-accent/10 focus:bg-app-accent/20 text-app-accent focus:text-app-accent' : ''}
+                  >
+                    <span className="truncate flex-1">{branch}</span>
+                    {branch === branchInfo?.current && (
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+            </>
+          )}
         </div>
 
         <div className="pt-2 border-t border-app-border/40 mt-1">

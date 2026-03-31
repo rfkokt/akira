@@ -156,7 +156,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
       <div key={node.path}>
         <Button
           variant="ghost"
-          className={`w-full justify-start h-auto py-1 text-left group transition-all duration-200 ${isSelected ? 'bg-app-accent-glow shadow-[inset_2px_0_0_var(--app-accent)]' : 'hover:bg-app-panel'}`}
+          className={`w-full justify-start h-auto py-1 text-left group transition-none rounded-none h-7 ${isSelected ? 'bg-white/10 text-white' : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}`}
           style={{ paddingLeft: `${paddingLeft}px` }}
           onClick={() => toggleDir(node)}
         >
@@ -176,9 +176,9 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
           <span
             className={`flex-1 truncate text-xs font-geist ${
               isSelected
-                ? 'text-white'
+                ? 'text-white font-medium'
                 : node.is_dir
-                ? 'text-neutral-300'
+                ? 'text-neutral-300 group-hover:text-neutral-200'
                 : 'text-neutral-400 group-hover:text-neutral-300'
             }`}
             title={node.name}
