@@ -1,3 +1,3 @@
-export { ConfigPanel } from './ConfigPanel';
-export { MarkdownEditor } from './MarkdownBlockEditor';
-export { PromptPreview } from './PromptPreview';
+export { MarkdownEditor } from './MarkdownBlockEditor'
+export { PromptPreview } from './PromptPreview'
+export { SettingsPage } from './SettingsPage'

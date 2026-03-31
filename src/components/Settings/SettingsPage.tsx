@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { 
   Eye, Save, Layers, Shield, Check, Copy,
   Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings
@@ -212,10 +216,77 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                 </Button>
               </div>
               <div className="flex-1 overflow-auto p-8 relative">
-                <div className="absolute inset-8 rounded-2xl bg-black/20 backdrop-blur-md shadow-inner pointer-events-none" />
-                <div className="relative h-full text-neutral-300 font-geist text-sm leading-relaxed whitespace-pre-wrap p-6 rounded-2xl border border-white/5 overflow-y-auto overflow-x-hidden">
-                  <div className="prose prose-invert prose-p:leading-relaxed prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 prose-headings:font-geist prose-headings:font-semibold">
-                    <ReactMarkdown>{getSystemPrompt()}</ReactMarkdown>
+                <div className="absolute inset-8 rounded-2xl bg-gradient-to-br from-[#1c1c1e] to-black backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05),0_12px_40px_rgba(0,0,0,0.8)] pointer-events-none border border-white/[0.05]" />
+                <div className="relative h-full flex flex-col p-10 rounded-2xl overflow-y-auto overflow-x-hidden custom-scrollbar">
+                  <div className="max-w-3xl mx-auto w-full">
+                    <div className="prose prose-invert prose-p:leading-relaxed prose-sm max-w-none 
+                      prose-headings:font-geist prose-headings:font-medium prose-headings:tracking-tight 
+                      prose-h1:text-white prose-h1:border-b prose-h1:border-white/10 prose-h1:pb-4 prose-h1:mb-8 prose-h1:text-2xl
+                      prose-h2:text-app-accent prose-h2:mt-10 prose-h2:border-b prose-h2:border-white/5 prose-h2:pb-2 prose-h2:text-lg
+                      prose-h3:text-white prose-h3:mt-8 prose-h3:text-base
+                      prose-strong:text-white prose-strong:font-semibold
+                      prose-p:text-neutral-300 prose-p:text-[13px]
+                      prose-a:text-app-accent hover:prose-a:text-app-accent-hover prose-a:no-underline hover:prose-a:underline
+                      prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-[12px]
+                      [&_:not(pre)>code]:text-app-accent [&_:not(pre)>code]:bg-app-accent/10 [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:rounded-md
+                      prose-pre:bg-[#0d0d0d] prose-pre:border prose-pre:border-white/10 prose-pre:shadow-2xl prose-pre:rounded-xl prose-pre:p-4 [&>pre>code]:text-neutral-300
+                      prose-blockquote:border-l-2 prose-blockquote:border-l-app-accent prose-blockquote:bg-gradient-to-r prose-blockquote:from-app-accent/10 prose-blockquote:to-transparent prose-blockquote:py-1 prose-blockquote:px-5 prose-blockquote:rounded-r-xl prose-blockquote:text-neutral-300 prose-blockquote:not-italic prose-blockquote:my-6
+                      prose-ul:marker:text-neutral-600 prose-ol:marker:text-neutral-600 prose-li:text-[13px] prose-li:text-neutral-300
+                      prose-li:my-1
+                      prose-hr:border-white/5 prose-hr:my-10
+                      selection:bg-app-accent/30 selection:text-white">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm, remarkBreaks]}
+                        components={{
+                          pre({ children }) {
+                            return <div className="not-prose my-6">{children}</div>;
+                          },
+                          code({ node, className, children, ...props }) {
+                            const match = /language-(\w+)/.exec(className || '');
+                            const isInline = !match && !className && !String(children).includes('\n');
+                            
+                            if (isInline) {
+                              return (
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+                            
+                            return (
+                              <div className="my-4 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+                                <div className="flex items-center px-4 py-2 bg-[#1e1e1e] border-b border-white/5">
+                                  <div className="flex gap-1.5 opacity-80">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                                  </div>
+                                  <span className="text-[10px] text-neutral-400 font-mono tracking-wider uppercase ml-3">
+                                    {match ? match[1] : 'code'}
+                                  </span>
+                                </div>
+                                <SyntaxHighlighter
+                                  {...props as any}
+                                  style={vscDarkPlus}
+                                  language={match ? match[1] : 'text'}
+                                  PreTag="div"
+                                  className="text-[12px] font-mono !m-0"
+                                  customStyle={{ margin: 0, padding: '1rem', background: '#0d0d0d' }}
+                                >
+                                  {String(children).replace(/\n$/, '')}
+                                </SyntaxHighlighter>
+                              </div>
+                            );
+                          }
+                        }}
+                      >
+                        {getSystemPrompt()
+                          // Force blank line before unordered lists
+                          .replace(/([^\n])\n(\s*[-*]\s)/g, '$1\n\n$2')
+                          // Force blank line before ordered lists
+                          .replace(/([^\n])\n(\s*\d+\.\s)/g, '$1\n\n$2')}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               </div>
