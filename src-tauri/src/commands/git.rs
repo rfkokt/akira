@@ -250,3 +250,162 @@ pub fn git_push(cwd: String, remote: Option<String>, branch: Option<String>) -> 
         Err(format!("Failed to push: {}", stderr))
     }
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GitFileStatus {
+    pub path: String,
+    pub status: String,
+    pub is_staged: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GitStatusResult {
+    pub staged: Vec<GitFileStatus>,
+    pub unstaged: Vec<GitFileStatus>,
+}
+
+#[tauri::command]
+pub fn git_status(cwd: String) -> Result<GitStatusResult, String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+    if !output.status.success() {
+        return Err("Failed to get git status".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut staged = Vec::new();
+    let mut unstaged = Vec::new();
+
+    for line in stdout.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let mut chars = line.chars();
+        let x = chars.next().unwrap_or(' ');
+        let y = chars.next().unwrap_or(' ');
+        let _space = chars.next(); // skip space
+
+        let mut path: String = chars.collect();
+        let path = if path.len() >= 2 && path.starts_with('"') && path.ends_with('"') {
+            path[1..path.len() - 1].to_string()
+        } else {
+            path
+        };
+
+        if x != ' ' && x != '?' {
+            staged.push(GitFileStatus {
+                path: path.clone(),
+                status: x.to_string(),
+                is_staged: true,
+            });
+        }
+
+        if y != ' ' {
+            unstaged.push(GitFileStatus {
+                path: path.clone(),
+                status: if y == '?' { String::from("U") } else { y.to_string() },
+                is_staged: false,
+            });
+        }
+    }
+
+    Ok(GitStatusResult { staged, unstaged })
+}
+
+#[tauri::command]
+pub fn git_stage(cwd: String, paths: Vec<String>) -> Result<(), String> {
+    let mut args = vec!["add".to_string()];
+    args.extend(paths);
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to stage files: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Failed to stage files: {}", stderr))
+    }
+}
+
+#[tauri::command]
+pub fn git_unstage(cwd: String, paths: Vec<String>) -> Result<(), String> {
+    let mut args = vec!["restore".to_string(), "--staged".to_string()];
+    args.extend(paths);
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to unstage files: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Failed to unstage files: {}", stderr))
+    }
+}
+
+#[tauri::command]
+pub fn git_show_head(cwd: String, path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["show", &format!("HEAD:{}", path)])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to get HEAD content: {}", e))?;
+
+    if output.status.success() {
+        if output.stdout.contains(&0) {
+            return Err("File is a binary file and cannot be displayed".to_string());
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        // Assume file is brand new (untracked) if show fails
+        Ok(String::new())
+    }
+}
+
+#[tauri::command]
+pub fn git_discard_changes(cwd: String, paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() { return Ok(()); }
+
+    let mut restore_args = vec!["restore", "--staged"];
+    restore_args.extend(paths.iter().map(|s| s.as_str()));
+    let _ = Command::new("git")
+        .args(&restore_args)
+        .current_dir(&cwd)
+        .output();
+
+    let mut checkout_args = vec!["checkout", "--"];
+    checkout_args.extend(paths.iter().map(|s| s.as_str()));
+    let output = Command::new("git")
+        .args(&checkout_args)
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let mut clean_args = vec!["clean", "-f", "--"];
+        clean_args.extend(paths.iter().map(|s| s.as_str()));
+        let clean = Command::new("git")
+            .args(&clean_args)
+            .current_dir(&cwd)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !clean.status.success() {
+            let stderr = String::from_utf8_lossy(&clean.stderr);
+            return Err(format!("Failed to discard changes: {}", stderr));
+        }
+    }
+    Ok(())
+}

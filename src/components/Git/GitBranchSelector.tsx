@@ -23,7 +23,8 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
   const [branchInfo, setBranchInfo] = useState<GitBranchInfo | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showNewBranchInput, setShowNewBranchInput] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
 
@@ -35,14 +36,14 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
 
   const loadBranches = async () => {
     try {
-      setError(null);
+      setLoadError(null);
       const info = await invoke<GitBranchInfo>('git_get_branches', {
         cwd: workspacePath
       });
       setBranchInfo(info);
     } catch (err) {
       console.error('Failed to load git branches:', err);
-      setError('Not a git repository');
+      setLoadError('Not a git repository');
     }
   };
 
@@ -53,16 +54,50 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
     }
 
     setIsLoading(true);
+    setCheckoutError(null);
+    let stashed = false;
+    
     try {
+      // Check for local changes
+      const statusResult = await invoke<{ has_changes: boolean }>('git_get_diff', {
+        cwd: workspacePath
+      });
+      
+      // Stash if there are changes
+      if (statusResult.has_changes) {
+        console.log('[GitBranchSelector] Stashing local changes...');
+        const stashResult = await invoke<{ success: boolean }>('run_shell_command', {
+          command: 'git',
+          args: ['stash', 'push', '-m', 'Auto-stash before branch switch'],
+          cwd: workspacePath
+        });
+        if (stashResult.success) {
+          stashed = true;
+          console.log('[GitBranchSelector] Changes stashed');
+        }
+      }
+      
+      // Checkout branch
       await invoke('git_checkout_branch', {
         cwd: workspacePath,
         branch
       });
+      
+      // Pop stash if we stashed
+      if (stashed) {
+        console.log('[GitBranchSelector] Popping stash...');
+        await invoke('run_shell_command', {
+          command: 'git',
+          args: ['stash', 'pop'],
+          cwd: workspacePath
+        });
+      }
+      
       await loadBranches();
       setIsOpen(false);
     } catch (err) {
       console.error('Failed to checkout branch:', err);
-      setError(String(err));
+      setCheckoutError(String(err));
     } finally {
       setIsLoading(false);
     }
@@ -72,6 +107,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
     if (!newBranchName.trim()) return;
 
     setIsLoading(true);
+    setCheckoutError(null);
     try {
       await invoke('git_create_branch', {
         cwd: workspacePath,
@@ -82,13 +118,13 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
       setNewBranchName('');
     } catch (err) {
       console.error('Failed to create branch:', err);
-      setError(String(err));
+      setCheckoutError(String(err));
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (error) {
+  if (loadError) {
     return (
       <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-geist">
         <GitBranch className="w-3 h-3" />
@@ -122,6 +158,15 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
           <span className="text-[10px] font-medium text-app-text-muted uppercase tracking-wider">Select Branch</span>
         </div>
         
+        {/* Checkout Error */}
+        {checkoutError && (
+          <div className="px-2 py-1.5 mb-2 bg-red-500/10 border border-red-500/30 rounded">
+            <p className="text-[10px] text-red-400 font-geist truncate" title={checkoutError}>
+              ⚠ {checkoutError.length > 50 ? checkoutError.substring(0, 50) + '...' : checkoutError}
+            </p>
+          </div>
+        )}
+        
         <div className="max-h-[200px] overflow-y-auto mb-1 custom-scrollbar">
           {/* Remote branches first */}
           {branchInfo?.remote?.length > 0 && (
@@ -147,15 +192,23 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
             </>
           )}
           
-          {/* Local branches */}
-          {branchInfo?.local?.length > 0 && (
-            <>
-              <div className="px-2 py-1 text-[10px] text-neutral-500 uppercase tracking-wider mt-1">
-                Local
-              </div>
-              {branchInfo.local
-                .filter(b => !branchInfo.remote.some(r => r.endsWith('/' + b)))
-                .map((branch) => (
+          {/* Local branches - only show if not exists in remote */}
+          {(() => {
+            // Get all remote branch names (without prefix)
+            const remoteBranchNames = new Set(
+              branchInfo?.remote?.map(r => r.replace(/^[^/]+\//, '')) || []
+            )
+            // Filter local branches that don't exist in remote
+            const uniqueLocalBranches = branchInfo?.local?.filter(
+              b => !remoteBranchNames.has(b)
+            ) || []
+            
+            return uniqueLocalBranches.length > 0 ? (
+              <>
+                <div className="px-2 py-1 text-[10px] text-neutral-500 uppercase tracking-wider mt-1">
+                  Local
+                </div>
+                {uniqueLocalBranches.map((branch) => (
                   <DropdownMenuItem
                     key={branch}
                     onClick={() => handleBranchChange(branch)}
@@ -167,8 +220,9 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
                     )}
                   </DropdownMenuItem>
                 ))}
-            </>
-          )}
+              </>
+            ) : null
+          })()}
         </div>
 
         <div className="pt-2 border-t border-app-border/40 mt-1">

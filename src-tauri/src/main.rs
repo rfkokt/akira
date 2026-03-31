@@ -79,6 +79,11 @@ fn main() {
             commands::git::git_get_pr_diff,
             commands::git::git_commit,
             commands::git::git_push,
+            commands::git::git_status,
+            commands::git::git_stage,
+            commands::git::git_unstage,
+            commands::git::git_show_head,
+            commands::git::git_discard_changes,
             // Chat
             commands::chat::create_chat_message,
             commands::chat::get_chat_history,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, GitBranch, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore } from '@/store'
 import { dbService } from '@/lib/db'
@@ -9,6 +9,8 @@ import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { KanbanBoard } from './components/Kanban/Board'
 import { FileTree } from './components/Editor/FileTree'
 import { FileViewer } from './components/Editor/FileViewer'
+import { GitSourceControl } from './components/Git/GitSourceControl'
+import { MonacoDiffViewer } from './components/Git/MonacoDiffViewer'
 import { GitBranchSelector } from './components/Git/GitBranchSelector'
 import { RecoveryModal } from './components/RecoveryModal'
 import { getSavedRunningTask, useAIChatStore } from './store/aiChatStore'
@@ -23,7 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
 
-type PageView = 'tasks' | 'files' | 'settings' | 'git';
+type PageView = 'tasks' | 'files' | 'settings';
 
 function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
@@ -31,6 +33,8 @@ function App() {
   const [showRecovery, setShowRecovery] = useState(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
   const [selectedFile, setSelectedFile] = useState<string | undefined>(undefined)
+  const [selectedGitFile, setSelectedGitFile] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'normal' | 'diff'>('normal')
   const { engines, activeEngine, setActiveEngine, fetchEngines, seedDefaultEngines, isLoading } = useEngineStore()
   const { activeWorkspace, loadActiveWorkspace, loadWorkspaces } = useWorkspaceStore()
   const { setCurrentWorkspace } = useTaskStore()
@@ -169,15 +173,18 @@ function App() {
       
       case 'files':
         return (
-          <div className="h-full flex">
+          <div className="h-full flex overflow-hidden">
             {/* Left: File Tree */}
-            <div className="w-[300px] shrink-0 border-r border-white/5">
+            <div className="w-[300px] shrink-0 border-r border-white/5 flex flex-col bg-transparent">
               {activeWorkspace ? (
                 <FileTree 
                   rootPath={activeWorkspace.folder_path}
                   rootName={activeWorkspace.name}
                   selectedPath={selectedFile}
-                  onFileSelect={setSelectedFile}
+                  onFileSelect={(path) => {
+                    setSelectedFile(path)
+                    setViewMode('normal')
+                  }}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
@@ -185,9 +192,11 @@ function App() {
                 </div>
               )}
             </div>
-            {/* Right: File Content */}
+            {/* Middle: File Content / Diff Viewer */}
             <div className="flex-1 flex flex-col overflow-hidden bg-app-bg relative">
-              {selectedFile ? (
+              {viewMode === 'diff' && selectedGitFile && activeWorkspace ? (
+                <MonacoDiffViewer filePath={selectedGitFile} workspacePath={activeWorkspace.folder_path} />
+              ) : viewMode === 'normal' && selectedFile ? (
                 <FileViewer filePath={selectedFile} />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
@@ -198,6 +207,18 @@ function App() {
                 </div>
               )}
             </div>
+            {/* Right: Git Workflow */}
+            {activeWorkspace && (
+              <div className="w-[300px] shrink-0 border-l border-white/5 flex flex-col bg-transparent">
+                <GitSourceControl 
+                  selectedFile={selectedGitFile} 
+                  onFileSelect={(path) => {
+                    setSelectedGitFile(path)
+                    setViewMode('diff')
+                  }} 
+                />
+              </div>
+            )}
           </div>
         )
       
@@ -213,25 +234,6 @@ function App() {
             )}
           </div>
         )
-      
-      case 'git':
-        return (
-          <div className="h-full flex items-center justify-center text-neutral-500">
-            <div className="text-center">
-              <GitBranch className="w-12 h-12 text-neutral-600 mb-4 mx-auto" />
-              <h2 className="text-lg font-semibold text-white font-geist mb-2">
-                Git Workflow
-              </h2>
-              <p className="text-sm font-geist text-neutral-400">
-                Stage → Commit → Tag → Push
-              </p>
-              <p className="text-xs font-geist text-neutral-600 mt-4">
-                Coming soon...
-              </p>
-            </div>
-          </div>
-        )
-
     }
   }
 
@@ -239,7 +241,6 @@ function App() {
     { id: 'tasks' as const, icon: LayoutList, label: 'Tasks' },
     { id: 'files' as const, icon: FolderOpen, label: 'Files' },
     { id: 'settings' as const, icon: Settings, label: 'Settings' },
-    { id: 'git' as const, icon: GitBranch, label: 'Git' },
   ]
 
   return (
