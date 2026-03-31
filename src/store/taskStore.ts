@@ -14,6 +14,7 @@ interface TaskState {
   setCurrentWorkspace: (workspaceId: string | null) => void;
   fetchTasks: (workspaceId?: string) => Promise<void>;
   createTask: (task: CreateTaskRequest) => Promise<void>;
+  updateTask: (id: string, title: string, description: string | null, priority: string) => Promise<void>;
   moveTask: (id: string, status: Task['status']) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 }
@@ -98,6 +99,15 @@ export const useTaskStore = create<TaskState>()(
           await get().fetchTasks();
         } catch (error) {
           set({ error: String(error), isLoading: false });
+        }
+      },
+
+      updateTask: async (id, title, description, priority) => {
+        try {
+          await dbService.updateTask(id, title, description, priority);
+          await get().fetchTasks();
+        } catch (error) {
+          set({ error: String(error) });
         }
       },
 

@@ -125,6 +125,7 @@ export function KanbanBoard() {
   const handleViewDiff = (task: Task) => setDiffTask(task)
   const handleOpenChat = (task: Task) => setChatTask(task)
   const handleTaskClick = (task: Task) => setDetailTask(task)
+  const handleTaskUpdate = (task: Task) => setDetailTask(task)
 
   const handleDeleteTask = async (taskId: string) => {
     try {
@@ -323,6 +324,7 @@ export function KanbanBoard() {
             isOpen={true}
             onClose={() => setDetailTask(null)}
             onDelete={handleDeleteTask}
+            onUpdate={handleTaskUpdate}
             onStartAI={handleStartAI}
             onOpenChat={handleOpenChat}
             onViewDiff={handleViewDiff}

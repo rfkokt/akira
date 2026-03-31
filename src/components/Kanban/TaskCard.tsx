@@ -50,15 +50,19 @@ export function TaskCard({
     disabled: isAIWorking
   })
 
-  const style = {
+const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : (isAIWorking ? 0.8 : 1),
   }
 
   const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
     const target = e.target as HTMLElement
-    if (target.closest('button') || target.closest('a') || target.closest('[role="button"]')) {
+    const closestButton = target.closest('button')
+    const closestLink = target.closest('a')
+    
+    if (closestButton || closestLink) {
       return
     }
     onClick(task)
@@ -74,7 +78,7 @@ export function TaskCard({
       className={`group rounded-lg p-4 transition-all duration-300 border relative ${
         isAIWorking 
           ? 'bg-yellow-500/5 border-yellow-500/20 cursor-not-allowed' 
-          : 'bg-app-sidebar hover:bg-app-panel border-app-border cursor-grab active:cursor-grabbing shadow-lg hover:shadow-[0_0_15px_var(--app-accent-glow)]'
+          : 'bg-app-sidebar hover:bg-app-panel border-app-border cursor-pointer shadow-lg hover:shadow-[0_0_15px_var(--app-accent-glow)]'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -242,26 +246,26 @@ export function TaskCard({
       )}
 
       {task.status === 'review' && taskStates[task.id]?.prBranch && (
-        <div className="mt-2 pt-2 border-t border-green-500/20">
-          <div className="flex items-center gap-1.5 text-xs text-green-400">
-            <GitBranch className="w-3 h-3" />
-            <span className="font-mono truncate">{taskStates[task.id].prBranch}</span>
-          </div>
-          {taskStates[task.id]?.prUrl && (
-            <div className="mt-1">
-              <a 
-                href={taskStates[task.id].prUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-xs text-app-accent hover:text-app-accent-hover underline truncate block"
-                onClick={(e) => e.stopPropagation()}
-              >
-                View PR
-              </a>
+          <div className="mt-2 pt-2 border-t border-green-500/20">
+            <div className="flex items-center gap-1.5 text-xs text-green-400">
+              <GitBranch className="w-3 h-3" />
+              <span className="font-mono truncate">{taskStates[task.id].prBranch}</span>
             </div>
-          )}
-        </div>
-      )}
+            {taskStates[task.id]?.prUrl && (
+              <div className="mt-1">
+                <a 
+                  href={taskStates[task.id].prUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs text-app-accent hover:text-app-accent-hover underline truncate block"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  View PR
+                </a>
+              </div>
+            )}
+          </div>
+        )}
     </div>
   )
 }

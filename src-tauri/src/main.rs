@@ -49,6 +49,7 @@ fn main() {
             commands::tasks::get_tasks_by_status,
             commands::tasks::get_tasks_by_workspace,
             commands::tasks::update_task_status,
+            commands::tasks::update_task,
             commands::tasks::fix_backlog_tasks,
             commands::tasks::delete_task,
             commands::tasks::update_task_pr_info,

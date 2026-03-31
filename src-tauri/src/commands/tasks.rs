@@ -41,6 +41,19 @@ pub fn update_task_status(
 }
 
 #[tauri::command]
+pub fn update_task(
+    state: State<AppState>,
+    id: String,
+    title: String,
+    description: Option<String>,
+    priority: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::update_task(&conn, &id, &title, description.as_deref(), &priority)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
 pub fn fix_backlog_tasks(state: State<AppState>) -> Result<i32, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let count = conn.execute(

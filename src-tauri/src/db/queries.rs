@@ -236,6 +236,20 @@ pub fn update_task_diff_info(
     Ok(())
 }
 
+pub fn update_task(
+    conn: &Connection,
+    id: &str,
+    title: &str,
+    description: Option<&str>,
+    priority: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET title = ?1, description = ?2, priority = ?3, updated_at = CURRENT_TIMESTAMP WHERE id = ?4",
+        params![title, description, priority, id],
+    )?;
+    Ok(())
+}
+
 pub fn delete_task(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM tasks WHERE id = ?1", [id])?;
     Ok(())

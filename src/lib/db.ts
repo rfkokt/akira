@@ -18,6 +18,9 @@ export const dbService = {
   updateTaskStatus: (id: string, status: string) => 
     invoke<void>('update_task_status', { id, status }),
   
+  updateTask: (id: string, title: string, description: string | null, priority: string) =>
+    invoke<void>('update_task', { id, title, description, priority }),
+  
   updateTaskPRInfo: (id: string, prBranch: string, prUrl: string | null, remote: string | null) => 
     invoke<void>('update_task_pr_info', { id, pr_branch: prBranch, pr_url: prUrl, remote }),
 
