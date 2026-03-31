@@ -80,3 +80,20 @@ pub fn update_task_merge_info(
     queries::update_task_merge_info(&conn, &id, is_merged, merge_source_branch.as_deref())
         .map_err(|e: rusqlite::Error| e.to_string())
 }
+
+#[tauri::command]
+pub fn update_task_diff_info(
+    state: State<AppState>,
+    id: String,
+    diff_content: Option<String>,
+    diff_captured_at: Option<String>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::update_task_diff_info(
+        &conn,
+        &id,
+        diff_content.as_deref(),
+        diff_captured_at.as_deref(),
+    )
+    .map_err(|e: rusqlite::Error| e.to_string())
+}

@@ -11,6 +11,18 @@ interface MarkdownEditorProps {
 export function MarkdownEditor({ value, onChange, height = '100%' }: MarkdownEditorProps) {
   const editorRef = useRef<any>(null);
 
+  const handleBeforeMount = useCallback((monaco: any) => {
+    monaco.editor.defineTheme('akira-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#00000000',
+        'editorMargin.background': '#00000000',
+      }
+    });
+  }, []);
+
   const handleEditorDidMount = useCallback((editor: any) => {
     editorRef.current = editor;
     
@@ -41,8 +53,9 @@ export function MarkdownEditor({ value, onChange, height = '100%' }: MarkdownEdi
         defaultLanguage="markdown"
         value={value}
         onChange={handleChange}
+        beforeMount={handleBeforeMount}
         onMount={handleEditorDidMount}
-        theme="vs-dark"
+        theme="akira-dark"
         options={{
           fontSize: 13,
           fontFamily: 'JetBrains Mono, monospace',
@@ -55,17 +68,17 @@ export function MarkdownEditor({ value, onChange, height = '100%' }: MarkdownEdi
           padding: { top: 16 },
         }}
         loading={
-          <div className="flex items-center justify-center h-full text-neutral-500">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-[#0e639c] border-t-transparent rounded-full animate-spin" />
-              <span className="text-xs font-geist">Loading editor...</span>
+          <div className="flex items-center justify-center h-full text-neutral-500 bg-black/10">
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-app-accent border-t-transparent rounded-full animate-spin shadow-[0_0_10px_var(--app-accent-glow)]" />
+              <span className="text-sm tracking-wide font-geist">Initializing editor...</span>
             </div>
           </div>
         }
       />
       
       {/* Language indicator */}
-      <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-[#1e1e1e] border border-white/10 rounded text-xs text-neutral-500 font-geist pointer-events-none">
+      <div className="absolute bottom-4 right-6 px-3 py-1 bg-black/40 backdrop-blur-md border border-white/10 shadow-lg rounded-full text-xs text-neutral-400 font-mono tracking-wide pointer-events-none">
         Markdown
       </div>
     </div>

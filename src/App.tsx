@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, GitBranch, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore } from '@/store'
 import { dbService } from '@/lib/db'
-import { SettingsModal } from '@/components/SettingsModal'
+import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
-import { ConfigPanel } from './components/ProjectConfig/ConfigPanel'
 import { KanbanBoard } from './components/Kanban/Board'
 import { FileTree } from './components/Editor/FileTree'
 import { GitBranchSelector } from './components/Git/GitBranchSelector'
@@ -23,11 +22,10 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
 
-type PageView = 'tasks' | 'files' | 'config' | 'git';
+type PageView = 'tasks' | 'files' | 'settings' | 'git';
 
 function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const [showRecovery, setShowRecovery] = useState(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
@@ -206,13 +204,11 @@ function App() {
           </div>
         )
       
-      case 'config':
+      case 'settings':
         return (
-          <div className="h-full flex flex-col md:flex-row bg-black/40 overflow-hidden">
+          <div className="h-full flex flex-col md:flex-row overflow-hidden bg-transparent">
             {activeWorkspace ? (
-              <div className="flex-1 h-full max-w-7xl mx-auto w-full shadow-2xl border-x border-app-border bg-black/40 backdrop-blur-xl">
-                <ConfigPanel projectId={activeWorkspace.id} />
-              </div>
+              <SettingsPage projectId={activeWorkspace.id} />
             ) : (
               <div className="flex-1 flex items-center justify-center text-app-text-muted">
                 <p>No workspace selected.</p>
@@ -245,7 +241,7 @@ function App() {
   const menuItems = [
     { id: 'tasks' as const, icon: LayoutList, label: 'Tasks' },
     { id: 'files' as const, icon: FolderOpen, label: 'Files' },
-    { id: 'config' as const, icon: Brain, label: 'Config' },
+    { id: 'settings' as const, icon: Settings, label: 'Settings' },
     { id: 'git' as const, icon: GitBranch, label: 'Git' },
   ]
 
@@ -353,7 +349,7 @@ function App() {
               variant="ghost"
               size="sm"
               className="h-7 gap-1 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10"
-              onClick={() => setShowSettings(true)}
+              onClick={() => setCurrentPage('settings')}
             >
               <Zap className="size-3.5" />
               {rtkStats && rtkStats.total_saved > 0 && (
@@ -398,7 +394,7 @@ function App() {
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => setShowSettings(true)}
+            onClick={() => setCurrentPage('settings')}
           >
             <Settings className="size-3.5" />
           </Button>
@@ -448,8 +444,6 @@ function App() {
           </main>
         </div>
       </div>
-
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   )
 }

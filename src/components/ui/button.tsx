@@ -4,15 +4,15 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-medium transition-all duration-300 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 select-none",
+  "group/button inline-flex items-center gap-2 justify-center whitespace-nowrap rounded-xl text-sm font-medium transition-all duration-300 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 select-none",
   {
     variants: {
       variant: {
-        default: "bg-app-accent text-white hover:bg-app-accent-hover shadow-lg shadow-app-accent/20 hover:shadow-app-accent/40",
-        destructive: "bg-red-500/80 text-white hover:bg-red-500 shadow-lg shadow-red-500/20",
-        outline: "border border-app-border bg-app-bg/50 hover:bg-app-panel hover:text-white backdrop-blur-sm",
-        secondary: "bg-app-panel/80 text-app-text hover:bg-app-panel hover:text-white shadow-sm border border-app-border/50",
-        ghost: "hover:bg-app-panel/60 hover:text-white text-app-text",
+        default: "bg-app-accent text-white hover:bg-app-accent-hover shadow-lg shadow-[#0ea5e9]/20 hover:shadow-[#0ea5e9]/40",
+        destructive: "bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/20",
+        outline: "border border-app-border bg-black/30 hover:bg-app-panel hover:text-white backdrop-blur-sm",
+        secondary: "bg-black/30 text-app-text hover:bg-app-panel hover:text-white shadow-sm border",
+        ghost: "hover:bg-white/10 hover:text-white text-app-text",
         link: "text-app-accent underline-offset-4 hover:underline",
       },
       size: {

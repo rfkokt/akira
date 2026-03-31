@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, Terminal, FileCode, Trash2, AlertTriangle, Check, Sparkles, AlertCircle } from 'lucide-react'
-import { useTaskStore, useAIChatStore, useWorkspaceStore, useEngineStore } from '@/store'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, Terminal, FileCode, Trash2, AlertTriangle, Check, AlertCircle } from 'lucide-react'
+import { useTaskStore, useAIChatStore, useWorkspaceStore } from '@/store'
 import { dbService } from '@/lib/db'
 import type { AITaskState } from '@/store/aiChatStore'
 import { invoke } from '@tauri-apps/api/core'
@@ -575,7 +575,8 @@ function TaskCard({
   onClick,
   processingTasks,
   taskStates,
-  getPriorityColor 
+  getPriorityColor,
+  mergeLoadingTasks
 }: { 
   task: Task
   onStartAI: (task: Task) => void
@@ -588,10 +589,14 @@ function TaskCard({
   isTaskStreaming: (taskId: string) => boolean
   taskStates: Record<string, import('@/store/aiChatStore').AITaskState>
   getPriorityColor: (priority: Task['priority']) => string
+  mergeLoadingTasks: Set<string>
 }) {
   // Check if AI is currently working on this task
   const isAIWorking = taskStates[task.id]?.status === 'running' || 
                       taskStates[task.id]?.status === 'queued'
+  
+  // Check if merge is loading for this task (controlled by parent)
+  const isMergeLoading = mergeLoadingTasks.has(task.id)
   
   const {
     attributes,
@@ -661,42 +666,32 @@ function TaskCard({
           )}
 
           {task.status === 'review' && (
-            <div className="flex items-center -space-x-1 [&>button]:rounded-md">
+            <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-7 w-7 relative z-10"
+                size="sm"
+                className="h-8 px-2.5 text-xs relative z-10 hover:bg-app-panel"
                 onClick={(e) => {
                   e.stopPropagation()
                   onViewDiff(task)
                 }}
                 title="View Diff"
               >
-                <FileDiff className="w-3.5 h-3.5" />
+                <FileDiff className="w-4 h-4 mr-1.5" />
+                Diff
               </Button>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-7 w-7 relative z-10"
+                size="sm"
+                className="h-8 px-2.5 text-xs relative z-10 hover:bg-app-panel"
                 onClick={(e) => {
                   e.stopPropagation()
                   onOpenChat(task)
                 }}
                 title="Chat"
               >
-                <MessageSquare className="w-3.5 h-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 relative z-10 text-green-500 hover:text-green-400 hover:bg-green-500/10"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onComplete(task)
-                }}
-                title="Merge"
-              >
-                <GitMerge className="w-3.5 h-3.5" />
+                <MessageSquare className="w-4 h-4 mr-1.5" />
+                Chat
               </Button>
             </div>
           )}
@@ -782,6 +777,28 @@ function TaskCard({
           >
             <FileDiff className="w-3 h-3 mr-1" />
             View Changes
+          </Button>
+        </div>
+      )}
+
+      {/* Merge Button for Review tasks */}
+      {task.status === 'review' && (
+        <div className="mt-2 pt-2 border-t border-green-500/20">
+          <Button
+            size="sm"
+            className="w-full text-xs bg-green-600 hover:bg-green-700 text-white"
+            onClick={(e) => {
+              e.stopPropagation()
+              onComplete(task)
+            }}
+            disabled={isMergeLoading}
+          >
+            {isMergeLoading ? (
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <GitMerge className="w-3 h-3 mr-1" />
+            )}
+            {isMergeLoading ? 'Merging...' : 'Merge'}
           </Button>
         </div>
       )}
@@ -916,6 +933,16 @@ export function KanbanBoard() {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [processingTasks, setProcessingTasks] = useState<Set<string>>(new Set())
   const [showGitFlow, setShowGitFlow] = useState<Task | null>(null)
+  const [isGitFlowLoading, setIsGitFlowLoading] = useState(false)
+  const [gitFlowLoadingSteps, setGitFlowLoadingSteps] = useState<{text: string; status: 'pending' | 'loading' | 'done'}[]>([])
+  const [mergeLoadingTasks, setMergeLoadingTasks] = useState<Set<string>>(new Set())
+  // Git info cache - persists across modal open/close
+  const [gitInfoCache, setGitInfoCache] = useState<Map<string, {
+    branches: string[];
+    remoteName: string;
+    changedFiles: string[];
+    timestamp: number;
+  }>>(new Map())
   const [chatTask, setChatTask] = useState<Task | null>(null)
   const [diffTask, setDiffTask] = useState<Task | null>(null)
   const [detailTask, setDetailTask] = useState<Task | null>(null)
@@ -1071,7 +1098,83 @@ export function KanbanBoard() {
   }
 
   const handleCompleteTask = async (task: Task) => {
+    const { activeWorkspace } = useWorkspaceStore.getState()
+    const taskState = useAIChatStore.getState().taskStates[task.id]
+    
+    // Check if cache exists for this task
+    const cacheKey = `${task.id}:${activeWorkspace?.folder_path || ''}:${taskState?.prBranch || 'none'}`
+    const cachedData = gitInfoCache.get(cacheKey)
+    const cacheValid = cachedData && Date.now() - cachedData.timestamp < 30000
+    
+    console.log('[handleCompleteTask] Cache check:', { cacheKey, hasCache: !!cachedData, cacheValid })
+    
+    if (cacheValid) {
+      // Cache exists - open modal instantly without loading
+      console.log('[handleCompleteTask] Using cache - opening instantly')
+      setMergeLoadingTasks(prev => new Set(prev).add(task.id))
+      setShowGitFlow(task)
+      return
+    }
+    
+    // No cache - show loading steps
+    console.log('[handleCompleteTask] No cache - showing loading')
+    setMergeLoadingTasks(prev => new Set(prev).add(task.id))
+    
+    // Initialize loading steps
+    const steps = [
+      { text: 'Mempersiapkan modal...', status: 'loading' as const },
+      { text: 'Mengecek branch aktif...', status: 'pending' as const },
+      { text: 'Mengambil daftar branch...', status: 'pending' as const },
+      { text: 'Mengecek perubahan file...', status: 'pending' as const },
+      { text: 'Memuat Git Workflow...', status: 'pending' as const },
+    ]
+    setGitFlowLoadingSteps(steps)
+    setIsGitFlowLoading(true)
+    
+    // Allow React to render the loading overlay first
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
+    // Step 2: Check active branch
+    setGitFlowLoadingSteps(prev => prev.map((s, i) => 
+      i === 0 ? { ...s, status: 'done' } : 
+      i === 1 ? { ...s, status: 'loading' } : s
+    ))
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Step 3: Get branches
+    setGitFlowLoadingSteps(prev => prev.map((s, i) => 
+      i === 1 ? { ...s, status: 'done' } : 
+      i === 2 ? { ...s, status: 'loading' } : s
+    ))
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Step 4: Check file changes
+    setGitFlowLoadingSteps(prev => prev.map((s, i) => 
+      i === 2 ? { ...s, status: 'done' } : 
+      i === 3 ? { ...s, status: 'loading' } : s
+    ))
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Step 5: Final loading
+    setGitFlowLoadingSteps(prev => prev.map((s, i) => 
+      i === 3 ? { ...s, status: 'done' } : 
+      i === 4 ? { ...s, status: 'loading' } : s
+    ))
+    
     setShowGitFlow(task)
+    
+    // Keep loading active until modal renders and initial data is fetched
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    // All done
+    setGitFlowLoadingSteps(prev => prev.map((s, i) => 
+      i === 4 ? { ...s, status: 'done' } : s
+    ))
+    
+    await new Promise(resolve => setTimeout(resolve, 200))
+    setIsGitFlowLoading(false)
+    setGitFlowLoadingSteps([])
+    // Note: mergeLoadingTasks will be cleared when modal is closed
   }
 
   const handleGitComplete = async () => {
@@ -1079,7 +1182,25 @@ export function KanbanBoard() {
       // Just close the modal, keep task in Review
       // User will manually move to Done after merging
       setShowGitFlow(null)
+      // Clear the merge loading state for this task
+      setMergeLoadingTasks(prev => {
+        const next = new Set(prev)
+        next.delete(showGitFlow.id)
+        return next
+      })
     }
+  }
+
+  const handleGitFlowClose = () => {
+    // Clear loading state for the task being closed
+    if (showGitFlow) {
+      setMergeLoadingTasks(prev => {
+        const next = new Set(prev)
+        next.delete(showGitFlow.id)
+        return next
+      })
+    }
+    setShowGitFlow(null)
   }
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -1108,7 +1229,57 @@ export function KanbanBoard() {
   }
 
   return (
-    <div className="flex gap-4 h-full">
+    <div className="flex gap-4 h-full relative">
+      {/* Global Loading Overlay for Git Workflow */}
+      {isGitFlowLoading && (
+        <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/70 backdrop-blur-md">
+          <div className="bg-app-panel rounded-xl border border-app-border shadow-2xl p-8 min-w-[400px]">
+            <div className="flex flex-col items-center gap-6">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-4 border-app-border border-t-app-accent animate-spin" />
+                <GitBranch className="w-6 h-6 text-app-accent absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              </div>
+              
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-white font-geist mb-1">Git Workflow</h3>
+                <p className="text-sm text-neutral-400 font-geist">Membuka modal merge...</p>
+              </div>
+              
+              {/* Progress Steps */}
+              <div className="w-full space-y-3">
+                {gitFlowLoadingSteps.map((step, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <div className={`
+                      w-6 h-6 rounded-full flex items-center justify-center shrink-0
+                      transition-colors duration-300
+                      ${step.status === 'done' ? 'bg-green-500/20 text-green-500' : 
+                        step.status === 'loading' ? 'bg-app-accent/20 text-app-accent' : 
+                        'bg-app-sidebar text-neutral-600'}
+                    `}>
+                      {step.status === 'done' ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : step.status === 'loading' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <span className="text-xs">{index + 1}</span>
+                      )}
+                    </div>
+                    <span className={`
+                      text-sm font-geist transition-colors duration-300
+                      ${step.status === 'done' ? 'text-green-400' : 
+                        step.status === 'loading' ? 'text-white' : 
+                        'text-neutral-500'}
+                    `}>
+                      {step.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Task Creator Panel - Left Sidebar (Fixed, no scroll) */}
       {showTaskCreator && (
         <div className="w-[480px] shrink-0 h-full">
@@ -1163,6 +1334,7 @@ export function KanbanBoard() {
                       isTaskStreaming={aiChatStore.isStreaming}
                       taskStates={taskStates}
                       getPriorityColor={getPriorityColor}
+                      mergeLoadingTasks={mergeLoadingTasks}
                     />
                   ))}
                 </SortableContext>
@@ -1298,8 +1470,10 @@ export function KanbanBoard() {
         <GitPushFlow 
           task={showGitFlow} 
           taskState={taskStates[showGitFlow.id]} 
-          onClose={() => setShowGitFlow(null)} 
-          onComplete={handleGitComplete} 
+          onClose={handleGitFlowClose} 
+          onComplete={handleGitComplete}
+          gitInfoCache={gitInfoCache}
+          setGitInfoCache={setGitInfoCache}
         />
       )}
 
@@ -1354,9 +1528,21 @@ interface GitPushFlowProps {
   taskState?: AITaskState
   onClose: () => void
   onComplete: () => void
+  gitInfoCache: Map<string, {
+    branches: string[];
+    remoteName: string;
+    changedFiles: string[];
+    timestamp: number;
+  }>
+  setGitInfoCache: React.Dispatch<React.SetStateAction<Map<string, {
+    branches: string[];
+    remoteName: string;
+    changedFiles: string[];
+    timestamp: number;
+  }>>>
 }
 
-function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
+function GitPushFlow({ task, taskState, onClose, gitInfoCache, setGitInfoCache }: GitPushFlowProps) {
   const [commitMsg, setCommitMsg] = useState(`feat: ${task.title}`)
   const [changedFiles, setChangedFiles] = useState<string[]>([])
   const [currentBranch, setCurrentBranch] = useState('')
@@ -1369,8 +1555,9 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isUserEdited, setIsUserEdited] = useState(false)
+  // Commit message generation disabled - backend command not available
+  // const [isGenerating, setIsGenerating] = useState(false)
+  // const [isUserEdited, setIsUserEdited] = useState(false)
   const [prUrl, setPrUrl] = useState<string | null>(taskState?.prUrl || null)
   const prBranch = taskState?.prBranch || null
   const [isPRCreated, setIsPRCreated] = useState(!!taskState?.prBranch)
@@ -1378,6 +1565,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   const [mergeSourceBranch, setMergeSourceBranch] = useState(taskState?.mergeSourceBranch || '') // Branch to merge from
   const { activeWorkspace } = useWorkspaceStore()
   const [singleMerge, setSingleMerge] = useState(true) // Single merge mode - only merge to target
+  const hasFetchedFromCache = useRef(false)
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
@@ -1395,157 +1583,204 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
     }
   }
 
+  // Log cache status on mount
+  useEffect(() => {
+    console.log('[GitPushFlow] Cache status on mount:', {
+      cacheSize: gitInfoCache.size,
+      cacheKeys: Array.from(gitInfoCache.keys())
+    })
+  }, [])
+
   useEffect(() => {
     if (!activeWorkspace?.folder_path) {
       console.log('[GitPushFlow] No active workspace folder path')
       return
     }
-    
-    console.log('[GitPushFlow] Fetching git info for:', activeWorkspace.folder_path)
-    console.log('[GitPushFlow] PR Branch from taskState:', taskState?.prBranch)
-    console.log('[GitPushFlow] prBranch state:', prBranch)
-    
+
+    // Skip if already fetched from cache (prevents re-fetching on re-renders)
+    if (hasFetchedFromCache.current) {
+      console.log('[GitPushFlow] Already fetched from cache, skipping...')
+      return
+    }
+
+    console.log('[GitPushFlow] useEffect triggered:', {
+      taskId: task.id,
+      folderPath: activeWorkspace.folder_path,
+      prBranch: taskState?.prBranch,
+      prBranchState: prBranch
+    })
+
     const fetchGitInfo = async () => {
       try {
-        // If there's a PR branch, use it as current branch
+        // Cache key based on task + workspace + branch (per task cache)
+        const cacheKey = `${task.id}:${activeWorkspace.folder_path}:${taskState?.prBranch || prBranch || 'none'}`
+        const cachedData = gitInfoCache.get(cacheKey)
+        const cacheValid = cachedData && Date.now() - cachedData.timestamp < 30000 // Cache valid for 30 seconds
+        
+        // Step 1: Set current branch immediately from cache or taskState
         const branchToUse = taskState?.prBranch || prBranch
         if (branchToUse) {
           console.log('[GitPushFlow] Using PR branch:', branchToUse)
           setCurrentBranch(branchToUse)
-        } else {
-          console.log('[GitPushFlow] No PR branch, checking current git branch')
-          const branchResult = await runGit(['branch', '--show-current'])
-          console.log('[GitPushFlow] Current branch result:', branchResult)
-          if (branchResult.success) {
-            setCurrentBranch(branchResult.output.trim())
-          } else {
-            addLog('⚠ Failed to get current branch: ' + branchResult.output)
+        } else if (cacheValid) {
+          console.log('[GitPushFlow] Using cached branch info - SKIPPING FETCH')
+          hasFetchedFromCache.current = true
+          setRemoteBranches(cachedData.branches)
+          setRemoteName(cachedData.remoteName)
+          // Set changed files from cache too
+          setChangedFiles(cachedData.changedFiles || [])
+          console.log(`[GitPushFlow] Loaded ${cachedData.changedFiles?.length || 0} changed files from cache`)
+          // Set default target branch from cache
+          const hasRdev = cachedData.branches.find(b => b.includes('rdev'))
+          const hasDev = cachedData.branches.find(b => b.includes('development'))
+          const hasMain = cachedData.branches.find(b => b === 'main' || b === 'master')
+          if (hasRdev) setTargetBranch(hasRdev)
+          else if (hasDev) setTargetBranch(hasDev)
+          else if (hasMain) setTargetBranch(hasMain)
+          else if (cachedData.branches.length > 0) setTargetBranch(cachedData.branches[0])
+          return // Early return - use cache, no need to fetch
+        }
+
+        // Step 2: Fetch all independent data in PARALLEL
+        addLog('Fetching git information...')
+        const startTime = Date.now()
+
+        const fetchPromises = [
+          // Get current branch (if no PR branch)
+          !branchToUse ? runGit(['branch', '--show-current']) : Promise.resolve({ success: true, output: '' }),
+          
+          // Get remote name
+          runGit(['remote']),
+          
+          // Get all branches
+          invoke<{ current: string; local: string[]; remote: string[] }>('git_get_branches', { 
+            cwd: activeWorkspace.folder_path 
+          }),
+          
+          // Get changed files based on PR or local
+          new Promise<string[]>(async (resolve) => {
+            let files: string[] = []
+            const branchForDiff = taskState?.prBranch || prBranch
+            
+            if (branchForDiff) {
+              try {
+                const prDiffResult = await invoke<{ changed_files: string[]; diff: string }>('git_get_pr_diff', { 
+                  cwd: activeWorkspace.folder_path,
+                  base: targetBranch,
+                  head: branchForDiff
+                })
+                if (prDiffResult?.changed_files?.length > 0) {
+                  files = prDiffResult.changed_files
+                  addLog(`✓ Found ${files.length} changed files from PR`)
+                }
+              } catch (e) {
+                console.log('[GitPushFlow] Failed to get PR diff:', e)
+              }
+            }
+            
+            // Fallback to local diff
+            if (files.length === 0) {
+              try {
+                const diffResult = await invoke<{ changed_files: string[] }>('git_get_diff', { 
+                  cwd: activeWorkspace.folder_path 
+                })
+                if (diffResult?.changed_files?.length > 0) {
+                  files = diffResult.changed_files
+                  addLog(`✓ Found ${files.length} local changed files`)
+                } else {
+                  const stagedResult = await invoke<{ changed_files: string[] }>('git_get_staged_diff', { 
+                    cwd: activeWorkspace.folder_path 
+                  })
+                  files = stagedResult?.changed_files || []
+                  if (files.length > 0) {
+                    addLog(`✓ Found ${files.length} staged files`)
+                  }
+                }
+              } catch (e) {
+                console.log('[GitPushFlow] Failed to get local diff:', e)
+              }
+            }
+            resolve(files)
+          })
+        ]
+
+        // Wait for all parallel operations
+        const [branchResult, remoteResult, branchesResult, files] = await Promise.all(fetchPromises)
+
+        console.log(`[GitPushFlow] Parallel fetch completed in ${Date.now() - startTime}ms`)
+
+        // Step 3: Process results
+        
+        // Set current branch if not from PR
+        if (!branchToUse && (branchResult as { success: boolean; output: string }).success) {
+          const branch = (branchResult as { success: boolean; output: string }).output.trim()
+          if (branch) {
+            setCurrentBranch(branch)
           }
         }
 
-        const remoteResult = await runGit(['remote'])
-        console.log('[GitPushFlow] Remote result:', remoteResult)
-        if (remoteResult.success && remoteResult.output.trim()) {
-          setRemoteName(remoteResult.output.trim().split('\n')[0])
-        } else {
-          addLog('⚠ No git remote configured')
+        // Set remote name
+        if ((remoteResult as { success: boolean; output: string }).success && (remoteResult as { success: boolean; output: string }).output.trim()) {
+          const remote = (remoteResult as { success: boolean; output: string }).output.trim().split('\n')[0]
+          setRemoteName(remote)
         }
 
-        const branchesResult = await invoke<{ current: string; local: string[]; remote: string[] }>('git_get_branches', { 
-          cwd: activeWorkspace.folder_path 
-        })
-        console.log('[GitPushFlow] Branches result:', branchesResult)
-        
-        // Use remote branches first, fallback to local branches
+        // Process branches
+        const branchesData = branchesResult as { current: string; local: string[]; remote: string[] }
         let allBranches: string[] = []
         
-        if (branchesResult?.remote?.length > 0) {
-          allBranches = branchesResult.remote
+        if (branchesData?.remote?.length > 0) {
+          allBranches = branchesData.remote
             .map(b => b.replace(/^[^/]+\//, ''))
             .filter(b => b && !b.includes('HEAD') && !b.startsWith('remotes/'))
-          console.log('[GitPushFlow] Using remote branches:', allBranches)
-        } else if (branchesResult?.local?.length > 0) {
-          allBranches = branchesResult.local
+        } else if (branchesData?.local?.length > 0) {
+          allBranches = branchesData.local
             .filter(b => !b.includes('HEAD') && !b.startsWith('remotes/'))
-          console.log('[GitPushFlow] Fallback to local branches:', allBranches)
         }
         
         if (allBranches.length > 0) {
-          setRemoteBranches([...new Set(allBranches)])
+          const uniqueBranches = [...new Set(allBranches)]
+          setRemoteBranches(uniqueBranches)
           
-          const hasRdev = allBranches.find(b => b.includes('rdev'))
-          const hasDev = allBranches.find(b => b.includes('development'))
-          const hasMain = allBranches.find(b => b === 'main' || b === 'master')
+          // Auto-select target branch
+          const hasRdev = uniqueBranches.find(b => b.includes('rdev'))
+          const hasDev = uniqueBranches.find(b => b.includes('development'))
+          const hasMain = uniqueBranches.find(b => b === 'main' || b === 'master')
           
-          if (hasRdev) {
-            setTargetBranch(hasRdev)
-            console.log('[GitPushFlow] Selected rdev as target:', hasRdev)
-          } else if (hasDev) {
-            setTargetBranch(hasDev)
-            console.log('[GitPushFlow] Selected development as target:', hasDev)
-          } else if (hasMain) {
-            setTargetBranch(hasMain)
-            console.log('[GitPushFlow] Selected main/master as target:', hasMain)
-          } else {
-            setTargetBranch(allBranches[0])
-            console.log('[GitPushFlow] Selected first branch as target:', allBranches[0])
-          }
-        } else {
-          addLog('⚠ No branches found. Make sure git is initialized and has branches.')
-          // Fallback: add some default branches
-          setRemoteBranches(['main', 'development', 'rdev'])
-          setTargetBranch('main')
-        }
-
-        // Get changed files - from PR diff if PR exists, otherwise from local
-        let files: string[] = []
-        const branchForDiff = taskState?.prBranch || prBranch
-        
-        if (branchForDiff) {
-          // Fetch files from PR diff
-          try {
-            addLog(`Fetching diff for branch: ${branchForDiff} against ${targetBranch}`)
-            const prDiffResult = await invoke<{ changed_files: string[]; diff: string }>('git_get_pr_diff', { 
-              cwd: activeWorkspace.folder_path,
-              base: targetBranch,
-              head: branchForDiff
+          let selectedTarget = targetBranch
+          if (hasRdev) selectedTarget = hasRdev
+          else if (hasDev) selectedTarget = hasDev
+          else if (hasMain) selectedTarget = hasMain
+          else selectedTarget = uniqueBranches[0]
+          
+          setTargetBranch(selectedTarget)
+          
+          // Update cache using Map - include changed files
+          setGitInfoCache(prev => {
+            const next = new Map(prev)
+            next.set(cacheKey, {
+              branches: uniqueBranches,
+              remoteName: (remoteResult as { success: boolean; output: string }).output.trim().split('\n')[0] || '',
+              changedFiles: files as string[],
+              timestamp: Date.now()
             })
-            console.log('[GitPushFlow] PR diff result:', prDiffResult)
-            if (prDiffResult?.changed_files?.length > 0) {
-              files = prDiffResult.changed_files
-              addLog(`✓ Found ${files.length} changed files from PR`)
-            } else {
-              addLog('⚠ No changed files found in PR diff')
-            }
-          } catch (e) {
-            console.log('[GitPushFlow] Failed to get PR diff:', e)
-            addLog('⚠ Failed to get PR diff: ' + String(e))
-          }
-        }
-        
-        // Fallback to local diff if no PR files
-        if (files.length === 0) {
-          addLog('Checking local changes...')
-          const diffResult = await invoke<{ changed_files: string[] }>('git_get_diff', { 
-            cwd: activeWorkspace.folder_path 
+            return next
           })
-          console.log('[GitPushFlow] Local diff result:', diffResult)
-          if (diffResult?.changed_files?.length > 0) {
-            files = diffResult.changed_files
-            addLog(`✓ Found ${files.length} local changed files`)
-          } else {
-            const stagedResult = await invoke<{ changed_files: string[] }>('git_get_staged_diff', { 
-              cwd: activeWorkspace.folder_path 
-            })
-            files = stagedResult?.changed_files || []
-            if (files.length > 0) {
-              addLog(`✓ Found ${files.length} staged files`)
-            }
-          }
         }
-        
-        // If still no files, check recent commits on the branch
-        if (files.length === 0 && currentBranch) {
-          addLog(`Checking recent commits on branch: ${currentBranch}...`)
-          try {
-            const logResult = await runGit(['log', '-1', '--name-only', '--pretty=format:', currentBranch])
-            console.log('[GitPushFlow] Git log result:', logResult)
-            if (logResult.success && logResult.output.trim()) {
-              const committedFiles = logResult.output.trim().split('\n').filter(f => f.trim() && !f.startsWith('commit '))
-              if (committedFiles.length > 0) {
-                files = committedFiles
-                addLog(`✓ Found ${files.length} files from recent commit`)
-              }
-            }
-          } catch (e) {
-            console.log('[GitPushFlow] Failed to get commit log:', e)
-          }
-        }
-        
-        setChangedFiles(files)
 
-        const currentTag = await getCurrentTag()
-        setTag(calculateNextTag(currentTag, tagType))
+        // Set changed files
+        setChangedFiles(files as string[])
+
+        // Get tag (can be done after render, not blocking)
+        getCurrentTag().then(currentTag => {
+          setTag(calculateNextTag(currentTag, tagType))
+        })
+
+        console.log(`[GitPushFlow] Total initialization time: ${Date.now() - startTime}ms`)
+        
+        // Mark as fetched (to prevent re-fetching on re-renders)
+        hasFetchedFromCache.current = true
+
       } catch (err) {
         console.error('Failed to fetch git info:', err)
         addLog('✗ Error: ' + (err instanceof Error ? err.message : String(err)))
@@ -1553,7 +1788,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
       }
     }
     fetchGitInfo()
-  }, [activeWorkspace, taskState?.prBranch])
+  }, [task.id, activeWorkspace?.folder_path, taskState?.prBranch])
 
   const cleanFilePath = (file: string): string => {
     let cleaned = file
@@ -1615,48 +1850,50 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
     return `alpha.${major}.${minor}.${patch}`
   }
 
-  const generateCommitMessage = async (isManualRegenerate = false) => {
-    const engine = useEngineStore.getState().activeEngine
-    if (!engine || !activeWorkspace?.folder_path) return
-    
-    setIsGenerating(true)
-    try {
-      // Use Tauri backend command for faster response
-      const result = await invoke<{ message: string; success: boolean }>('generate_commit_message', {
-        model: engine.model || 'llama3.2',
-        files: changedFiles,
-        cwd: activeWorkspace.folder_path,
-      })
+  // Commit message generation disabled - backend command not available
+  // const generateCommitMessage = async (isManualRegenerate = false) => {
+  //   const engine = useEngineStore.getState().activeEngine
+  //   if (!engine || !activeWorkspace?.folder_path) return
+  //   
+  //   setIsGenerating(true)
+  //   try {
+  //     // Use Tauri backend command for faster response
+  //     const result = await invoke<{ message: string; success: boolean }>('generate_commit_message', {
+  //       model: engine.model || 'llama3.2',
+  //       files: changedFiles,
+  //       cwd: activeWorkspace.folder_path,
+  //     })
+  //
+  //     if (result.success && result.message) {
+  //       let generatedMsg = result.message.trim()
+  //       if (generatedMsg.length > 72) {
+  //         generatedMsg = generatedMsg.substring(0, 69) + '...'
+  //       }
+  //       if (generatedMsg) {
+  //         setCommitMsg(generatedMsg)
+  //         if (!isManualRegenerate) {
+  //           setIsUserEdited(false)
+  //         }
+  //       }
+  //     }
+  //   } catch (err) {
+  //     console.error('Failed to generate commit message:', err)
+  //     // Fallback to manual message
+  //     if (changedFiles.length > 0) {
+  //       setCommitMsg(`feat: update ${changedFiles.length} files`)
+  //     }
+  //   } finally {
+  //     setIsGenerating(false)
+  //   }
+  // }
 
-      if (result.success && result.message) {
-        let generatedMsg = result.message.trim()
-        if (generatedMsg.length > 72) {
-          generatedMsg = generatedMsg.substring(0, 69) + '...'
-        }
-        if (generatedMsg) {
-          setCommitMsg(generatedMsg)
-          if (!isManualRegenerate) {
-            setIsUserEdited(false)
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Failed to generate commit message:', err)
-      // Fallback to manual message
-      if (changedFiles.length > 0) {
-        setCommitMsg(`feat: update ${changedFiles.length} files`)
-      }
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  useEffect(() => {
-    const hasEngine = !!useEngineStore.getState().activeEngine
-    if (changedFiles.length > 0 && !isUserEdited && !isGenerating && hasEngine) {
-      generateCommitMessage()
-    }
-  }, [changedFiles.length, isUserEdited, isGenerating])
+  // Auto-generate commit message disabled - use manual button instead
+  // useEffect(() => {
+  //   const hasEngine = !!useEngineStore.getState().activeEngine
+  //   if (changedFiles.length > 0 && !isUserEdited && !isGenerating && hasEngine) {
+  //     generateCommitMessage()
+  //   }
+  // }, [changedFiles.length, isUserEdited, isGenerating])
 
   // Update tag when type changes
   useEffect(() => {
@@ -1692,7 +1929,18 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
 
       // Push branch
       addLog(`Pushing branch: ${currentBranch}`)
-      const pushResult = await runGit(['push', '-u', remoteName, currentBranch])
+      let pushResult = await runGit(['push', '-u', remoteName, currentBranch])
+      
+      // Handle non-fast-forward: pull and push again
+      if (!pushResult.success && pushResult.output.includes('non-fast-forward')) {
+        addLog(`⚠ Push rejected, pulling latest changes...`)
+        const retryPull = await runGit(['pull', remoteName, currentBranch])
+        if (retryPull.success) {
+          addLog(`✓ Pulled latest changes`)
+          pushResult = await runGit(['push', '-u', remoteName, currentBranch])
+        }
+      }
+      
       if (!pushResult.success) throw new Error(`git push failed: ${pushResult.output}`)
       addLog('✓ Branch pushed')
       await new Promise(resolve => setTimeout(resolve, 100))
@@ -1803,7 +2051,22 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
 
       addLog(`Step 4/5: Pushing ${targetBranch}...`)
       await new Promise(resolve => setTimeout(resolve, 100))
-      const push1Result = await runGit(['push', remoteName, targetBranch])
+      let push1Result = await runGit(['push', remoteName, targetBranch])
+      
+      // Handle non-fast-forward: pull, merge, then push again
+      if (!push1Result.success && push1Result.output.includes('non-fast-forward')) {
+        addLog(`⚠ Push rejected, pulling latest changes...`)
+        const retryPull = await runGit(['pull', remoteName, targetBranch])
+        if (retryPull.success) {
+          addLog(`✓ Pulled latest changes`)
+          const retryMerge = await runGit(['merge', branchToMerge, '--no-ff', '-m', `Merge ${branchToMerge} into ${targetBranch}`])
+          if (retryMerge.success) {
+            addLog(`✓ Remerged`)
+            push1Result = await runGit(['push', remoteName, targetBranch])
+          }
+        }
+      }
+      
       if (!push1Result.success) throw new Error(`push ${targetBranch} failed: ${push1Result.output}`)
       addLog(`✓ Pushed ${targetBranch}`)
 
@@ -1831,7 +2094,22 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
 
         await new Promise(resolve => setTimeout(resolve, 100))
         addLog(`Pushing ${mainBranch}...`)
-        const pushDevResult = await runGit(['push', remoteName, mainBranch])
+        let pushDevResult = await runGit(['push', remoteName, mainBranch])
+        
+        // Handle non-fast-forward: pull, merge, then push again
+        if (!pushDevResult.success && pushDevResult.output.includes('non-fast-forward')) {
+          addLog(`⚠ Push rejected, pulling latest changes...`)
+          const retryPull = await runGit(['pull', remoteName, mainBranch])
+          if (retryPull.success) {
+            addLog(`✓ Pulled latest changes`)
+            const retryMerge = await runGit(['merge', targetBranch, '--no-ff', '-m', `Merge ${targetBranch} into ${mainBranch}`])
+            if (retryMerge.success) {
+              addLog(`✓ Remerged`)
+              pushDevResult = await runGit(['push', remoteName, mainBranch])
+            }
+          }
+        }
+        
         if (!pushDevResult.success) throw new Error(`push ${mainBranch} failed: ${pushDevResult.output}`)
         addLog(`✓ Pushed ${mainBranch}`)
       }
@@ -2019,15 +2297,21 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-neutral-500 shrink-0 w-14">Target:</span>
-                  <select
-                    value={targetBranch}
-                    onChange={(e) => setTargetBranch(e.target.value)}
-                    className="bg-app-sidebar text-white text-xs px-2 py-1 rounded border border-app-border flex-1"
-                  >
-                    {remoteBranches.map(b => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
+                  {remoteBranches.length > 0 ? (
+                    <select
+                      value={targetBranch}
+                      onChange={(e) => setTargetBranch(e.target.value)}
+                      className="bg-app-sidebar text-white text-xs px-2 py-1 rounded border border-app-border flex-1"
+                    >
+                      {remoteBranches.map(b => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-yellow-500 text-xs font-geist flex-1">
+                      Loading branches...
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center justify-end gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -2072,7 +2356,8 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs text-neutral-400 font-geist">Commit Message</label>
-              <Button
+              {/* Regenerate button hidden - backend command not available */}
+              {/* <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => generateCommitMessage(true)}
@@ -2085,13 +2370,13 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                   <Sparkles className="w-3 h-3" />
                 )}
                 Regenerate
-              </Button>
+              </Button> */}
             </div>
             <textarea
               value={commitMsg}
               onChange={(e) => {
                 setCommitMsg(e.target.value)
-                setIsUserEdited(true)
+                // setIsUserEdited(true) // Disabled - backend command not available
               }}
               className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent font-geist resize-none"
               rows={2}

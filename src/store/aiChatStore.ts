@@ -597,6 +597,33 @@ Start working on this now.`;
         setTimeout(async () => {
           const prResult = await get().autoCreatePR(taskId, taskTitle);
           
+          // Capture diff snapshot before moving to review
+          const workspacePath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
+          let diffContent: string | null = null;
+          
+          if (workspacePath) {
+            try {
+              const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', {
+                cwd: workspacePath
+              });
+              if (diffResult.has_changes) {
+                diffContent = diffResult.diff;
+              }
+            } catch (diffErr) {
+              console.error('[AI] Failed to capture diff:', diffErr);
+            }
+          }
+          
+          // Update task with diff snapshot
+          if (diffContent) {
+            try {
+              await dbService.updateTaskDiffInfo(taskId, diffContent, new Date().toISOString());
+              console.log('[AI] Diff snapshot captured for task:', taskId);
+            } catch (updateErr) {
+              console.error('[AI] Failed to save diff to task:', updateErr);
+            }
+          }
+          
           if (prResult) {
             // Branch pushed successfully - move to review
             console.log(`✓ Branch pushed: ${prResult.branch}`, prResult.prUrl || 'Compare URL available');

@@ -96,6 +96,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
     if (!isOpen || !task) return;
 
     const fetchDiff = async () => {
+      // Priority 1: Use provided diffContent prop
       if (diffContent) {
         setLoading(true);
         setLoadingStep('parsing');
@@ -105,6 +106,18 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
         return;
       }
 
+      // Priority 2: Use task's stored diff snapshot (per-task diff)
+      if (task.diff_content) {
+        console.log('[DiffViewer] Using stored diff snapshot for task:', task.id);
+        setLoading(true);
+        setLoadingStep('parsing');
+        setLoadingMessage('Memuat diff tersimpan...');
+        parseDiff(task.diff_content);
+        setLoading(false);
+        return;
+      }
+
+      // Priority 3: Fetch realtime from git (fallback)
       if (!workspacePath) {
         setError('Tidak ada workspace yang dipilih');
         setParsedFiles([]);
@@ -331,38 +344,53 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
               <h3 className="text-sm font-semibold text-white font-geist">
                 {task.title}
               </h3>
-              {loading ? (
-                <p className="text-xs text-blue-400 font-geist flex items-center gap-1">
-                  {loadingMessage}
-                  {elapsedTime > 0 && <span className="text-neutral-500">({elapsedTime}s)</span>}
-                </p>
-              ) : error ? (
-                <p className="text-xs text-yellow-500 font-geist">{error}</p>
-              ) : parsedFiles.length > 0 ? (
-                <p className="text-xs text-neutral-500 font-geist">
-                  {files} file diubah • {additions} penambahan • {deletions} penghapusan
-                </p>
-              ) : (
-                <p className="text-xs text-neutral-500 font-geist">
-                  Tidak ada perubahan
-                </p>
+          {loading ? (
+            <p className="text-xs text-blue-400 font-geist flex items-center gap-1">
+              {loadingMessage}
+              {elapsedTime > 0 && <span className="text-neutral-500">({elapsedTime}s)</span>}
+            </p>
+          ) : error ? (
+            <p className="text-xs text-yellow-500 font-geist">{error}</p>
+          ) : parsedFiles.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-neutral-500 font-geist">
+                {files} file diubah • {additions} penambahan • {deletions} penghapusan
+              </p>
+              {task.diff_content && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-geist">
+                  Snapshot
+                </span>
               )}
+            </div>
+          ) : (
+            <p className="text-xs text-neutral-500 font-geist">
+              Tidak ada perubahan
+            </p>
+          )}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {parsedFiles.length > 0 && (
-              <div className="flex items-center bg-white/5 rounded-md p-0.5 mr-2">
+              <div className="flex items-center bg-black/30 border border-white/5 rounded-lg p-1 mr-2">
                 <Button
-                  size="sm"
+                  variant="ghost"
                   onClick={() => setViewMode('summary')}
-                  className={`rounded-sm ${viewMode === 'summary' ? 'bg-[#0e639c]' : 'bg-transparent'}`}
+                  className={`rounded-md px-3 h-7 text-xs transition-all ${
+                    viewMode === 'summary' 
+                      ? 'bg-app-panel text-white shadow-sm border border-white/5' 
+                      : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  }`}
                 >
                   Ringkasan
                 </Button>
                 <Button
-                  size="sm"
+                  variant="ghost"
                   onClick={() => setViewMode('detail')}
-                  className={`rounded-sm ${viewMode === 'detail' ? 'bg-[#0e639c]' : 'bg-transparent'}`}
+                  className={`rounded-md px-3 h-7 text-xs transition-all ${
+                    viewMode === 'detail' 
+                      ? 'bg-app-panel text-white shadow-sm border border-white/5' 
+                      : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  }`}
                 >
                   Detail
                 </Button>

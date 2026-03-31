@@ -23,6 +23,9 @@ export const dbService = {
 
   updateTaskMergeInfo: (id: string, isMerged: boolean, mergeSourceBranch: string | null) =>
     invoke<void>('update_task_merge_info', { id, is_merged: isMerged, merge_source_branch: mergeSourceBranch }),
+
+  updateTaskDiffInfo: (id: string, diffContent: string | null, diffCapturedAt: string | null) =>
+    invoke<void>('update_task_diff_info', { id, diff_content: diffContent, diff_captured_at: diffCapturedAt }),
   
   deleteTask: (id: string) => 
     invoke<void>('delete_task', { id }),

@@ -112,6 +112,21 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute("ALTER TABLE tasks ADD COLUMN merged_at DATETIME", [])?;
     }
 
+    // Migration: Add diff columns to tasks table
+    let has_diff_content: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'diff_content'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !has_diff_content {
+        conn.execute("ALTER TABLE tasks ADD COLUMN diff_content TEXT", [])?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN diff_captured_at DATETIME", [])?;
+    }
+
     // Migration: Handle project_configs table schema change
     let has_project_id_config: bool = conn
         .query_row(
@@ -187,6 +202,8 @@ fn create_tables(conn: &Connection) -> Result<()> {
             is_merged           INTEGER DEFAULT 0,
             merge_source_branch TEXT,
             merged_at           DATETIME,
+            diff_content        TEXT,
+            diff_captured_at    DATETIME,
             created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE

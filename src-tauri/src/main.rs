@@ -53,6 +53,7 @@ fn main() {
             commands::tasks::delete_task,
             commands::tasks::update_task_pr_info,
             commands::tasks::update_task_merge_info,
+            commands::tasks::update_task_diff_info,
             // Engines
             commands::engines::create_engine,
             commands::engines::get_all_engines,
