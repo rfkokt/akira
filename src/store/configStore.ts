@@ -16,10 +16,10 @@ interface ConfigState {
   config: ProjectConfig | null;
   isLoading: boolean;
   error: string | null;
-  activeTab: 'persona' | 'tech-stack' | 'rules' | 'tone';
+  activeTab: 'rules';
   
   // Actions
-  setActiveTab: (tab: 'persona' | 'tech-stack' | 'rules' | 'tone') => void;
+  setActiveTab: (tab: 'rules') => void;
   loadConfig: (workspaceId: string) => Promise<void>;
   saveConfig: (config: Partial<ProjectConfig>) => Promise<void>;
   updateField: (field: keyof ProjectConfig, value: string) => void;
@@ -55,7 +55,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   config: null,
   isLoading: false,
   error: null,
-  activeTab: 'persona',
+  activeTab: 'rules',
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -116,10 +116,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     if (!config) return '';
 
     const sections = [
-      config.md_persona,
-      config.md_tech_stack,
       config.md_rules,
-      config.md_tone,
     ].filter(Boolean);
 
     return sections.join('\n\n---\n\n');

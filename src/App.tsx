@@ -267,10 +267,13 @@ function App() {
         {/* Left: Spacer untuk traffic lights native */}
         <div className="w-[80px] shrink-0 relative z-0" />
         
-        {/* Center: Workspace Indicator */}
-        <div className="flex-1 flex items-center justify-center relative z-[60]">
+        {/* Empty Flex Spacer to push Right block to end */}
+        <div className="flex-1 relative z-0" />
+
+        {/* Center: Workspace Indicator (Absolutely Centered) */}
+        <div className="absolute left-1/2 -translate-x-1/2 h-full flex items-center justify-center z-[60] pointer-events-none">
           {activeWorkspace ? (
-              <div className="flex items-center gap-3 pointer-events-auto">
+            <div className="flex items-center gap-3 pointer-events-auto">
               <div className="flex items-center gap-2 pointer-events-none">
                 <Folder className="w-3.5 h-3.5 text-app-accent" />
                 <span className="text-xs font-medium text-white font-geist select-none">

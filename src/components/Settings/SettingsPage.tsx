@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { 
-  Eye, Save, User, Layers, Shield, MessageSquare, Check, Copy,
+  Eye, Save, Layers, Shield, Check, Copy,
   Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
@@ -32,10 +33,7 @@ const sidebarTabs = [
 ];
 
 const projectSubTabs = [
-  { id: 'persona', label: 'Persona', icon: User },
-  { id: 'tech-stack', label: 'Tech Stack', icon: Layers },
   { id: 'rules', label: 'Code Rules', icon: Shield },
-  { id: 'tone', label: 'AI Tone', icon: MessageSquare },
 ];
 
 export function SettingsPage({ projectId }: SettingsPageProps) {
@@ -49,7 +47,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
   } = useConfigStore();
   
   const [activeTab, setActiveTab] = useState<string>('project-config');
-  const [activeProjectTab, setActiveProjectTab] = useState<string>('persona');
+  const [activeProjectTab, setActiveProjectTab] = useState<string>('rules');
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -215,8 +213,10 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
               </div>
               <div className="flex-1 overflow-auto p-8 relative">
                 <div className="absolute inset-8 rounded-2xl bg-black/20 backdrop-blur-md shadow-inner pointer-events-none" />
-                <div className="relative h-full text-neutral-300 font-mono text-sm leading-relaxed whitespace-pre-wrap p-6 rounded-2xl border border-white/5">
-                  {getSystemPrompt()}
+                <div className="relative h-full text-neutral-300 font-geist text-sm leading-relaxed whitespace-pre-wrap p-6 rounded-2xl border border-white/5 overflow-y-auto overflow-x-hidden">
+                  <div className="prose prose-invert prose-p:leading-relaxed prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 prose-headings:font-geist prose-headings:font-semibold">
+                    <ReactMarkdown>{getSystemPrompt()}</ReactMarkdown>
+                  </div>
                 </div>
               </div>
             </div>
@@ -228,7 +228,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                    <h3 className="text-base font-semibold text-white tracking-wide">
                      Project Configuration
                    </h3>
-                   <p className="text-xs text-neutral-500 mt-1 mb-5">Set AI rules, personas, and tech stack specific to this workspace.</p>
+                   <p className="text-xs text-neutral-500 mt-1 mb-5">Set AI rules specific to this workspace.</p>
                    
                    <div className="flex items-center gap-1">
                      {projectSubTabs.map(tab => {

@@ -77,7 +77,7 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
             <div className="text-center py-8 text-neutral-500">
               <p className="text-sm font-geist">No configuration yet</p>
               <p className="text-xs font-geist mt-1">
-                Configure Persona, Tech Stack, Rules, and Tone first
+                Configure Rules first
               </p>
             </div>
           ) : (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GitBranch, ChevronDown, Plus, Check } from 'lucide-react';
+import { GitBranch, ChevronDown, Plus, Check, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,9 +34,26 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
     }
   }, [workspacePath]);
 
-  const loadBranches = async () => {
+  const loadBranches = async (fetchRemote = false) => {
     try {
       setLoadError(null);
+      setIsLoading(true);
+      
+      // Optionally fetch latest branches from remote
+      if (fetchRemote) {
+        try {
+          await invoke('run_shell_command', {
+            command: 'git',
+            args: ['fetch', '--prune'],
+            cwd: workspacePath
+          });
+          console.log('[GitBranchSelector] Fetched latest branches from remote');
+        } catch (fetchErr) {
+          console.log('[GitBranchSelector] Fetch failed (may be offline):', fetchErr);
+          // Continue anyway, we'll show local branches
+        }
+      }
+      
       const info = await invoke<GitBranchInfo>('git_get_branches', {
         cwd: workspacePath
       });
@@ -44,6 +61,8 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
     } catch (err) {
       console.error('Failed to load git branches:', err);
       setLoadError('Not a git repository');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -154,8 +173,19 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
       </DropdownMenuTrigger>
       
       <DropdownMenuContent align="start" className="w-[240px] p-2 bg-app-panel/95 backdrop-blur-2xl">
-        <div className="px-2 py-1.5 border-b border-app-border/40 mb-1">
+        <div className="px-2 py-1.5 border-b border-app-border/40 mb-1 flex items-center justify-between">
           <span className="text-[10px] font-medium text-app-text-muted uppercase tracking-wider">Select Branch</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              loadBranches(true) // true = fetch from remote first
+            }}
+            disabled={isLoading}
+            className="text-[10px] text-app-accent hover:text-app-accent-hover disabled:opacity-50 flex items-center gap-1"
+          >
+            <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
         
         {/* Checkout Error */}
