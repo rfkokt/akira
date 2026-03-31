@@ -8,25 +8,25 @@
 @layer base {
   :root {
     /* Desktop Theme Configuration - Easily Customizable */
-    --app-bg: oklch(0.12 0 0); /* Extremely dark gray, almost black */
-    --app-panel: oklch(0.15 0 0); /* Slightly lighter for inner content panels */
-    --app-sidebar: oklch(0.13 0 0 / 0.85); /* Sidebar with slight transparency for glass effect */
-    --app-titlebar: oklch(0.10 0 0 / 0.7); /* Titlebar darker with higher transparency */
+    --app-bg: #1e1f24; /* Dark slate background (like Dixper) */
+    --app-panel: #282a30; /* Lighter charcoal for cards/panels */
+    --app-sidebar: rgba(30, 31, 36, 0.95); /* Sidebar slightly darker than panels */
+    --app-titlebar: rgba(26, 27, 32, 0.85); /* Titlebar darkest */
     
-    --app-border: oklch(0.25 0 0); /* Subtle borders separating panels */
-    --app-border-highlight: oklch(0.35 0 0); /* Brighter borders for active/hover states */
+    --app-border: rgba(255, 255, 255, 0.06); /* Very subtle borders separating panels */
+    --app-border-highlight: rgba(255, 255, 255, 0.12); /* Brighter borders for active/hover states */
     
-    /* Primary Accent (Cyberpunk Cyan/Blue) */
-    --app-accent: oklch(0.7 0.15 220); 
-    --app-accent-glow: oklch(0.7 0.15 220 / 0.3);
-    --app-accent-hover: oklch(0.8 0.15 220);
+    /* Primary Accent (Soft Sky Blue - Comfortable & Contrasting) */
+    --app-accent: #0ea5e9; 
+    --app-accent-glow: rgba(14, 165, 233, 0.25);
+    --app-accent-hover: #38bdf8;
     
-    /* Secondary Accent (Akira Red/Pink) */
-    --app-accent-alt: oklch(0.6 0.25 15);
+    /* Secondary Accent (Red/Pink for Stop/End Session buttons) */
+    --app-accent-alt: #ff3366;
     
     /* Text Colors */
-    --app-text: oklch(0.95 0 0); /* Clean white foreground */
-    --app-text-muted: oklch(0.65 0 0); /* Dimmed text for secondary info */
+    --app-text: #ffffff; /* Clean pristine white */
+    --app-text-muted: #9ca3af; /* Cool gray for secondary info */
 
     /* Shadcn defaults mapped to our new colors for compatibility */
     --background: var(--app-bg);
@@ -35,17 +35,17 @@
     --card-foreground: var(--app-text);
     --popover-foreground: var(--app-text);
     --primary: var(--app-accent);
-    --primary-foreground: oklch(0.985 0 0);
+    --primary-foreground: #ffffff;
     --secondary: var(--app-panel);
     --secondary-foreground: var(--app-text);
     --muted: var(--app-panel);
     --muted-foreground: var(--app-text-muted);
-    --accent: oklch(0.20 0 0);
+    --accent: #2c2d33;
     --accent-foreground: var(--app-text);
     --destructive: var(--app-accent-alt);
-    --destructive-foreground: oklch(1 0 0);
+    --destructive-foreground: #ffffff;
     --border: var(--app-border);
-    --input: oklch(0.20 0 0);
+    --input: #2c2d33;
     --ring: var(--app-accent);
     --radius: 0.625rem;
 
@@ -77,22 +77,22 @@
     --font-sans: 'Geist Variable', sans-serif;
   }
   .dark {
-    --app-bg: oklch(0.12 0 0); 
-    --app-panel: oklch(0.15 0 0); 
-    --app-sidebar: oklch(0.13 0 0 / 0.85); 
-    --app-titlebar: oklch(0.10 0 0 / 0.7); 
+    --app-bg: #1e1f24; 
+    --app-panel: #282a30; 
+    --app-sidebar: rgba(30, 31, 36, 0.95); 
+    --app-titlebar: rgba(26, 27, 32, 0.85); 
     
-    --app-border: oklch(0.25 0 0); 
-    --app-border-highlight: oklch(0.35 0 0); 
+    --app-border: rgba(255, 255, 255, 0.06); 
+    --app-border-highlight: rgba(255, 255, 255, 0.12); 
     
-    --app-accent: oklch(0.7 0.15 220); 
-    --app-accent-glow: oklch(0.7 0.15 220 / 0.3);
-    --app-accent-hover: oklch(0.8 0.15 220);
+    --app-accent: #0ea5e9; 
+    --app-accent-glow: rgba(14, 165, 233, 0.25);
+    --app-accent-hover: #38bdf8;
     
-    --app-accent-alt: oklch(0.6 0.25 15);
+    --app-accent-alt: #ff3366;
     
-    --app-text: oklch(0.95 0 0); 
-    --app-text-muted: oklch(0.65 0 0); 
+    --app-text: #ffffff; 
+    --app-text-muted: #9ca3af; 
 
     --background: var(--app-bg);
     --foreground: var(--app-text);
@@ -101,27 +101,27 @@
     --popover: var(--app-panel);
     --popover-foreground: var(--app-text);
     --primary: var(--app-accent);
-    --primary-foreground: oklch(0.145 0 0);
+    --primary-foreground: #ffffff;
     --secondary: var(--app-panel);
     --secondary-foreground: var(--app-text);
     --muted: var(--app-panel);
     --muted-foreground: var(--app-text-muted);
-    --accent: oklch(0.20 0 0);
+    --accent: #2c2d33;
     --accent-foreground: var(--app-text);
     --destructive: var(--app-accent-alt);
     --border: var(--app-border);
-    --input: oklch(0.20 0 0);
+    --input: #2c2d33;
     --ring: var(--app-accent);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    --chart-1: #0ea5e9;
+    --chart-2: #38bdf8;
+    --chart-3: #ff3366;
+    --chart-4: #2c2d33;
+    --chart-5: #ffffff;
     --sidebar: var(--app-sidebar);
     --sidebar-foreground: var(--app-text);
     --sidebar-primary: var(--app-accent);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.25 0 0);
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #2c2d33;
     --sidebar-accent-foreground: var(--app-text);
     --sidebar-border: var(--app-border);
     --sidebar-ring: var(--app-accent);

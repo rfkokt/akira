@@ -31,6 +31,7 @@ fn normalize_status(status: &str) -> String {
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub fn import_tasks_json(
     state: State<AppState>,
     content: String,
@@ -64,6 +65,7 @@ pub fn import_tasks_json(
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub fn import_tasks_markdown(
     state: State<AppState>,
     content: String,
@@ -125,6 +127,7 @@ pub fn import_tasks_markdown(
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub fn import_tasks_excel(
     state: State<AppState>,
     bytes: Vec<u8>,

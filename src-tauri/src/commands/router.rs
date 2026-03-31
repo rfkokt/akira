@@ -92,3 +92,41 @@ pub fn record_cli_cost(
     )
     .map_err(|e| e.to_string())
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderCostData {
+    pub provider_alias: String,
+    pub total_requests: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_cost: f64,
+}
+
+#[tauri::command]
+pub fn get_provider_costs(state: State<AppState>) -> Result<Vec<ProviderCostData>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    // Get all cost records and aggregate by provider
+    let mut stmt = conn.prepare(
+        "SELECT provider_alias, COUNT(*) as total_requests, 
+                SUM(input_tokens) as total_input, 
+                SUM(output_tokens) as total_output,
+                SUM(cost) as total_cost
+         FROM router_cost_tracking 
+         GROUP BY provider_alias"
+    ).map_err(|e| e.to_string())?;
+    
+    let costs: Vec<ProviderCostData> = stmt.query_map([], |row| {
+        Ok(ProviderCostData {
+            provider_alias: row.get(0)?,
+            total_requests: row.get(1)?,
+            total_input_tokens: row.get(2)?,
+            total_output_tokens: row.get(3)?,
+            total_cost: row.get(4)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok())
+    .collect();
+    
+    Ok(costs)
+}

@@ -36,21 +36,21 @@ function MarkdownContent({ content }: { content: string }) {
           
           if (isInline) {
             return (
-              <code className="px-1.5 py-0.5 rounded bg-white/10 text-blue-300 font-mono text-xs" {...props}>
+              <code className="px-1.5 py-0.5 rounded border-app-border-highlight text-app-accent font-mono text-xs" {...props}>
                 {children}
               </code>
             );
           }
           
           return (
-            <pre className="my-2 rounded-lg overflow-x-auto border border-white/10 bg-[#1e1e1e] p-3">
+            <pre className="my-2 rounded-lg overflow-x-auto border border-app-border bg-app-panel p-3">
               <code className="text-xs font-mono leading-relaxed text-neutral-300 whitespace-pre">{String(children).replace(/\n$/, '')}</code>
             </pre>
           );
         },
         a({ href, children }) {
           return (
-            <a href={href} className="text-cyan-400 hover:underline" target="_blank" rel="noopener noreferrer">
+            <a href={href} className="text-app-accent hover:underline" target="_blank" rel="noopener noreferrer">
               {children}
             </a>
           );
@@ -59,7 +59,7 @@ function MarkdownContent({ content }: { content: string }) {
           return <p className="mb-2 last:mb-0">{children}</p>;
         },
         hr() {
-          return <hr className="my-3 border-white/10" />;
+          return <hr className="my-3 border-app-border" />;
         },
         ul({ children }) {
           return <ul className="list-disc list-inside space-y-1 ml-2">{children}</ul>;
@@ -406,8 +406,8 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full bg-[#1e1e1e] rounded-lg border border-white/10 overflow-hidden">
-        <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
+      <div className="flex flex-col h-full bg-app-panel rounded-lg border border-app-border overflow-hidden">
+        <div className="px-4 py-2 border-b border-app-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white font-geist">Task Creator</h3>
           <div className="flex items-center gap-1">
             <Tooltip>
@@ -441,8 +441,8 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
           <div className="p-4 space-y-4">
             {showHistoryModal && (
               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                <div className="bg-[#252526] rounded-lg border border-white/10 w-full max-w-md max-h-[70vh] overflow-hidden">
-                  <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-md max-h-[70vh] overflow-hidden">
+                  <div className="px-4 py-3 border-b border-app-border flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-white font-geist">Chat History</h3>
                     <Button
                       variant="ghost"
@@ -460,7 +460,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                         <Button
                           key={idx}
                           variant="ghost"
-                          className="w-full justify-start h-auto py-3 px-4 rounded-none border-b border-white/5"
+                          className="w-full justify-start h-auto py-3 px-4 rounded-none border-b border-app-border"
                           onClick={() => {
                             clearMessages(taskId)
                             setMessages(taskId, [])
@@ -469,7 +469,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                         >
                           <div className="flex flex-col items-start w-full">
                             <div className="flex items-center justify-between w-full mb-1">
-                              <span className="text-xs text-cyan-400 capitalize">{item.role}</span>
+                              <span className="text-xs text-app-accent capitalize">{item.role}</span>
                               <span className="text-[10px] text-neutral-500">
                                 {new Date(item.created_at).toLocaleDateString()}
                               </span>
@@ -492,7 +492,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                   <p className="text-xs text-neutral-500 font-geist mt-1">
                     Setelah diskusi, buat task dari percakapan
                   </p>
-                  <p className="text-xs text-cyan-500 font-geist mt-2">
+                  <p className="text-xs text-app-accent font-geist mt-2">
                     Type @ untuk reference files
                   </p>
                 </div>
@@ -527,9 +527,9 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                   )}
                   {msg.role === 'assistant' && currentStreamingId === msg.id && (
                     <span className="inline-flex ml-1">
-                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
+                      <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
                     </span>
                   )}
                 </div>
@@ -541,7 +541,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                 <Button
                   onClick={handleSummarize}
                   disabled={isSummarizing || isStreaming}
-                  className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                  className="flex-1 bg-app-accent hover:bg-app-accent-hover"
                 >
                   {isSummarizing ? (
                     <>
@@ -572,12 +572,12 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                   <span className="text-xs text-green-400 font-geist font-medium">Task Ready</span>
                 </div>
                 <div className="space-y-3">
-                  <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
+                  <div className="bg-app-panel rounded-lg p-3 border border-app-border">
                     <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
                     <p className="text-sm text-white font-geist mt-1 break-words">{conversationSummary.title}</p>
                   </div>
                   {conversationSummary.description && (
-                    <div className="bg-[#1e1e1e] rounded-lg p-3 border border-white/5">
+                    <div className="bg-app-panel rounded-lg p-3 border border-app-border">
                       <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
                       <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{conversationSummary.description}</p>
                     </div>
@@ -605,10 +605,10 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
           </div>
         </ScrollArea>
 
-        <div className="p-4 border-t border-white/5">
+        <div className="p-4 border-t border-app-border">
           {showFileSuggestions && filteredFiles.length > 0 && (
-            <div className="mb-2 bg-[#252526] rounded-lg border border-white/10 shadow-xl max-h-48 overflow-y-auto">
-              <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-white/5 font-geist">
+            <div className="mb-2 bg-app-panel rounded-lg border border-app-border shadow-xl max-h-48 overflow-y-auto">
+              <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-app-border font-geist">
                 Files (↑↓ navigate, Enter to insert)
               </div>
               {filteredFiles.map((file, idx) => (
@@ -636,7 +636,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
               onKeyDown={handleKeyDown}
               placeholder={activeEngine ? "Describe what you want to build..." : "Select a model first"}
               disabled={!activeEngine || isStreaming}
-              className="w-full px-4 py-3 pb-10 rounded-xl text-sm bg-[#252526] text-white placeholder-neutral-600 border border-white/10 focus:outline-none focus:border-cyan-500/50 resize-none transition-all"
+              className="w-full px-4 py-3 pb-10 rounded-xl text-sm bg-app-panel text-white placeholder-neutral-600 border border-app-border focus:outline-none focus:border-cyan-500/50 resize-none transition-all"
               rows={3}
             />
             
@@ -654,7 +654,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
                 </Button>
                 
                 {showModelDropdown && (
-                  <div className="absolute left-0 bottom-full mb-1 bg-[#252526] rounded-lg border border-white/10 shadow-xl max-h-48 overflow-y-auto min-w-[140px]">
+                  <div className="absolute left-0 bottom-full mb-1 bg-app-panel rounded-lg border border-app-border shadow-xl max-h-48 overflow-y-auto min-w-[140px]">
                     {engines.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-neutral-500">
                         No engines

@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useEngineStore } from './engineStore';
 import { useTaskStore } from './taskStore';
 import { useWorkspaceStore } from './workspaceStore';
+import { useConfigStore } from './configStore';
 import { dbService } from '@/lib/db';
 
 export interface ChatMessage {
@@ -29,6 +30,7 @@ export interface AITaskState {
   prCreatedAt?: number;
   isMerged?: boolean;
   mergeSourceBranch?: string;
+  prError?: string;
 }
 
 interface TaskQueueItem {
@@ -343,8 +345,17 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       }
     });
 
-    // Build prompt
-    const prompt = `I need you to implement this task:
+    // Get system prompt from config
+    const { getSystemPrompt } = useConfigStore.getState();
+    let systemPrompt = '';
+    try {
+      systemPrompt = getSystemPrompt();
+    } catch (e) {
+      console.log('[AI] No config available, using default prompt');
+    }
+
+    // Build prompt with system context
+    const prompt = `${systemPrompt ? systemPrompt + '\n\n---\n\n' : ''}I need you to implement this task:
 
 Title: ${taskTitle}
 ${taskDescription ? `Description: ${taskDescription}` : ''}
@@ -550,6 +561,25 @@ Start working on this now.`;
       const { taskStates } = get();
 
       if (result.success) {
+        // Calculate duration and estimate cost
+        const duration = (endTime - (taskStates[taskId]?.startTime || endTime)) / 1000; // seconds
+        const estimatedInputTokens = Math.ceil(responseContent.length / 4);
+        const estimatedOutputTokens = Math.ceil(responseContent.length / 4);
+        const estimatedCost = duration * 0.001; // Rough estimate: $0.001 per second
+        
+        // Record cost to database
+        try {
+          await invoke('record_cli_cost', {
+            providerAlias: engine.alias,
+            inputTokens: estimatedInputTokens,
+            outputTokens: estimatedOutputTokens,
+            cost: estimatedCost,
+          });
+          console.log(`[AI] Cost recorded: ${engine.alias} - $${estimatedCost.toFixed(4)}`);
+        } catch (costErr) {
+          console.error('[AI] Failed to record cost:', costErr);
+        }
+        
         // Success - update state to completed
         set({
           taskStates: {
@@ -563,14 +593,69 @@ Start working on this now.`;
           }
         });
 
-        // Auto-move to review and create PR
+        // Create PR first, then move to review if successful
         setTimeout(async () => {
-          await useTaskStore.getState().moveTask(taskId, 'review');
-          
-          // Auto-create PR after moving to review
           const prResult = await get().autoCreatePR(taskId, taskTitle);
+          
           if (prResult) {
-            console.log(`✓ PR created: ${prResult.branch}`, prResult.prUrl || 'No gh CLI');
+            // Branch pushed successfully - move to review
+            console.log(`✓ Branch pushed: ${prResult.branch}`, prResult.prUrl || 'Compare URL available');
+            
+            // Add success message with PR creation link
+            const { messages } = get();
+            const taskMessages = messages[taskId] || [];
+            
+            set({
+              messages: {
+                ...messages,
+                [taskId]: [
+                  ...taskMessages,
+                  {
+                    id: crypto.randomUUID(),
+                    taskId: taskId,
+                    role: 'system',
+                    content: prResult.prUrl 
+                      ? `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: git checkout ${prResult.branch}`
+                      : `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`,
+                    timestamp: Date.now(),
+                  }
+                ]
+              }
+            });
+            
+            await useTaskStore.getState().moveTask(taskId, 'review');
+          } else {
+            // PR creation failed - tetap pindah ke review dengan warning
+            console.error('❌ Failed to create PR but moving to review anyway');
+            const { messages, taskStates } = get();
+            const taskMessages = messages[taskId] || [];
+            const prError = taskStates[taskId]?.prError;
+            
+            set({
+              messages: {
+                ...messages,
+                [taskId]: [
+                  ...taskMessages,
+                  {
+                    id: crypto.randomUUID(),
+                    taskId: taskId,
+                    role: 'system',
+                    content: '⚠️ **Task completed but PR automation failed**\n\n' +
+                             'AI finished the task but could not automatically push to remote.\n\n' +
+                             (prError ? `**Error:** ${prError}\n\n` : '') +
+                             'You can:\n' +
+                             '1. Check git configuration\n' +
+                             '2. Create branch and PR manually\n' +
+                             '3. Or use "View Diff" to see changes\n\n' +
+                             'Task moved to **Review** for manual handling.',
+                    timestamp: Date.now(),
+                  }
+                ]
+              }
+            });
+            
+            // Tetap pindah ke review meskipun PR gagal
+            await useTaskStore.getState().moveTask(taskId, 'review');
           }
         }, 500);
       } else {
@@ -1065,9 +1150,20 @@ Please respond helpfully and concisely.`;
     return state?.status === 'running' || false;
   },
 
-  autoCreatePR: async (taskId: string, taskTitle: string) => {
+  autoCreatePR: async (taskId: string, taskTitle: string): Promise<{ branch: string; prUrl?: string; error?: string } | null> => {
     const workspace = useWorkspaceStore.getState().activeWorkspace;
-    if (!workspace?.folder_path) return null;
+    if (!workspace?.folder_path) {
+      set({
+        taskStates: {
+          ...get().taskStates,
+          [taskId]: {
+            ...get().taskStates[taskId],
+            prError: 'No workspace folder path available',
+          }
+        }
+      });
+      return null;
+    }
 
     const runGit = async (args: string[]): Promise<{ success: boolean; output: string }> => {
       return invoke<{ success: boolean; output: string }>('run_shell_command', {
@@ -1100,14 +1196,36 @@ Please respond helpfully and concisely.`;
       await runGit(['checkout', '-b', branchName]);
 
       const addResult = await runGit(['add', '.']);
+      console.log('[PR] git add result:', addResult);
       if (!addResult.success) {
+        console.error('[PR] git add failed:', addResult.output);
+        set({
+          taskStates: {
+            ...get().taskStates,
+            [taskId]: {
+              ...get().taskStates[taskId],
+              prError: `Git add failed: ${addResult.output}`,
+            }
+          }
+        });
         await runGit(['checkout', currentBranchName]);
         await runGit(['branch', '-D', branchName]);
         return null;
       }
 
       const commitResult = await runGit(['commit', '-m', commitMsg]);
+      console.log('[PR] git commit result:', commitResult);
       if (!commitResult.success) {
+        console.error('[PR] git commit failed:', commitResult.output);
+        set({
+          taskStates: {
+            ...get().taskStates,
+            [taskId]: {
+              ...get().taskStates[taskId],
+              prError: `Git commit failed: ${commitResult.output}`,
+            }
+          }
+        });
         await runGit(['checkout', currentBranchName]);
         await runGit(['branch', '-D', branchName]);
         return null;
@@ -1117,23 +1235,34 @@ Please respond helpfully and concisely.`;
       const remoteName = remoteResult.success ? remoteResult.output.trim().split('\n')[0] : 'origin';
 
       const pushResult = await runGit(['push', '-u', remoteName, branchName]);
+      console.log('[PR] git push result:', pushResult);
       if (!pushResult.success) {
+        console.error('[PR] git push failed:', pushResult.output);
+        set({
+          taskStates: {
+            ...get().taskStates,
+            [taskId]: {
+              ...get().taskStates[taskId],
+              prError: `Git push failed: ${pushResult.output}`,
+            }
+          }
+        });
         await runGit(['checkout', currentBranchName]);
         await runGit(['branch', '-D', branchName]);
         return null;
       }
 
+      // Get remote URL to construct PR creation link (without using gh CLI)
       let prUrl: string | undefined;
-      const ghAuth = await runGit(['config', '--global', 'gh.prompt', 'false']);
-      if (ghAuth.success) {
-        const prResult = await runGit([
-          'pr', 'create',
-          '--base', currentBranchName,
-          '--title', commitMsg,
-          '--body', `Task: ${taskTitle}\n\nAutomated PR from Akira`
-        ]);
-        if (prResult.success) {
-          prUrl = prResult.output.trim();
+      const remoteUrlResult = await runGit(['remote', 'get-url', remoteName]);
+      if (remoteUrlResult.success) {
+        const remoteUrl = remoteUrlResult.output.trim();
+        // Extract repo info from remote URL (supports both HTTPS and SSH)
+        const repoMatch = remoteUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+        if (repoMatch) {
+          const [, owner, repo] = repoMatch;
+          // Generate compare URL for manual PR creation
+          prUrl = `https://github.com/${owner}/${repo}/compare/${currentBranchName}...${branchName}`;
         }
       }
 

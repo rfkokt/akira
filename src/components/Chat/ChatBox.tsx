@@ -16,6 +16,7 @@ import {
   Square,
   Loader2,
   Zap,
+  User,
 } from 'lucide-react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useEngineStore } from '@/store/engineStore'
@@ -459,44 +460,44 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
       <Button
         size="icon"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 w-10 h-10 bg-[#0e639c] hover:bg-[#1177bb]"
+        className="fixed bottom-6 right-6 w-12 h-12 bg-app-accent hover:bg-app-accent-hover shadow-[0_0_20px_var(--app-accent-glow)] rounded-full transition-all duration-300 hover:scale-105"
       >
-        <MessageSquare className="w-4 h-4" />
+        <MessageSquare className="w-5 h-5 text-white" />
       </Button>
     )
   }
 
   const mainHeight = isMinimized 
-    ? 'h-9' 
+    ? 'h-10' 
     : isExpanded 
-      ? 'h-[700px]' 
-      : 'h-[480px]'
+      ? 'h-[750px] max-h-[90vh]' 
+      : 'h-[520px]'
 
   return (
     <TooltipProvider delay={0}>
       <div 
-        className={`fixed right-4 bottom-4 bg-[#252526] border border-white/10 shadow-2xl z-50 flex flex-col ${mainHeight} ${
-          isExpanded ? 'w-[800px]' : 'w-[420px]'
+        className={`fixed right-6 bottom-6 bg-app-panel/90 backdrop-blur-2xl border border-app-border/50 shadow-2xl z-50 flex flex-col rounded-2xl overflow-hidden transition-all duration-300 ease-in-out ${mainHeight} ${
+          isExpanded ? 'w-[850px]' : 'w-[450px]'
         }`}
       >
-        <div className="flex items-center justify-between px-3 h-9 bg-[#2d2d2d] border-b border-white/5 select-none">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-4 h-11 bg-app-sidebar/40 border-b border-app-border/40 select-none">
+          <div className="flex items-center gap-2.5">
             {showTerminal ? (
-              <Terminal className="w-3.5 h-3.5 text-[#858585]" />
+              <Terminal className="w-4 h-4 text-app-text-muted" />
             ) : (
-              <Bot className="w-3.5 h-3.5 text-[#858585]" />
+              <Bot className="w-4 h-4 text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]" />
             )}
-            <span className="text-xs text-[#cccccc] font-geist">
-              {showTerminal ? 'Terminal' : 'Chat'}
+            <span className="text-xs font-semibold tracking-wide text-app-text font-geist">
+              {showTerminal ? 'Terminal' : 'Akira AI'}
             </span>
             {useRouter ? (
-              <Badge variant="secondary" className="text-xs bg-[#0e639c]/20 text-[#0e639c]">
+              <Badge variant="secondary" className="text-[10px] bg-app-accent/20 text-app-accent border-app-accent/30 tracking-wider">
                 <Zap className="w-3 h-3 mr-1" />
                 Router: {selectedRouterProvider || 'None'}
               </Badge>
             ) : (
               activeEngine && (
-                <span className="text-xs text-[#858585]">
+                <span className="text-[10px] text-app-text-muted">
                   ({activeEngine.alias}{activeEngine.model && ` • ${activeEngine.model}`})
                 </span>
               )
@@ -506,7 +507,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                 variant="ghost"
                 size="sm"
                 onClick={handleStop}
-                className="h-5 text-[#c75450] hover:text-[#d75550] hover:bg-transparent text-xs"
+                className="h-6 text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs rounded-full px-2"
               >
                 <Loader2 className="w-3 h-3 animate-spin mr-1" />
                 Running
@@ -514,7 +515,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
             )}
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center gap-0.5">
             {!isMinimized && (
               <>
                 <Tooltip>
@@ -523,20 +524,21 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => setShowTerminal(!showTerminal)}
-                      className={showTerminal ? 'text-[#0e639c]' : 'text-[#858585]'}
+                      className={`h-7 w-7 rounded-lg ${showTerminal ? 'text-app-accent bg-app-accent/10' : 'text-app-text-muted hover:text-white hover:bg-app-panel'}`}
                     >
                       {showTerminal ? <Bot className="w-3.5 h-3.5" /> : <Terminal className="w-3.5 h-3.5" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{showTerminal ? 'Show Chat' : 'Show Terminal'}</TooltipContent>
                 </Tooltip>
-                <div className="w-px h-4 bg-white/10 mx-1" />
+                <div className="w-px h-4 bg-app-border mx-1.5" />
                 <Tooltip>
                   <TooltipTrigger>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => setIsExpanded(!isExpanded)}
+                      className="h-7 w-7 rounded-lg text-app-text-muted hover:text-white hover:bg-app-panel"
                     >
                       {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                     </Button>
@@ -551,6 +553,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => setIsMinimized(!isMinimized)}
+                      className="h-7 w-7 rounded-lg text-app-text-muted hover:text-white hover:bg-app-panel"
                     >
                       {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
                     </Button>
@@ -563,7 +566,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => setIsOpen(false)}
-                      className="hover:bg-[#c75450]"
+                      className="h-7 w-7 rounded-lg text-app-text-muted hover:text-red-400 hover:bg-red-400/10 ml-0.5"
                     >
                       <X className="w-3.5 h-3.5" />
                     </Button>
@@ -576,15 +579,15 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
         {!isMinimized && (
           <>
             {error && !showTerminal && (
-              <div className="px-3 py-2 bg-[#5a1d1d] border-b border-white/10">
+              <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 backdrop-blur-sm">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-[#f48771] flex-shrink-0" />
-                  <p className="text-xs text-[#f48771] font-geist flex-1">{error}</p>
+                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <p className="text-xs text-red-400 font-geist flex-1">{error}</p>
                   <Button
                     variant="link"
                     size="sm"
                     onClick={() => setShowTerminal(true)}
-                    className="text-xs text-[#0e639c] h-auto p-0"
+                    className="text-xs text-red-300 hover:text-red-200 h-auto p-0"
                   >
                     View terminal
                   </Button>
@@ -593,13 +596,15 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
             )}
 
             <div className="flex-1 flex overflow-hidden">
-              <div className={`flex flex-col ${showTerminal ? 'w-1/2 border-r border-white/5' : 'w-full'}`}>
-                <ScrollArea className="h-full p-3">
-                  <div className="space-y-3">
+              <div className={`flex flex-col ${showTerminal ? 'w-1/2 border-r border-app-border' : 'w-full'}`}>
+                <ScrollArea className="h-full p-4">
+                  <div className="space-y-4">
                     {messages.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
-                        <Bot className="w-12 h-12 mb-3 opacity-30" />
-                        <p className="text-xs text-[#858585] font-geist">
+                      <div className="flex flex-col items-center justify-center h-full text-app-text-muted mt-20">
+                        <div className="w-16 h-16 bg-app-accent/10 rounded-full flex items-center justify-center mb-4 shadow-[0_0_20px_var(--app-accent-glow)]">
+                          <Bot className="w-8 h-8 text-app-accent opacity-80" />
+                        </div>
+                        <p className="text-xs font-geist">
                           {activeEngine ? 'Start a conversation' : 'Configure an engine in Settings'}
                         </p>
                       </div>
@@ -607,142 +612,157 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       messages.map((msg, idx) => (
                         <div 
                           key={idx}
-                          className={`font-geist text-xs leading-relaxed whitespace-pre-wrap ${
+                          className={`font-geist text-sm leading-relaxed whitespace-pre-wrap flex flex-col ${
                             msg.role === 'user' 
-                              ? 'text-[#0e639c]' 
-                              : 'text-[#cccccc]'
+                              ? 'items-end' 
+                              : 'items-start'
                           }`}
                         >
-                          <span className="text-[#6e6e6e] mr-2">{msg.role}:</span>
-                          {stripToolCalls(msg.content) || (msg.isStreaming && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                              <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                              <span className="w-1 h-1 bg-[#0e639c] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <div className={`flex items-center gap-2 mb-1 opacity-70 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                            {msg.role === 'user' ? (
+                              <User className="w-3.5 h-3.5 text-app-accent" />
+                            ) : (
+                              <Bot className="w-3.5 h-3.5 text-app-accent" />
+                            )}
+                            <span className="text-[10px] font-semibold tracking-wider uppercase text-app-text-muted">
+                              {msg.role}
                             </span>
-                          ))}
-                          {msg.isStreaming && msg.content && (
-                            <span className="inline-block w-0.5 h-3 bg-[#0e639c] animate-pulse ml-0.5" />
-                          )}
+                          </div>
+                          <div className={`px-4 py-2.5 rounded-2xl max-w-[90%] shadow-md ${
+                            msg.role === 'user'
+                              ? 'bg-app-accent/15 border border-app-accent/20 text-blue-50 focus-visible:ring-0 rounded-tr-sm'
+                              : 'bg-app-bg/50 border border-app-border text-app-text rounded-tl-sm'
+                          }`}>
+                            {stripToolCalls(msg.content) || (msg.isStreaming && (
+                              <span className="inline-flex items-center gap-1 h-3">
+                                <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                              </span>
+                            ))}
+                            {msg.isStreaming && msg.content && (
+                              <span className="inline-block w-1 h-3.5 bg-app-accent animate-pulse ml-1 align-middle" />
+                            )}
+                          </div>
                         </div>
                       ))
                     )}
-                    <div ref={messagesEndRef} />
+                    <div ref={messagesEndRef} className="h-2" />
                   </div>
                 </ScrollArea>
 
-                {!showTerminal && (
-                  <div className="p-2 bg-[#252526] border-t border-white/5">
-                    <div className="flex items-center justify-between mb-2 px-1">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant={useRouter ? "secondary" : "ghost"}
-                          size="sm"
-                          onClick={() => setUseRouter(!useRouter)}
-                          className={`h-7 text-xs ${useRouter ? 'bg-[#0e639c]/20 text-[#0e639c]' : ''}`}
-                        >
-                          <Zap className="w-3 h-3 mr-1.5" />
-                          Router {useRouter ? 'ON' : 'OFF'}
-                        </Button>
-                        {useRouter && (
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={selectedRouterProvider || ''}
-                              onChange={(e) => setSelectedRouterProvider(e.target.value)}
-                              className="bg-[#3c3c3c] text-xs text-[#cccccc] px-2 py-1 rounded border border-white/10 outline-none focus:border-[#0e639c]"
-                            >
-                              {routerProviders.filter(p => p.enabled).map(p => (
-                                <option key={p.alias} value={p.alias}>
-                                  {p.alias} ({p.status})
-                                </option>
-                              ))}
-                            </select>
-                            {pendingSwitch && (
-                              <span className="text-xs text-yellow-400 animate-pulse">
-                                Switched to {pendingSwitch.newProvider}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {!useRouter && (
-                        <span className="text-xs text-[#858585]">
-                          Engine: {activeEngine?.alias || 'None'}
-                        </span>
+                <div className="p-3 bg-app-sidebar/80 border-t border-app-border backdrop-blur-md">
+                  <div className="flex items-center justify-between mb-2.5 px-1">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant={useRouter ? "secondary" : "ghost"}
+                        size="sm"
+                        onClick={() => setUseRouter(!useRouter)}
+                        className={`h-7 px-2.5 text-[10px] font-semibold tracking-wider rounded-lg transition-all ${useRouter ? 'bg-app-accent/20 text-app-accent border border-app-accent/30 shadow-[0_0_10px_var(--app-accent-glow)]' : 'text-app-text-muted hover:text-white'}`}
+                      >
+                        <Zap className="w-3 h-3 mr-1.5" />
+                        Router {useRouter ? 'ON' : 'OFF'}
+                      </Button>
+                      {useRouter && (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={selectedRouterProvider || ''}
+                            onChange={(e) => setSelectedRouterProvider(e.target.value)}
+                            className="bg-app-bg/50 text-xs text-app-text px-2 py-1 rounded-md border border-app-border/50 outline-none focus:border-app-accent cursor-pointer transition-colors"
+                          >
+                            {routerProviders.filter(p => p.enabled).map(p => (
+                              <option key={p.alias} value={p.alias}>
+                                {p.alias} ({p.status})
+                              </option>
+                            ))}
+                          </select>
+                          {pendingSwitch && (
+                            <span className="text-[10px] text-yellow-400/80 animate-pulse font-medium">
+                              Switched to: {pendingSwitch.newProvider}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
-                    
-                    <div className="flex items-end gap-2">
-                      <textarea
-                        ref={inputRef}
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder={
-                          useRouter 
-                            ? (selectedRouterProvider ? 'Type a message...' : 'Select a provider first...')
-                            : (activeEngine ? 'Type a message...' : 'Configure engine first...')
-                        }
-                        disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || isStreaming}
-                        rows={1}
-                        className="flex-1 bg-[#3c3c3c] text-xs text-[#cccccc] placeholder-[#6e6e6e] font-geist resize-none outline-none px-2.5 py-2 max-h-24 min-h-[32px] border border-transparent focus:border-[#0e639c] disabled:opacity-50"
-                      />
-                      {isStreaming ? (
+                    {!useRouter && (
+                      <span className="text-[10px] text-app-text-muted font-medium">
+                        Engine: {activeEngine?.alias || 'None'}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-end gap-2.5">
+                    <textarea
+                      ref={inputRef}
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder={
+                        useRouter 
+                          ? (selectedRouterProvider ? 'Type your request...' : 'Select a provider first...')
+                          : (activeEngine ? 'Type your request...' : 'Configure engine first...')
+                      }
+                      disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || isStreaming}
+                      rows={1}
+                      className="flex-1 bg-app-bg/60 text-sm text-app-text placeholder-app-text-muted/60 font-geist resize-none outline-none px-3.5 py-2.5 max-h-32 min-h-[44px] rounded-xl border border-app-border focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 shadow-inner disabled:opacity-50 transition-all custom-scrollbar"
+                    />
+                    <div className="flex flex-col gap-2">
+                       {isStreaming ? (
                         <Button
                           size="icon"
                           onClick={handleStop}
-                          className="bg-[#c75450] hover:bg-[#d75550] animate-pulse"
+                          className="w-11 h-11 rounded-xl bg-app-accent-alt hover:bg-red-500 shadow-lg shadow-red-500/20 animate-pulse"
                         >
-                          <Square className="w-3.5 h-3.5 fill-current" />
+                          <Square className="w-5 h-5 fill-current" />
                         </Button>
                       ) : (
                         <Button
                           size="icon"
                           onClick={handleSend}
                           disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || !message.trim()}
-                          className="bg-[#0e639c] hover:bg-[#1177bb]"
+                          className="w-11 h-11 rounded-xl bg-app-accent hover:bg-app-accent-hover shadow-[0_0_15px_var(--app-accent-glow)] transition-all disabled:shadow-none"
                         >
-                          <Send className="w-3.5 h-3.5" />
+                          <Send className="w-4 h-4 ml-0.5" />
                         </Button>
                       )}
                     </div>
-                    <div className="flex items-center justify-between mt-1.5 px-0.5">
-                      <span className="text-xs text-[#6e6e6e]">
-                        Press Enter to send
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowTerminal(true)}
-                        className="h-5 text-xs text-[#6e6e6e] hover:text-[#0e639c]"
-                      >
-                        Show terminal
-                      </Button>
-                    </div>
                   </div>
-                )}
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className="text-[10px] text-app-text-muted/60 tracking-wide font-medium">
+                      Press <kbd className="font-sans px-1 py-0.5 rounded-sm bg-app-bg border border-app-border/50 text-[9px] mx-0.5">Enter</kbd> to send
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowTerminal(true)}
+                      className="h-5 text-[10px] text-app-text-muted hover:text-app-accent px-1.5"
+                    >
+                      Show terminal logs
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               {showTerminal && (
-                <div className="w-1/2 flex flex-col bg-[#1e1e1e]">
-                  <div className="flex items-center justify-between px-2 py-1.5 bg-[#2d2d2d] border-b border-white/5">
+                <div className="w-1/2 flex flex-col bg-app-bg/80 border-l border-app-border">
+                  <div className="flex items-center justify-between px-3 py-2 bg-app-sidebar/40 border-b border-app-border">
                     <div className="flex items-center gap-2">
-                      <Terminal className="w-3 h-3 text-[#858585]" />
-                      <span className="text-xs text-[#858585] uppercase">Output</span>
+                      <Terminal className="w-3.5 h-3.5 text-app-text-muted" />
+                      <span className="text-[10px] text-app-text tracking-wider uppercase font-semibold">System Output</span>
                     </div>
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-1">
                     <Tooltip>
                       <TooltipTrigger>
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={copyTerminal}
-                          className="h-7 w-7"
+                          className="h-6 w-6 rounded-md"
                         >
-                          {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-app-text-muted" />}
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Copy</TooltipContent>
+                      <TooltipContent>Copy Logs</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger>
@@ -750,7 +770,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                           variant="ghost"
                           size="icon"
                           onClick={clearTerminal}
-                          className="h-7 w-7 text-[#858585] hover:text-[#f48771]"
+                          className="h-6 w-6 rounded-md text-app-text-muted hover:text-red-400 hover:bg-red-400/10"
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>
@@ -760,34 +780,35 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                     </div>
                   </div>
 
-                  <ScrollArea className="h-full p-2 font-mono text-xs leading-relaxed bg-[#1e1e1e]">
+                  <ScrollArea className="h-full p-3 font-mono text-[11px] leading-relaxed">
                     {terminalLines.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-[#6e6e6e]">
-                        <ScrollText className="w-8 h-8 mb-2 opacity-30" />
-                        <span className="text-xs">No output</span>
+                      <div className="flex flex-col items-center justify-center h-full text-app-text-muted/50">
+                        <ScrollText className="w-10 h-10 mb-3 opacity-20" />
+                        <span>Awaiting execution logs...</span>
                       </div>
                     ) : (
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         {terminalLines.map((line, idx) => (
                           <div 
                             key={idx}
-                            className={`${
-                              line.type === 'command' ? 'text-[#9cdcfe]' :
-                              line.type === 'stderr' ? 'text-[#f48771]' :
-                              line.type === 'error' ? 'text-[#f48771] bg-[#5a1d1d]/30' :
-                              line.type === 'system' ? 'text-[#6e6e6e]' :
-                              'text-[#cccccc]'
+                            className={`px-1.5 py-0.5 rounded-sm ${
+                              line.type === 'command' ? 'text-cyan-400 font-semibold' :
+                              line.type === 'stderr' ? 'text-red-400' :
+                              line.type === 'error' ? 'text-red-400 bg-red-400/10 border-l-2 border-red-500 pl-2' :
+                              line.type === 'warning' ? 'text-yellow-400 bg-yellow-400/10 border-l-2 border-yellow-500 pl-2' :
+                              line.type === 'system' ? 'text-app-text-muted/70 italic' :
+                              'text-app-text/90'
                             }`}
                           >
                             <span className="break-all">{line.content}</span>
                           </div>
                         ))}
                         {isStreaming && (
-                          <div className="text-[#6e6e6e] animate-pulse">
-                            <span>...</span>
+                          <div className="text-app-text-muted/60 animate-pulse px-1.5">
+                            <span>Processing...</span>
                           </div>
                         )}
-                        <div ref={terminalEndRef} />
+                        <div ref={terminalEndRef} className="h-4" />
                       </div>
                     )}
                   </ScrollArea>

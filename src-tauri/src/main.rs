@@ -90,18 +90,27 @@ fn main() {
             commands::fs::create_directory,
             commands::fs::delete_file,
             commands::fs::delete_directory,
+            // Project Config
+            commands::project::get_project_config,
+            commands::project::save_project_config,
             // RTK
             commands::rtk::check_rtk_status,
             commands::rtk::install_rtk,
             commands::rtk::init_rtk,
             commands::rtk::run_rtk_command,
             commands::rtk::get_rtk_gain_stats,
+            // Shell
+            commands::shell::run_shell_command,
+            // CLI
+            commands::cli::run_cli,
+            commands::cli::stop_cli,
             // CLI Router
             commands::router::get_router_providers,
             commands::router::sync_engines_to_router,
             commands::router::get_router_config,
             commands::router::save_router_config,
             commands::router::record_cli_cost,
+            commands::router::get_provider_costs,
             // Agents
             commands::agents::run_agent,
             commands::agents::stop_agent,

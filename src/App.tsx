@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Calendar, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Brain, GitBranch, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore } from '@/store'
+import { dbService } from '@/lib/db'
 import { SettingsModal } from '@/components/SettingsModal'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { ConfigPanel } from './components/ProjectConfig/ConfigPanel'
 import { KanbanBoard } from './components/Kanban/Board'
 import { FileTree } from './components/Editor/FileTree'
 import { GitBranchSelector } from './components/Git/GitBranchSelector'
-import { AssessmentScheduler } from './components/Assessment'
 import { RecoveryModal } from './components/RecoveryModal'
 import { getSavedRunningTask, useAIChatStore } from './store/aiChatStore'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
 
-type PageView = 'tasks' | 'files' | 'config' | 'git' | 'assessment';
+type PageView = 'tasks' | 'files' | 'config' | 'git';
 
 function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
@@ -84,6 +84,13 @@ function App() {
   useEffect(() => {
     const loadEngines = async () => {
       await fetchEngines()
+      // Sync engines to router for cost tracking
+      try {
+        await dbService.syncEnginesToRouter()
+        console.log('✓ Engines synced to router')
+      } catch (err) {
+        console.log('Note: Router sync not available yet')
+      }
     }
     loadEngines()
   }, [])
@@ -201,9 +208,9 @@ function App() {
       
       case 'config':
         return (
-          <div className="h-full flex flex-col md:flex-row bg-app-bg/50 overflow-hidden">
+          <div className="h-full flex flex-col md:flex-row bg-black/40 overflow-hidden">
             {activeWorkspace ? (
-              <div className="flex-1 h-full max-w-7xl mx-auto w-full shadow-2xl border-x border-app-border/50 bg-app-panel/40 backdrop-blur-xl">
+              <div className="flex-1 h-full max-w-7xl mx-auto w-full shadow-2xl border-x border-app-border bg-black/40 backdrop-blur-xl">
                 <ConfigPanel projectId={activeWorkspace.id} />
               </div>
             ) : (
@@ -232,15 +239,12 @@ function App() {
           </div>
         )
 
-      case 'assessment':
-        return <AssessmentScheduler />
     }
   }
 
   const menuItems = [
     { id: 'tasks' as const, icon: LayoutList, label: 'Tasks' },
     { id: 'files' as const, icon: FolderOpen, label: 'Files' },
-    { id: 'assessment' as const, icon: Calendar, label: 'Assessment' },
     { id: 'config' as const, icon: Brain, label: 'Config' },
     { id: 'git' as const, icon: GitBranch, label: 'Git' },
   ]
@@ -270,7 +274,7 @@ function App() {
         <div className="w-[80px] shrink-0 relative z-0" />
         
         {/* Center: Workspace Indicator */}
-        <div className="flex-1 flex items-center justify-center relative z-0">
+        <div className="flex-1 flex items-center justify-center relative z-[60]">
           {activeWorkspace ? (
               <div className="flex items-center gap-3 pointer-events-auto">
               <div className="flex items-center gap-2 pointer-events-none">

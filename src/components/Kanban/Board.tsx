@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, Terminal, FileCode, Trash2, AlertTriangle, Check, Sparkles } from 'lucide-react'
+import { Plus, MoreHorizontal, X, Upload, Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, Terminal, FileCode, Trash2, AlertTriangle, Check, Sparkles, AlertCircle } from 'lucide-react'
 import { useTaskStore, useAIChatStore, useWorkspaceStore, useEngineStore } from '@/store'
 import { dbService } from '@/lib/db'
 import type { AITaskState } from '@/store/aiChatStore'
@@ -135,12 +135,12 @@ function AIActivityIndicator({ taskId, taskState, showTerminal = false, maxHeigh
             )}
           </div>
           <div 
-            className="bg-[#0d0d0d] rounded border border-white/5 p-2 font-mono text-xs overflow-y-auto"
+            className="bg-[#0d0d0d] rounded border border-app-border p-2 font-mono text-xs overflow-y-auto"
             style={{ maxHeight: maxHeight === 'auto' ? '120px' : maxHeight }}
           >
             {latestOutput ? (
               <div className="space-y-0.5">
-                <div className="text-yellow-500/70 text-xs mb-1 border-b border-white/5 pb-1">
+                <div className="text-yellow-500/70 text-xs mb-1 border-b border-app-border pb-1">
                   {getCurrentAction()}
                 </div>
                 {getLastOutputLines().map((line, idx) => (
@@ -297,9 +297,9 @@ function TaskDetailModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+      <div className="bg-app-panel rounded-lg border border-app-border shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-app-border shrink-0">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${getStatusColor(task.status)}`} />
             <h3 className="text-sm font-semibold text-white font-geist">Task Details</h3>
@@ -413,7 +413,7 @@ function TaskDetailModal({
           )}
 
           {/* Timestamps */}
-          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
+          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-app-border">
             <div>
               <label className="block text-xs text-neutral-500 font-geist mb-1">Created</label>
               <span className="text-xs text-neutral-400 font-geist">{formatDate(task.created_at)}</span>
@@ -426,7 +426,7 @@ function TaskDetailModal({
         </div>
 
         {/* Actions */}
-        <div className="px-4 py-3 border-t border-white/5 bg-[#252526] shrink-0">
+        <div className="px-4 py-3 border-t border-app-border bg-app-panel shrink-0">
           <div className="flex items-center justify-between">
             {/* Left: Delete Button */}
             <div>
@@ -472,7 +472,7 @@ function TaskDetailModal({
                     onStartAI(task)
                     onClose()
                   }}
-                  className="bg-[#0e639c] hover:bg-[#1177bb]"
+                  className="bg-app-accent hover:bg-app-accent-hover"
                 >
                   <Play className="w-3.5 h-3.5" />
                   Start AI
@@ -480,17 +480,32 @@ function TaskDetailModal({
               )}
 
               {task.status === 'in-progress' && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    onOpenChat(task)
-                    onClose()
-                  }}
-                  className="bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600/30"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  View Chat
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      onOpenChat(task)
+                      onClose()
+                    }}
+                    className="bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600/30"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    View Chat
+                  </Button>
+                  {taskState?.status === 'completed' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        onViewDiff(task)
+                        onClose()
+                      }}
+                    >
+                      <FileDiff className="w-3.5 h-3.5" />
+                      View Diff
+                    </Button>
+                  )}
+                </>
               )}
 
               {task.status === 'review' && (
@@ -512,7 +527,7 @@ function TaskDetailModal({
                       onComplete(task)
                       onClose()
                     }}
-                    className="bg-[#0e639c] hover:bg-[#1177bb]"
+                    className="bg-app-accent hover:bg-app-accent-hover"
                   >
                     <GitMerge className="w-3.5 h-3.5" />
                     Merge
@@ -615,7 +630,7 @@ function TaskCard({
       className={`group rounded-lg p-4 transition-all duration-300 border relative ${
         isAIWorking 
           ? 'bg-yellow-500/5 border-yellow-500/20 cursor-not-allowed' 
-          : 'bg-app-sidebar/80 hover:bg-app-panel border-app-border cursor-grab active:cursor-grabbing shadow-lg hover:shadow-[0_0_15px_var(--app-accent-glow)]'
+          : 'bg-app-sidebar hover:bg-app-panel border-app-border cursor-grab active:cursor-grabbing shadow-lg hover:shadow-[0_0_15px_var(--app-accent-glow)]'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -633,7 +648,7 @@ function TaskCard({
                 onStartAI(task)
               }}
               disabled={processingTasks.has(task.id)}
-              className="bg-[#0e639c] hover:bg-[#1177bb] disabled:opacity-50"
+              className="bg-app-accent hover:bg-app-accent-hover disabled:opacity-50"
               title="Start AI"
             >
               {processingTasks.has(task.id) ? (
@@ -741,6 +756,36 @@ function TaskCard({
         </div>
       )}
 
+      {/* AI Completed but PR Failed Indicator */}
+      {task.status === 'in-progress' && taskStates[task.id]?.status === 'completed' && (
+        <div className="mt-2 pt-2 border-t border-orange-500/20">
+          <div className="flex items-center gap-1.5 text-xs text-orange-400">
+            <AlertCircle className="w-3 h-3" />
+            <span>AI completed but PR failed</span>
+          </div>
+          {taskStates[task.id]?.prError && (
+            <div className="mt-1 p-1.5 bg-red-500/10 rounded text-[10px] text-red-400 font-mono">
+              {taskStates[task.id].prError}
+            </div>
+          )}
+          <p className="text-[10px] text-neutral-500 mt-1">
+            Check chat for details. Manual PR required.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2 w-full text-xs"
+            onClick={(e) => {
+              e.stopPropagation()
+              onViewDiff(task)
+            }}
+          >
+            <FileDiff className="w-3 h-3 mr-1" />
+            View Changes
+          </Button>
+        </div>
+      )}
+
       {/* PR Info Badge for Review tasks */}
       {task.status === 'review' && taskStates[task.id]?.prBranch && (
         <div className="mt-2 pt-2 border-t border-green-500/20">
@@ -754,7 +799,7 @@ function TaskCard({
                 href={taskStates[task.id].prUrl} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-xs text-[#0e639c] hover:text-[#1177bb] underline truncate block"
+                className="text-xs text-app-accent hover:text-app-accent-hover underline truncate block"
                 onClick={(e) => e.stopPropagation()}
               >
                 View PR
@@ -792,10 +837,10 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="bg-app-panel/40 backdrop-blur-xl border border-app-border rounded-xl flex flex-col w-[380px] shrink-0 h-full overflow-hidden shadow-2xl relative"
+      className="bg-black/30 backdrop-blur-xl border border-app-border rounded-xl flex flex-col w-[380px] shrink-0 h-full overflow-hidden shadow-2xl relative"
     >
       {/* Column Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-app-border shrink-0 bg-app-sidebar/50">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-app-border shrink-0 bg-black/40">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${column.color} shadow-[0_0_8px_currentColor]`} />
           <span className="text-xs font-semibold tracking-wider text-app-text font-geist">
@@ -1074,7 +1119,7 @@ export function KanbanBoard() {
       {/* Kanban Board Area (Scrollable) */}
       <div className="flex-1 min-w-0 h-full overflow-auto">
         {!showTaskCreator && (
-          <div className="px-4 py-2 border-b border-white/5">
+          <div className="px-4 py-2 border-b border-app-border">
             <Button
               variant="ghost"
               size="sm"
@@ -1128,7 +1173,7 @@ export function KanbanBoard() {
 
           <DragOverlay dropAnimation={dropAnimation}>
             {activeTask ? (
-              <div className="bg-[#3c3c3c] rounded-md p-3 border border-white/20 shadow-xl opacity-90 rotate-2">
+              <div className="bg-app-sidebar rounded-md p-3 border border-app-border-highlight shadow-xl opacity-90 rotate-2">
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <span
                     className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded border ${getPriorityColor(activeTask.priority)} font-geist`}
@@ -1147,8 +1192,8 @@ export function KanbanBoard() {
         {/* Add Task Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#252526] rounded-lg border border-white/10 w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+          <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-app-border">
               <h3 className="text-sm font-semibold text-white font-geist">New Task</h3>
               <Button
                 variant="ghost"
@@ -1168,7 +1213,7 @@ export function KanbanBoard() {
                   type="text"
                   value={newTask.title}
                   onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
+                  className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white placeholder-white/40 border border-app-border focus:outline-none focus:border-app-accent font-geist"
                   placeholder="Enter task title..."
                   required
                 />
@@ -1197,7 +1242,7 @@ export function KanbanBoard() {
                     onChange={(e) =>
                       setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })
                     }
-                    className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
+                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent font-geist"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -1214,7 +1259,7 @@ export function KanbanBoard() {
                     onChange={(e) =>
                       setNewTask({ ...newTask, status: e.target.value as Task['status'] })
                     }
-                    className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
+                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent font-geist"
                   >
                     <option value="todo">To Do</option>
                     <option value="in-progress">In Progress</option>
@@ -1235,7 +1280,7 @@ export function KanbanBoard() {
                 </Button>
                 <Button
                   type="submit"
-                  className="bg-[#0e639c] hover:bg-[#1177bb]"
+                  className="bg-app-accent hover:bg-app-accent-hover"
                 >
                   Create Task
                 </Button>
@@ -1339,91 +1384,176 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   }
 
   const runGit = async (args: string[]): Promise<{ success: boolean; output: string }> => {
-    return invoke<{ success: boolean; output: string }>('run_shell_command', {
+    const result = await invoke<{ success: boolean; stdout: string; stderr: string }>('run_shell_command', {
       command: 'git',
       args,
       cwd: activeWorkspace?.folder_path || ''
     })
+    return {
+      success: result.success,
+      output: result.stdout || result.stderr || ''
+    }
   }
 
   useEffect(() => {
-    if (!activeWorkspace?.folder_path) return
+    if (!activeWorkspace?.folder_path) {
+      console.log('[GitPushFlow] No active workspace folder path')
+      return
+    }
+    
+    console.log('[GitPushFlow] Fetching git info for:', activeWorkspace.folder_path)
+    console.log('[GitPushFlow] PR Branch from taskState:', taskState?.prBranch)
+    console.log('[GitPushFlow] prBranch state:', prBranch)
     
     const fetchGitInfo = async () => {
       try {
         // If there's a PR branch, use it as current branch
-        if (taskState?.prBranch) {
-          setCurrentBranch(taskState.prBranch)
+        const branchToUse = taskState?.prBranch || prBranch
+        if (branchToUse) {
+          console.log('[GitPushFlow] Using PR branch:', branchToUse)
+          setCurrentBranch(branchToUse)
         } else {
+          console.log('[GitPushFlow] No PR branch, checking current git branch')
           const branchResult = await runGit(['branch', '--show-current'])
+          console.log('[GitPushFlow] Current branch result:', branchResult)
           if (branchResult.success) {
             setCurrentBranch(branchResult.output.trim())
+          } else {
+            addLog('⚠ Failed to get current branch: ' + branchResult.output)
           }
         }
 
         const remoteResult = await runGit(['remote'])
+        console.log('[GitPushFlow] Remote result:', remoteResult)
         if (remoteResult.success && remoteResult.output.trim()) {
           setRemoteName(remoteResult.output.trim().split('\n')[0])
+        } else {
+          addLog('⚠ No git remote configured')
         }
 
         const branchesResult = await invoke<{ current: string; local: string[]; remote: string[] }>('git_get_branches', { 
           cwd: activeWorkspace.folder_path 
         })
-        if (branchesResult?.remote) {
-          const allBranches = branchesResult.remote
+        console.log('[GitPushFlow] Branches result:', branchesResult)
+        
+        // Use remote branches first, fallback to local branches
+        let allBranches: string[] = []
+        
+        if (branchesResult?.remote?.length > 0) {
+          allBranches = branchesResult.remote
             .map(b => b.replace(/^[^/]+\//, ''))
-            .filter(b => b && !b.includes('HEAD'))
+            .filter(b => b && !b.includes('HEAD') && !b.startsWith('remotes/'))
+          console.log('[GitPushFlow] Using remote branches:', allBranches)
+        } else if (branchesResult?.local?.length > 0) {
+          allBranches = branchesResult.local
+            .filter(b => !b.includes('HEAD') && !b.startsWith('remotes/'))
+          console.log('[GitPushFlow] Fallback to local branches:', allBranches)
+        }
+        
+        if (allBranches.length > 0) {
           setRemoteBranches([...new Set(allBranches)])
           
           const hasRdev = allBranches.find(b => b.includes('rdev'))
           const hasDev = allBranches.find(b => b.includes('development'))
-          if (hasRdev) setTargetBranch(hasRdev)
-          else if (hasDev) setTargetBranch(hasDev)
-          else if (allBranches.length > 0) setTargetBranch(allBranches[0])
+          const hasMain = allBranches.find(b => b === 'main' || b === 'master')
+          
+          if (hasRdev) {
+            setTargetBranch(hasRdev)
+            console.log('[GitPushFlow] Selected rdev as target:', hasRdev)
+          } else if (hasDev) {
+            setTargetBranch(hasDev)
+            console.log('[GitPushFlow] Selected development as target:', hasDev)
+          } else if (hasMain) {
+            setTargetBranch(hasMain)
+            console.log('[GitPushFlow] Selected main/master as target:', hasMain)
+          } else {
+            setTargetBranch(allBranches[0])
+            console.log('[GitPushFlow] Selected first branch as target:', allBranches[0])
+          }
+        } else {
+          addLog('⚠ No branches found. Make sure git is initialized and has branches.')
+          // Fallback: add some default branches
+          setRemoteBranches(['main', 'development', 'rdev'])
+          setTargetBranch('main')
         }
 
         // Get changed files - from PR diff if PR exists, otherwise from local
         let files: string[] = []
-        if (prBranch) {
+        const branchForDiff = taskState?.prBranch || prBranch
+        
+        if (branchForDiff) {
           // Fetch files from PR diff
           try {
+            addLog(`Fetching diff for branch: ${branchForDiff} against ${targetBranch}`)
             const prDiffResult = await invoke<{ changed_files: string[]; diff: string }>('git_get_pr_diff', { 
               cwd: activeWorkspace.folder_path,
-              branch: prBranch
+              base: targetBranch,
+              head: branchForDiff
             })
+            console.log('[GitPushFlow] PR diff result:', prDiffResult)
             if (prDiffResult?.changed_files?.length > 0) {
               files = prDiffResult.changed_files
+              addLog(`✓ Found ${files.length} changed files from PR`)
+            } else {
+              addLog('⚠ No changed files found in PR diff')
             }
           } catch (e) {
             console.log('[GitPushFlow] Failed to get PR diff:', e)
+            addLog('⚠ Failed to get PR diff: ' + String(e))
           }
         }
         
         // Fallback to local diff if no PR files
         if (files.length === 0) {
+          addLog('Checking local changes...')
           const diffResult = await invoke<{ changed_files: string[] }>('git_get_diff', { 
             cwd: activeWorkspace.folder_path 
           })
+          console.log('[GitPushFlow] Local diff result:', diffResult)
           if (diffResult?.changed_files?.length > 0) {
             files = diffResult.changed_files
+            addLog(`✓ Found ${files.length} local changed files`)
           } else {
             const stagedResult = await invoke<{ changed_files: string[] }>('git_get_staged_diff', { 
               cwd: activeWorkspace.folder_path 
             })
             files = stagedResult?.changed_files || []
+            if (files.length > 0) {
+              addLog(`✓ Found ${files.length} staged files`)
+            }
           }
         }
+        
+        // If still no files, check recent commits on the branch
+        if (files.length === 0 && currentBranch) {
+          addLog(`Checking recent commits on branch: ${currentBranch}...`)
+          try {
+            const logResult = await runGit(['log', '-1', '--name-only', '--pretty=format:', currentBranch])
+            console.log('[GitPushFlow] Git log result:', logResult)
+            if (logResult.success && logResult.output.trim()) {
+              const committedFiles = logResult.output.trim().split('\n').filter(f => f.trim() && !f.startsWith('commit '))
+              if (committedFiles.length > 0) {
+                files = committedFiles
+                addLog(`✓ Found ${files.length} files from recent commit`)
+              }
+            }
+          } catch (e) {
+            console.log('[GitPushFlow] Failed to get commit log:', e)
+          }
+        }
+        
         setChangedFiles(files)
 
         const currentTag = await getCurrentTag()
         setTag(calculateNextTag(currentTag, tagType))
       } catch (err) {
         console.error('Failed to fetch git info:', err)
+        addLog('✗ Error: ' + (err instanceof Error ? err.message : String(err)))
         setChangedFiles([])
       }
     }
     fetchGitInfo()
-  }, [activeWorkspace])
+  }, [activeWorkspace, taskState?.prBranch])
 
   const cleanFilePath = (file: string): string => {
     let cleaned = file
@@ -1558,12 +1688,14 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
       const commitResult = await runGit(['commit', '-m', commitMsg])
       if (!commitResult.success) throw new Error(`git commit failed: ${commitResult.output}`)
       addLog('✓ Commit created')
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       // Push branch
       addLog(`Pushing branch: ${currentBranch}`)
       const pushResult = await runGit(['push', '-u', remoteName, currentBranch])
       if (!pushResult.success) throw new Error(`git push failed: ${pushResult.output}`)
       addLog('✓ Branch pushed')
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       // Create PR (try GitHub CLI first, then GitLab)
       addLog('Creating PR...')
@@ -1586,6 +1718,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           }
         }
       }
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       // Fallback: show manual PR instructions
       if (!prUrl) {
@@ -1609,9 +1742,25 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
   const executeMerge = async () => {
     if (!activeWorkspace?.folder_path) return
 
+    console.log('[Merge] Starting merge process, setting loading to true')
+    // Set loading immediately
     setLoading(true)
     setError(null)
     setLogs([])
+    
+    // Force re-render
+    await new Promise(resolve => setTimeout(resolve, 100))
+    console.log('[Merge] Loading state should be active now')
+
+    // Stash any local changes first
+    addLog('Stashing local changes...')
+    const stashResult = await runGit(['stash', 'push', '-m', 'Auto-stash before merge'])
+    if (stashResult.success) {
+      addLog('✓ Local changes stashed')
+    } else {
+      addLog('No local changes to stash')
+    }
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     // Determine which branch to merge from:
     // - If already merged: use mergeSourceBranch (e.g., rdev)
@@ -1634,17 +1783,26 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
       addLog(`Starting ${singleMerge ? 'single' : 'double'} merge: ${branchToMerge} → ${targetBranch}...`)
 
       // Step 1: Merge to target branch (e.g., rdev)
-      addLog(`Merging to ${targetBranch}...`)
+      addLog(`Step 1/5: Checking out ${targetBranch}...`)
+      await new Promise(resolve => setTimeout(resolve, 100)) // Yield to UI
       const merge1Result = await runGit(['checkout', targetBranch])
       if (!merge1Result.success) throw new Error(`checkout ${targetBranch} failed: ${merge1Result.output}`)
+      addLog(`✓ Checked out ${targetBranch}`)
       
+      addLog(`Step 2/5: Pulling ${targetBranch}...`)
+      await new Promise(resolve => setTimeout(resolve, 100))
       const pull1Result = await runGit(['pull', remoteName, targetBranch])
-      if (!pull1Result.success) addLog(`Pull warning: ${pull1Result.output}`)
+      if (!pull1Result.success) addLog(`⚠ Pull warning: ${pull1Result.output}`)
+      else addLog(`✓ Pulled ${targetBranch}`)
       
+      addLog(`Step 3/5: Merging ${branchToMerge} into ${targetBranch}...`)
+      await new Promise(resolve => setTimeout(resolve, 100))
       const mergeResult = await runGit(['merge', branchToMerge, '--no-ff', '-m', `Merge ${branchToMerge} into ${targetBranch}`])
       if (!mergeResult.success) throw new Error(`merge to ${targetBranch} failed: ${mergeResult.output}`)
       addLog(`✓ Merged ${branchToMerge} into ${targetBranch}`)
 
+      addLog(`Step 4/5: Pushing ${targetBranch}...`)
+      await new Promise(resolve => setTimeout(resolve, 100))
       const push1Result = await runGit(['push', remoteName, targetBranch])
       if (!push1Result.success) throw new Error(`push ${targetBranch} failed: ${push1Result.output}`)
       addLog(`✓ Pushed ${targetBranch}`)
@@ -1655,17 +1813,23 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           b.includes('main') || b.includes('master') || b.includes('production')
         ) || 'development'
         
-        addLog(`Merging to ${mainBranch}...`)
+        addLog(`Step 5/5: Double merge to ${mainBranch}...`)
+        await new Promise(resolve => setTimeout(resolve, 100))
         const checkoutDevResult = await runGit(['checkout', mainBranch])
         if (!checkoutDevResult.success) throw new Error(`checkout ${mainBranch} failed: ${checkoutDevResult.output}`)
+        addLog(`✓ Checked out ${mainBranch}`)
         
+        await new Promise(resolve => setTimeout(resolve, 100))
         const pullDevResult = await runGit(['pull', remoteName, mainBranch])
-        if (!pullDevResult.success) addLog(`Pull warning: ${pullDevResult.output}`)
+        if (!pullDevResult.success) addLog(`⚠ Pull warning: ${pullDevResult.output}`)
+        else addLog(`✓ Pulled ${mainBranch}`)
         
+        await new Promise(resolve => setTimeout(resolve, 100))
         const mergeDevResult = await runGit(['merge', targetBranch, '--no-ff', '-m', `Merge ${targetBranch} into ${mainBranch}`])
         if (!mergeDevResult.success) throw new Error(`merge to ${mainBranch} failed: ${mergeDevResult.output}`)
         addLog(`✓ Merged into ${mainBranch}`)
 
+        await new Promise(resolve => setTimeout(resolve, 100))
         addLog(`Pushing ${mainBranch}...`)
         const pushDevResult = await runGit(['push', remoteName, mainBranch])
         if (!pushDevResult.success) throw new Error(`push ${mainBranch} failed: ${pushDevResult.output}`)
@@ -1734,12 +1898,26 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
         addLog(`✓ Switched to ${targetBranch}`)
       }
       
+      // Unstash changes if we stashed them
+      addLog('Restoring stashed changes...')
+      const unstashResult = await runGit(['stash', 'pop'])
+      if (unstashResult.success) {
+        addLog('✓ Stashed changes restored')
+      }
+      
       setLoading(false)
 
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
       setError(errorMsg)
       addLog(`✗ Error: ${errorMsg}`)
+      
+      // Try to restore stashed changes on error too
+      addLog('Attempting to restore stashed changes...')
+      const unstashResult = await runGit(['stash', 'pop'])
+      if (unstashResult.success) {
+        addLog('✓ Stashed changes restored')
+      }
     } finally {
       setLoading(false)
     }
@@ -1747,8 +1925,8 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
-        <div className="px-4 py-3 border-b border-white/5">
+      <div className="bg-app-panel rounded-lg border border-app-border shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col relative">
+        <div className="px-4 py-3 border-b border-app-border">
           <h3 className="text-sm font-semibold text-white font-geist">Git Workflow</h3>
           <p className="text-xs text-neutral-500 font-geist mt-0.5">{task.title}</p>
         </div>
@@ -1765,7 +1943,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 Branch: <span className="text-white font-mono">{prBranch}</span>
               </p>
               {prUrl && (
-                <p className="text-xs text-[#0e639c] font-geist mt-1">
+                <p className="text-xs text-app-accent font-geist mt-1">
                   {prUrl}
                 </p>
               )}
@@ -1797,7 +1975,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                   <select
                     value={mergeSourceBranch}
                     onChange={(e) => setMergeSourceBranch(e.target.value)}
-                    className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10 flex-1"
+                    className="bg-app-sidebar text-white text-xs px-2 py-1 rounded border border-app-border flex-1"
                   >
                     {remoteBranches.filter(b => b !== targetBranch).map(b => (
                       <option key={b} value={b}>{b}</option>
@@ -1806,13 +1984,13 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-neutral-500 shrink-0 w-14">Target:</span>
-                  <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={targetBranch}>
+                  <span className="text-white font-mono truncate bg-app-panel px-2 py-1 rounded flex-1" title={targetBranch}>
                     {targetBranch}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-neutral-500 shrink-0 w-14">Branch:</span>
-                  <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={currentBranch}>
+                  <span className="text-white font-mono truncate bg-app-panel px-2 py-1 rounded flex-1" title={currentBranch}>
                     {currentBranch}
                   </span>
                   <Button
@@ -1825,7 +2003,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                         setMergeSourceBranch(branchResult.output.trim())
                       }
                     }}
-                    className="text-[#0e639c] hover:text-[#1177bb]"
+                    className="text-app-accent hover:text-app-accent-hover"
                   >
                     ↻ Refresh
                   </Button>
@@ -1835,7 +2013,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
               <>
                 <div className="flex items-center gap-2">
                   <span className="text-neutral-500 shrink-0 w-14">Current:</span>
-                  <span className="text-white font-mono truncate bg-[#252526] px-2 py-1 rounded flex-1" title={currentBranch}>
+                  <span className="text-white font-mono truncate bg-app-panel px-2 py-1 rounded flex-1" title={currentBranch}>
                     {currentBranch || '...'}
                   </span>
                 </div>
@@ -1844,7 +2022,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                   <select
                     value={targetBranch}
                     onChange={(e) => setTargetBranch(e.target.value)}
-                    className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/10 flex-1"
+                    className="bg-app-sidebar text-white text-xs px-2 py-1 rounded border border-app-border flex-1"
                   >
                     {remoteBranches.map(b => (
                       <option key={b} value={b}>{b}</option>
@@ -1858,7 +2036,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                       type="checkbox"
                       checked={!singleMerge}
                       onChange={(e) => setSingleMerge(!e.target.checked)}
-                      className="w-4 h-4 rounded border-neutral-500 bg-[#3c3c3c] text-[#0e639c] focus:ring-[#0e639c]"
+                      className="w-4 h-4 rounded border-neutral-500 bg-app-sidebar text-app-accent focus:ring-app-accent"
                     />
                   </label>
                   <span className="text-xs text-yellow-500 font-geist">
@@ -1875,7 +2053,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
               Files to commit ({changedFiles.length})
             </label>
             {changedFiles.length > 0 ? (
-              <div className="bg-[#252526] rounded-lg p-3 border border-white/5 max-h-28 overflow-y-auto">
+              <div className="bg-app-panel rounded-lg p-3 border border-app-border max-h-28 overflow-y-auto">
                 {changedFiles.map((file, idx) => (
                   <div key={idx} className="flex items-center gap-2 text-xs text-green-300 font-mono group">
                     <span className="text-green-500">+</span>
@@ -1884,7 +2062,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 ))}
               </div>
             ) : (
-              <div className="bg-[#252526] rounded-lg p-3 border border-white/5 text-xs text-neutral-500 italic">
+              <div className="bg-app-panel rounded-lg p-3 border border-app-border text-xs text-neutral-500 italic">
                 No changes to commit
               </div>
             )}
@@ -1899,7 +2077,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 size="sm"
                 onClick={() => generateCommitMessage(true)}
                 disabled={isGenerating || !useEngineStore.getState().activeEngine}
-                className="text-[#0e639c] hover:text-[#1177bb]"
+                className="text-app-accent hover:text-app-accent-hover"
               >
                 {isGenerating ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -1915,7 +2093,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 setCommitMsg(e.target.value)
                 setIsUserEdited(true)
               }}
-              className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist resize-none"
+              className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent font-geist resize-none"
               rows={2}
               disabled={loading}
               placeholder="Enter commit message..."
@@ -1931,7 +2109,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                   type="checkbox"
                   checked={createTag}
                   onChange={(e) => setCreateTag(e.target.checked)}
-                  className="w-4 h-4 rounded border-neutral-500 bg-[#3c3c3c] text-[#0e639c] focus:ring-[#0e639c]"
+                  className="w-4 h-4 rounded border-neutral-500 bg-app-sidebar text-app-accent focus:ring-app-accent"
                 />
                 <span className="text-xs text-neutral-400 font-geist">Create tag after merge</span>
               </label>
@@ -1944,7 +2122,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                     size="sm"
                     onClick={() => setTagType(type)}
                     disabled={!createTag}
-                    className={tagType === type ? 'bg-[#0e639c]' : 'bg-[#3c3c3c]'}
+                    className={tagType === type ? 'bg-app-accent' : 'bg-app-sidebar'}
                   >
                     {type}
                   </Button>
@@ -1954,7 +2132,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
                 type="text"
                 value={tag}
                 onChange={(e) => setTag(e.target.value)}
-                className="flex-1 px-3 py-1 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist font-mono"
+                className="flex-1 px-3 py-1 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent font-geist font-mono"
                 disabled={loading || !createTag}
               />
             </div>
@@ -1971,7 +2149,7 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           {logs.length > 0 && (
             <div>
               <label className="block text-xs text-neutral-400 font-geist mb-1">Output</label>
-              <div className="bg-black rounded-lg p-3 border border-white/5 max-h-40 overflow-y-auto">
+              <div className="bg-black rounded-lg p-3 border border-app-border max-h-40 overflow-y-auto">
                 {logs.map((log, idx) => (
                   <p key={idx} className={`text-xs font-mono ${
                     log.includes('✓') ? 'text-green-400' : 
@@ -1986,8 +2164,22 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
           )}
         </div>
 
+        {/* Loading Overlay */}
+        {loading && (
+          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-50">
+            <Loader2 className="w-10 h-10 animate-spin text-app-accent mb-3" />
+            <p className="text-sm text-white font-geist font-medium">Processing...</p>
+            <p className="text-xs text-neutral-400 font-geist mt-1">Please wait, this may take a moment</p>
+            {logs.length > 0 && (
+              <p className="text-xs text-neutral-500 font-geist mt-2 max-w-xs text-center">
+                {logs[logs.length - 1]}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Actions */}
-        <div className="px-4 py-3 border-t border-white/5 flex justify-between">
+        <div className="px-4 py-3 border-t border-app-border flex justify-between">
           <Button
             variant="ghost"
             onClick={onClose}
@@ -2012,8 +2204,8 @@ function GitPushFlow({ task, taskState, onClose }: GitPushFlowProps) {
             )}
             <Button
               onClick={executeMerge}
-              disabled={loading || changedFiles.length === 0}
-              className="bg-[#0e639c] hover:bg-[#1177bb]"
+              disabled={loading || (changedFiles.length === 0 && !prBranch && !isMerged)}
+              className="bg-app-accent hover:bg-app-accent-hover"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

@@ -1,7 +1,5 @@
-use crate::state::AppState;
 use serde::Serialize;
 use std::path::Path;
-use tauri::State;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileEntry {

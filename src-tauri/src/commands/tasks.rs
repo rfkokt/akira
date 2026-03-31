@@ -21,6 +21,7 @@ pub fn get_tasks_by_status(state: State<AppState>, status: String) -> Result<Vec
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub fn get_tasks_by_workspace(
     state: State<AppState>,
     workspaceId: String,
