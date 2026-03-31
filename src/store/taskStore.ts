@@ -77,6 +77,7 @@ export const useTaskStore = create<TaskState>()(
             }
           });
         } catch (error) {
+          console.error('[TaskStore] fetchTasks error:', error);
           set({ error: String(error), isLoading: false });
         }
       },

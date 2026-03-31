@@ -109,7 +109,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
         className="h-auto py-1 px-2"
       >
         <GitBranch className="w-3 h-3 text-[#0e639c]" />
-        <span className="max-w-[100px] truncate">{branchInfo.current}</span>
+        <span className="max-w-[100px] truncate">{branchInfo?.current || 'Loading...'}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </Button>
 
@@ -125,15 +125,15 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
             </div>
             
             <div className="max-h-48 overflow-y-auto">
-              {branchInfo.branches.map((branch) => (
+              {branchInfo?.branches?.map((branch) => (
                 <Button
                   key={branch}
                   variant="ghost"
-                  className={`w-full justify-start rounded-none ${branch === branchInfo.current ? 'bg-[#0e639c]/20 text-white' : ''}`}
+                  className={`w-full justify-start rounded-none ${branch === branchInfo?.current ? 'bg-[#0e639c]/20 text-white' : ''}`}
                   onClick={() => handleBranchChange(branch)}
                 >
                   <span className="truncate">{branch}</span>
-                  {branch === branchInfo.current && (
+                  {branch === branchInfo?.current && (
                     <Check className="w-3 h-3 text-[#0e639c] ml-auto" />
                   )}
                 </Button>

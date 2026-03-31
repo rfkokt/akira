@@ -201,31 +201,16 @@ function App() {
       
       case 'config':
         return (
-          <div className="h-full flex">
-            {/* Left: Config Panel */}
-            <div className="w-[320px] shrink-0 border-r border-white/5">
-              {activeWorkspace && (
+          <div className="h-full flex flex-col md:flex-row bg-app-bg/50 overflow-hidden">
+            {activeWorkspace ? (
+              <div className="flex-1 h-full max-w-7xl mx-auto w-full shadow-2xl border-x border-app-border/50 bg-app-panel/40 backdrop-blur-xl">
                 <ConfigPanel projectId={activeWorkspace.id} />
-              )}
-            </div>
-            {/* Right: Config Info */}
-            <div className="flex-1 flex items-center justify-center text-neutral-500">
-              <div className="text-center max-w-md px-4">
-                <Brain className="w-12 h-12 text-neutral-600 mb-4 mx-auto" />
-                <h2 className="text-lg font-semibold text-white font-geist mb-2">
-                  Project Intelligence Config
-                </h2>
-                <p className="text-sm font-geist text-neutral-400 mb-4">
-                  Configure your AI assistant with project-specific context
-                </p>
-                <div className="text-left text-xs font-geist text-neutral-500 space-y-2 bg-[#252526] p-4 rounded border border-white/5">
-                  <p><strong className="text-neutral-400">Persona:</strong> Define AI role & expertise</p>
-                  <p><strong className="text-neutral-400">Tech Stack:</strong> Technology context</p>
-                  <p><strong className="text-neutral-400">Rules:</strong> Do & Don't guidelines</p>
-                  <p><strong className="text-neutral-400">Tone:</strong> Communication style</p>
-                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-app-text-muted">
+                <p>No workspace selected.</p>
+              </div>
+            )}
           </div>
         )
       
@@ -261,7 +246,7 @@ function App() {
   ]
 
   return (
-    <div className="h-screen w-screen bg-[#1e1e1e] text-[#cccccc] overflow-hidden flex flex-col">
+    <div className="h-screen w-screen bg-app-bg text-app-text overflow-hidden flex flex-col font-geist">
       {/* Welcome Screen */}
       {showWelcome && (
         <WelcomeScreen onClose={() => setShowWelcome(false)} />
@@ -272,8 +257,8 @@ function App() {
         <RecoveryModal onResume={handleResumeTask} onClose={() => setShowRecovery(false)} />
       )}
 
-      {/* Title Bar */}
-      <div className="h-[38px] bg-[#2d2d2d]/95 backdrop-blur border-b border-white/5 flex items-center shrink-0 relative">
+      {/* Title Bar - Glassmorphism */}
+      <div className="h-[38px] bg-app-titlebar backdrop-blur-md border-b border-app-border flex items-center shrink-0 relative transition-colors duration-300">
         {/* Draggable background */}
         <div 
           className="absolute inset-0"
@@ -287,9 +272,9 @@ function App() {
         {/* Center: Workspace Indicator */}
         <div className="flex-1 flex items-center justify-center relative z-0">
           {activeWorkspace ? (
-            <div className="flex items-center gap-3 pointer-events-auto">
+              <div className="flex items-center gap-3 pointer-events-auto">
               <div className="flex items-center gap-2 pointer-events-none">
-                <Folder className="w-3.5 h-3.5 text-[#dcb67a]" />
+                <Folder className="w-3.5 h-3.5 text-app-accent" />
                 <span className="text-xs font-medium text-white font-geist select-none">
                   {activeWorkspace.name}
                 </span>
@@ -419,7 +404,7 @@ function App() {
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Navigation Sidebar (Left) */}
-        <nav className="w-12 shrink-0 bg-secondary flex flex-col items-center py-2 gap-1 border-r border-border">
+        <nav className="w-14 shrink-0 bg-app-sidebar backdrop-blur-md flex flex-col items-center py-4 gap-2 border-r border-app-border z-10">
           {menuItems.map((item) => {
             const Icon = item.icon
             const isActive = currentPage === item.id
@@ -427,13 +412,13 @@ function App() {
             return (
               <Tooltip key={item.id}>
                 <TooltipTrigger
-                  className="inline-flex items-center justify-center rounded-lg"
+                  className="inline-flex items-center justify-center rounded-xl transition-all duration-300"
                   onClick={() => setCurrentPage(item.id)}
                 >
-                  <div className={`size-12 flex items-center justify-center relative ${isActive ? 'bg-accent' : 'hover:bg-accent/50'} transition-colors`}>
-                    <Icon className="size-6" />
+                  <div className={`size-10 rounded-xl flex items-center justify-center relative transition-all duration-300 ${isActive ? 'bg-app-accent-glow text-app-accent shadow-[0_0_15px_var(--app-accent-glow)]' : 'text-app-text-muted hover:text-app-text hover:bg-app-panel'}`}>
+                    <Icon className="size-[22px]" />
                     {isActive && (
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-primary rounded-r" />
+                      <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-app-accent rounded-r-full shadow-[0_0_8px_var(--app-accent)]" />
                     )}
                   </div>
                 </TooltipTrigger>
@@ -446,7 +431,7 @@ function App() {
         </nav>
 
         {/* Main Content Area */}
-        <div className="flex-1 bg-[#1e1e1e] overflow-auto">
+        <div className="flex-1 bg-app-bg overflow-auto relative m-0">
           <main 
             className="h-full p-4 origin-top-left"
             style={{ 

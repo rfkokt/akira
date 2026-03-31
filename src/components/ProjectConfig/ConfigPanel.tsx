@@ -73,30 +73,31 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#252526] border-r border-white/5">
+    <div className="flex flex-col h-full bg-transparent">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between">
-        <span className="text-xs font-medium text-neutral-400 font-geist uppercase tracking-wide">
+      <div className="px-5 py-4 border-b border-app-border flex items-center justify-between">
+        <span className="text-sm font-semibold text-app-text-muted font-geist uppercase tracking-widest">
           Project Config
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setShowPreview(!showPreview)}
-            className={showPreview ? 'text-[#0e639c] bg-[#0e639c]/10' : ''}
+            className={showPreview ? 'text-app-accent bg-app-accent-glow' : 'hover:bg-app-panel'}
             title="Toggle Preview"
           >
-            <Eye className="w-3.5 h-3.5" />
+            <Eye className="w-4 h-4" />
           </Button>
           <Button
-            variant="ghost"
+            variant="default"
             size="icon"
             onClick={handleSave}
             disabled={isLoading}
             title="Save Config"
+            className="rounded-lg shadow-app-accent/20 shadow-md"
           >
-            <Save className="w-3.5 h-3.5" />
+            <Save className="w-4 h-4" />
           </Button>
         </div>
       </div>
@@ -104,7 +105,7 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
 
 
       {/* Tabs */}
-      <div className="flex border-b border-white/5">
+      <div className="flex border-b border-app-border px-2 pt-2 gap-1 bg-app-sidebar/30">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -113,11 +114,12 @@ export function ConfigPanel({ projectId }: ConfigPanelProps) {
             <Button
               key={tab.id}
               variant="ghost"
+              size="sm"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 rounded-none ${isActive ? 'text-white bg-white/5 border-b border-[#0e639c]' : 'text-neutral-500'}`}
+              className={`flex-1 rounded-t-lg rounded-b-none border-b-2 border-transparent transition-all duration-300 ${isActive ? 'text-app-accent bg-app-panel border-app-accent' : 'text-app-text-muted hover:text-white hover:bg-app-panel/50'}`}
             >
-              <Icon className="w-3 h-3" />
-              <span className="hidden sm:inline">{tab.label}</span>
+              <Icon className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline font-medium">{tab.label}</span>
             </Button>
           );
         })}

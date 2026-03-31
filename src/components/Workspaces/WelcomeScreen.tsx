@@ -69,74 +69,77 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#1e1e1e] flex items-center justify-center">
-      <div className="w-[800px] max-h-[80vh] bg-[#252526] rounded-lg border border-white/10 shadow-2xl flex flex-col">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 bg-app-bg flex items-center justify-center backdrop-blur-sm">
+      <div className="w-[800px] max-h-[80vh] bg-app-panel border border-app-border/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="px-6 py-5 border-b border-app-border/50 flex items-center justify-between bg-app-sidebar/40">
           <div>
-            <h1 className="text-xl font-semibold text-white font-geist">Welcome to Akira</h1>
-            <p className="text-sm text-neutral-500 font-geist mt-1">
+            <h1 className="text-2xl font-semibold text-app-text font-geist">Welcome to Akira</h1>
+            <p className="text-sm text-app-text-muted font-geist mt-1">
               AI-Powered Workspace & Task Manager
             </p>
           </div>
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-6">
+          <div className="p-8">
             {workspaces.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-20 h-20 bg-[#0e639c]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Folder className="w-10 h-10 text-[#0e639c]" />
+              <div className="text-center py-16">
+                <div className="w-24 h-24 bg-app-accent/10 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_var(--app-accent-glow)]">
+                  <Folder className="w-12 h-12 text-app-accent" />
                 </div>
-                <h2 className="text-lg font-medium text-white font-geist mb-2">
+                <h2 className="text-xl font-medium text-app-text font-geist mb-3">
                   No Workspaces Yet
                 </h2>
-                <p className="text-sm text-neutral-500 font-geist mb-6 max-w-md mx-auto">
+                <p className="text-sm text-app-text-muted font-geist mb-8 max-w-md mx-auto leading-relaxed">
                   Create your first workspace by selecting a project folder. Each workspace represents a project with its own tasks and AI configuration.
                 </p>
-                <Button onClick={() => setShowCreateDialog(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
+                <Button onClick={() => setShowCreateDialog(true)} size="lg">
+                  <Plus className="w-5 h-5 mr-2" />
                   Create Workspace
                 </Button>
               </div>
             ) : (
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-medium text-neutral-400 font-geist uppercase tracking-wide">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xs font-semibold text-app-text-muted font-geist uppercase tracking-widest">
                     Your Workspaces
                   </h2>
                   <Button size="sm" onClick={() => setShowCreateDialog(true)}>
-                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    <Plus className="w-4 h-4 mr-1.5" />
                     New Workspace
                   </Button>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {workspaces.map((workspace) => (
                     <Card
                       key={workspace.id}
-                      className={`cursor-pointer transition-all hover:bg-[#2d2d2d]/80 ${
+                      className={`cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:shadow-xl group backdrop-blur-md rounded-xl overflow-hidden ${
                         workspace.is_active
-                          ? 'bg-[#0e639c]/10 border-[#0e639c]/30'
-                          : 'bg-[#2d2d2d] border-white/5 hover:border-white/10'
+                          ? 'bg-app-accent-glow/20 border-app-accent shadow-[0_0_20px_var(--app-accent-glow)]'
+                          : 'bg-app-sidebar/60 border-app-border hover:border-app-accent/50 hover:bg-app-panel'
                       }`}
                       onClick={() => handleSelectWorkspace(workspace.id)}
                     >
-                      <CardContent className="flex items-center gap-3 p-4">
-                        <div className="w-10 h-10 bg-[#1e1e1e] rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Folder className="w-5 h-5 text-[#dcb67a]" />
+                      <CardContent className="flex items-center gap-4 p-5 relative">
+                        {workspace.is_active && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-app-accent shadow-[0_0_10px_var(--app-accent)]" />
+                        )}
+                        <div className="w-12 h-12 bg-app-bg rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner border border-app-border/30">
+                          <Folder className={`w-6 h-6 ${workspace.is_active ? 'text-app-accent drop-shadow-[0_0_8px_var(--app-accent)]' : 'text-amber-400'}`} />
                         </div>
                         
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-medium text-white font-geist truncate">
+                        <div className="flex-1 min-w-0 pr-4">
+                          <h3 className="text-base font-medium text-app-text font-geist truncate mb-0.5">
                             {workspace.name}
                           </h3>
-                          <p className="text-xs text-neutral-500 font-geist truncate">
+                          <p className="text-xs text-app-text-muted font-geist truncate">
                             {workspace.folder_path}
                           </p>
                         </div>
 
                         {workspace.is_active && (
-                          <span className="text-xs px-2 py-0.5 bg-[#0e639c]/20 text-[#0e639c] rounded font-geist">
+                          <span className="text-xs px-2.5 py-1 bg-app-accent/20 text-app-accent rounded-md font-medium border border-app-accent/30 shadow-[inset_0_0_10px_var(--app-accent-glow)]">
                             Active
                           </span>
                         )}
@@ -167,38 +170,39 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New Workspace</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-xl">Create New Workspace</DialogTitle>
+            <DialogDescription className="text-app-text-muted">
               Select a project folder and give your workspace a name.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="folder">Project Folder *</Label>
-              <div className="flex gap-2">
-                <div className="flex-1 px-3 py-2 bg-[#1e1e1e] border border-white/10 rounded-md text-sm text-neutral-300 font-geist truncate min-h-[40px] flex items-center">
+          <div className="space-y-5 py-6">
+            <div className="space-y-3">
+              <Label htmlFor="folder" className="text-app-text-muted font-medium ml-1">Project Folder *</Label>
+              <div className="flex gap-3">
+                <div className="flex-1 px-4 py-2 bg-app-bg/50 border border-app-border rounded-xl text-sm text-app-text font-geist truncate min-h-[44px] flex items-center shadow-inner">
                   {selectedFolder || 'No folder selected'}
                 </div>
-                <Button variant="secondary" onClick={handlePickFolder}>
-                  <FolderOpen className="w-4 h-4 mr-1.5" />
+                <Button variant="secondary" onClick={handlePickFolder} className="shadow-lg">
+                  <FolderOpen className="w-4 h-4 mr-2" />
                   Browse
                 </Button>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="name">Workspace Name *</Label>
+            <div className="space-y-3">
+              <Label htmlFor="name" className="text-app-text-muted font-medium ml-1">Workspace Name *</Label>
               <Input
                 id="name"
                 value={newWorkspaceName}
                 onChange={(e) => setNewWorkspaceName(e.target.value)}
                 placeholder="My Project"
+                className="h-11 rounded-xl bg-app-bg/50 border-app-border text-app-text shadow-inner focus-visible:ring-app-accent"
               />
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0 mt-2">
             <Button
               variant="ghost"
               onClick={() => {
@@ -212,6 +216,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
             <Button
               onClick={handleCreateWorkspace}
               disabled={!newWorkspaceName.trim() || !selectedFolder || isCreating}
+              className="px-6 shadow-[0_0_15px_var(--app-accent-glow)]"
             >
               {isCreating ? 'Creating...' : 'Create Workspace'}
             </Button>

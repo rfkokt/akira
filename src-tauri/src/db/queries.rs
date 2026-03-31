@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 // ============== Tasks ==============
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub title: String,
@@ -23,7 +23,7 @@ pub struct Task {
     pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateTaskRequest {
     pub title: String,
     pub description: Option<String>,
@@ -220,7 +220,7 @@ pub fn delete_task(conn: &Connection, id: &str) -> Result<()> {
 
 // ============== Engines ==============
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Engine {
     pub id: i64,
     pub alias: String,
@@ -231,7 +231,7 @@ pub struct Engine {
     pub created_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateEngineRequest {
     pub alias: String,
     pub binary_path: String,

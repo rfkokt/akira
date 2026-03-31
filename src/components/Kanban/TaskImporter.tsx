@@ -1,8 +1,10 @@
 import { useState, useCallback } from 'react'
-import { Upload, FileJson, FileText, FileSpreadsheet, X, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Upload, FileJson, FileText, FileSpreadsheet, X, CheckCircle2, AlertCircle, ClipboardPaste } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTaskStore } from '@/store/taskStore'
+import { useWorkspaceStore } from '@/store/workspaceStore'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface TaskImporterProps {
   isOpen: boolean
@@ -19,7 +21,10 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
+  const [importMode, setImportMode] = useState<'file' | 'text'>('file')
+  const [pastedText, setPastedText] = useState('')
   const { fetchTasks } = useTaskStore()
+  const { activeWorkspace } = useWorkspaceStore()
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -52,22 +57,29 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
   }, [])
 
   const importFile = async (file: File) => {
+    if (!activeWorkspace?.id) {
+      setResult({
+        success: false,
+        count: 0,
+        message: 'No workspace selected'
+      })
+      return
+    }
+
     setIsImporting(true)
     setResult(null)
 
     try {
-      // Convert file to array buffer
       const arrayBuffer = await file.arrayBuffer()
       const uint8Array = new Uint8Array(arrayBuffer)
-      
-      // Convert to regular array for Tauri
       const bytes = Array.from(uint8Array)
+      const workspaceId = activeWorkspace.id
 
       let result: ImportResult
 
       if (file.name.endsWith('.json')) {
         const text = new TextDecoder().decode(uint8Array)
-        const imported = await invoke<{ tasks: any[] }>('import_tasks_json', { content: text })
+        const imported = await invoke<{ tasks: any[] }>('import_tasks_json', { content: text, workspaceId })
         result = {
           success: true,
           count: imported.tasks.length,
@@ -75,14 +87,14 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
         }
       } else if (file.name.endsWith('.md') || file.name.endsWith('.markdown')) {
         const text = new TextDecoder().decode(uint8Array)
-        const imported = await invoke<{ tasks: any[] }>('import_tasks_markdown', { content: text })
+        const imported = await invoke<{ tasks: any[] }>('import_tasks_markdown', { content: text, workspaceId })
         result = {
           success: true,
           count: imported.tasks.length,
           message: `Imported ${imported.tasks.length} tasks from Markdown`
         }
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        const imported = await invoke<{ tasks: any[] }>('import_tasks_excel', { bytes })
+        const imported = await invoke<{ tasks: any[] }>('import_tasks_excel', { bytes, workspaceId })
         result = {
           success: true,
           count: imported.tasks.length,
@@ -99,7 +111,71 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
       setResult(result)
       
       if (result.success) {
-        await fetchTasks()
+        await fetchTasks(activeWorkspace.id)
+        setTimeout(() => {
+          onClose()
+          setResult(null)
+        }, 2000)
+      }
+    } catch (error) {
+      setResult({
+        success: false,
+        count: 0,
+        message: `Import failed: ${error}`
+      })
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const handleImportText = async () => {
+    if (!pastedText.trim()) return
+
+    if (!activeWorkspace?.id) {
+      setResult({
+        success: false,
+        count: 0,
+        message: 'No workspace selected'
+      })
+      return
+    }
+
+    setIsImporting(true)
+    setResult(null)
+
+    try {
+      let result: ImportResult
+
+      try {
+        JSON.parse(pastedText)
+      } catch {
+        result = {
+          success: false,
+          count: 0,
+          message: 'Invalid JSON format. Please check your input.'
+        }
+        setResult(result)
+        setIsImporting(false)
+        return
+      }
+
+      const imported = await invoke<{ tasks: any[] }>('import_tasks_json', { 
+        content: pastedText, 
+        workspaceId: activeWorkspace.id 
+      })
+      result = {
+        success: true,
+        count: imported.tasks.length,
+        message: `Imported ${imported.tasks.length} tasks from JSON`
+      }
+
+      setResult(result)
+      
+      if (result.success) {
+        console.log('[Import] Calling fetchTasks with workspace:', activeWorkspace.id)
+        await fetchTasks(activeWorkspace.id)
+        console.log('[Import] fetchTasks completed')
+        setPastedText('')
         setTimeout(() => {
           onClose()
           setResult(null)
@@ -135,6 +211,20 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
         </div>
 
         <div className="p-6">
+          {/* Import Mode Tabs */}
+          <Tabs value={importMode} onValueChange={(v) => setImportMode(v as 'file' | 'text')} className="mb-4">
+            <TabsList className="grid w-full grid-cols-2 bg-[#1e1e1e]">
+              <TabsTrigger value="file" className="text-xs data-[state=active]:bg-[#0e639c] data-[state=active]:text-white">
+                <Upload className="w-3.5 h-3.5 mr-1.5" />
+                Upload File
+              </TabsTrigger>
+              <TabsTrigger value="text" className="text-xs data-[state=active]:bg-[#0e639c] data-[state=active]:text-white">
+                <ClipboardPaste className="w-3.5 h-3.5 mr-1.5" />
+                Paste JSON
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
           {result ? (
             <div className={`text-center py-8 ${result.success ? 'text-green-400' : 'text-[#f48771]'}`}>
               {result.success ? (
@@ -152,7 +242,7 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
                 </Button>
               )}
             </div>
-          ) : (
+          ) : importMode === 'file' ? (
             <>
               {/* Drop Zone */}
               <div
@@ -247,6 +337,55 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
 ## Done
 
 - [x] Initial setup`}
+                  </pre>
+                </details>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Paste JSON Text Area */}
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-[#858585] font-geist mb-2 block">
+                    Paste your JSON array here
+                  </label>
+                  <textarea
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    placeholder={`[\n  {\n    "title": "Task title",\n    "description": "Task description",\n    "status": "todo",\n    "priority": "high"\n  }\n]`}
+                    className="w-full h-48 p-3 bg-[#1e1e1e] border border-white/20 text-[#cccccc] text-xs font-mono resize-none focus:outline-none focus:border-[#0e639c] rounded-lg"
+                  />
+                </div>
+                
+                <Button
+                  onClick={handleImportText}
+                  disabled={!pastedText.trim() || isImporting}
+                  className="w-full bg-[#0e639c] hover:bg-[#1177bb] text-white"
+                >
+                  {isImporting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Importing...
+                    </>
+                  ) : (
+                    'Import from JSON'
+                  )}
+                </Button>
+
+                {/* Format Examples for Text Mode */}
+                <details className="text-xs">
+                  <summary className="text-[#858585] cursor-pointer font-geist hover:text-[#cccccc]">
+                    View JSON format example
+                  </summary>
+                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-xs overflow-x-auto border border-white/5">
+{`[
+  {
+    "title": "Implement feature X",
+    "description": "Details about the feature",
+    "status": "todo",
+    "priority": "high"
+  }
+]`}
                   </pre>
                 </details>
               </div>

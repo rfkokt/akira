@@ -49,7 +49,7 @@ export function Header() {
 
   return (
     <TooltipProvider>
-      <header className="h-10 bg-[#252526] border-b border-white/5 flex items-center justify-between px-4 shrink-0">
+      <header className="h-10 bg-app-sidebar/80 backdrop-blur-md border-b border-app-border flex items-center justify-between px-4 shrink-0 transition-colors duration-300">
         <nav className="flex items-center gap-1">
           <Button variant="secondary" size="sm" className="text-white bg-white/10">
             Tasks
@@ -80,7 +80,7 @@ export function Header() {
                 <span>{routerProvider || 'Select Provider'}</span>
                 <ChevronDown className="w-3 h-3 text-neutral-500" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[160px] bg-[#252526] border border-white/10">
+              <DropdownMenuContent align="start" className="min-w-[160px] bg-app-panel border border-app-border backdrop-blur-xl">
                 {providers.length > 0 ? (
                   providers.map((provider) => (
                     <DropdownMenuItem

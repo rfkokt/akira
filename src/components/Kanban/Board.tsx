@@ -612,10 +612,10 @@ function TaskCard({
       {...attributes}
       {...(isAIWorking ? {} : listeners)}
       onClick={handleClick}
-      className={`group rounded-lg p-4 transition-colors border border-transparent hover:border-white/10 relative ${
+      className={`group rounded-lg p-4 transition-all duration-300 border relative ${
         isAIWorking 
           ? 'bg-yellow-500/5 border-yellow-500/20 cursor-not-allowed' 
-          : 'bg-[#2d2d2d] hover:bg-[#3c3c3c] cursor-grab active:cursor-grabbing'
+          : 'bg-app-sidebar/80 hover:bg-app-panel border-app-border cursor-grab active:cursor-grabbing shadow-lg hover:shadow-[0_0_15px_var(--app-accent-glow)]'
       }`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -792,16 +792,16 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="bg-[#252526] rounded-lg flex flex-col w-[400px] shrink-0 h-full overflow-hidden"
+      className="bg-app-panel/40 backdrop-blur-xl border border-app-border rounded-xl flex flex-col w-[380px] shrink-0 h-full overflow-hidden shadow-2xl relative"
     >
       {/* Column Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/5 shrink-0">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-app-border shrink-0 bg-app-sidebar/50">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${column.color}`} />
-          <span className="text-xs font-medium text-neutral-300 font-geist">
+          <div className={`w-2 h-2 rounded-full ${column.color} shadow-[0_0_8px_currentColor]`} />
+          <span className="text-xs font-semibold tracking-wider text-app-text font-geist">
             {column.label}
           </span>
-          <span className="text-xs text-neutral-500 font-geist">
+          <span className="text-[10px] font-mono text-app-text-muted bg-app-bg px-2 py-0.5 rounded-full border border-app-border">
             {tasks.length}
           </span>
         </div>
@@ -864,6 +864,7 @@ export function KanbanBoard() {
   const aiChatStore = useAIChatStore()
   const { enqueueTask, retryTask, taskStates } = aiChatStore
   const { activeWorkspace } = useWorkspaceStore()
+  
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showTaskCreator, setShowTaskCreator] = useState(true)

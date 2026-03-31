@@ -3,7 +3,7 @@ export interface Task {
   id: string;
   title: string;
   description: string | null;
-  status: 'todo' | 'in-progress' | 'review' | 'done' | 'failed';
+  status: 'todo' | 'in-progress' | 'review' | 'done' | 'failed' | 'backlog';
   priority: 'low' | 'medium' | 'high';
   file_path: string | null;
   workspace_id: string | null;
@@ -21,7 +21,7 @@ export interface Task {
 export interface CreateTaskRequest {
   title: string;
   description?: string;
-  status: 'todo' | 'in-progress' | 'review' | 'done' | 'failed';
+  status: 'todo' | 'in-progress' | 'review' | 'done' | 'failed' | 'backlog';
   priority: 'low' | 'medium' | 'high';
   file_path?: string;
   workspace_id?: string;
