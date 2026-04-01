@@ -153,7 +153,7 @@ export function TaskDetailModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-app-panel rounded-lg border border-app-border shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+      <div className="bg-app-panel rounded-lg border border-app-border shadow-2xl w-full max-w-lg max-h-[85%] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-app-border shrink-0">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[task.status]}`} />

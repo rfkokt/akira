@@ -331,7 +331,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-5xl max-h-[90%] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
           <div className="flex items-center gap-3">

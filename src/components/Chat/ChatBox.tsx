@@ -470,7 +470,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
   const mainHeight = isMinimized 
     ? 'h-10' 
     : isExpanded 
-      ? 'h-[750px] max-h-[90vh]' 
+      ? 'h-[750px] max-h-[90%]' 
       : 'h-[520px]'
 
   return (

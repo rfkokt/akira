@@ -453,7 +453,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]
           <div className="p-4 space-y-4">
             {showHistoryModal && (
               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-md max-h-[70vh] overflow-hidden">
+                <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-md max-h-[70%] overflow-hidden">
                   <div className="px-4 py-3 border-b border-app-border flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-white font-geist">Chat History</h3>
                     <Button
@@ -464,7 +464,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
-                  <ScrollArea className="max-h-[60vh]">
+                  <ScrollArea className="max-h-[60%]">
                     {historyList.length === 0 ? (
                       <div className="p-4 text-center text-xs text-neutral-500">No history yet</div>
                     ) : (
