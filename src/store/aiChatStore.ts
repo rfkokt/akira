@@ -1236,7 +1236,7 @@ Please respond helpfully and concisely.`;
           }
         });
         await runGit(['checkout', currentBranchName]);
-        await runGit(['branch', '-D', branchName]);
+        await runGit(['branch', '-d', branchName]);
         return null;
       }
 
@@ -1254,7 +1254,7 @@ Please respond helpfully and concisely.`;
           }
         });
         await runGit(['checkout', currentBranchName]);
-        await runGit(['branch', '-D', branchName]);
+        await runGit(['branch', '-d', branchName]);
         return null;
       }
 
@@ -1270,13 +1270,15 @@ Please respond helpfully and concisely.`;
             ...get().taskStates,
             [taskId]: {
               ...get().taskStates[taskId],
-              prError: `Git push failed: ${pushResult.output}`,
+              prError: `Git push failed: ${pushResult.output}. Branch created locally.`,
             }
           }
         });
-        await runGit(['checkout', currentBranchName]);
-        await runGit(['branch', '-D', branchName]);
-        return null;
+        // We do NOT checkout the original branch or delete the new branch here
+        // so the user can see their local commits!
+        
+        // Return success for branch creation, but without PR URL
+        return { branch: branchName };
       }
 
       // Get remote URL to construct PR creation link (without using gh CLI)
@@ -1293,7 +1295,8 @@ Please respond helpfully and concisely.`;
         }
       }
 
-      await runGit(['checkout', currentBranchName]);
+      // Do not switch back to the main branch here to ensure the user stays on the new branch
+      // await runGit(['checkout', currentBranchName]);
 
       // Save PR info to database
       try {

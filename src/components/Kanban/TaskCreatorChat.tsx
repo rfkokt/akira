@@ -333,7 +333,8 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
 
 TASK_TITLE: [Short clear title, max 80 chars]
 TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]
----`
+---
+Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for committing code, creating pull requests, testing, or updating git workflows, because those are automatically handled by the system.`
 
       await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
       
@@ -418,7 +419,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full bg-app-panel rounded-lg border border-app-border overflow-hidden">
+      <div className="flex flex-col min-h-0 h-full bg-app-panel rounded-lg border border-app-border overflow-hidden">
         <div className="px-4 py-2 border-b border-app-border flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white font-geist">Task Creator</h3>
           <div className="flex items-center gap-1">

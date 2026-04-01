@@ -73,17 +73,28 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
 
     setDiscarding(true);
     try {
-      const result = await invoke<{ success: boolean; output: string }>('run_shell_command', {
+      // 1. Reset tracked files and remove staged status
+      const resetResult = await invoke<{ success: boolean; output: string }>('run_shell_command', {
         command: 'git',
-        args: ['checkout', '--', '.'],
+        args: ['reset', '--hard', 'HEAD'],
         cwd: workspacePath,
       });
 
-      if (result.success) {
+      // 2. Remove untracked files and directories
+      const cleanResult = await invoke<{ success: boolean; output: string }>('run_shell_command', {
+        command: 'git',
+        args: ['clean', '-fd'],
+        cwd: workspacePath,
+      });
+
+      if (resetResult.success && cleanResult.success) {
         onDiscard?.();
         onClose();
       } else {
-        setError('Gagal membatalkan perubahan: ' + result.output);
+        const errorMsg = [];
+        if (!resetResult.success) errorMsg.push(`Reset: ${resetResult.output}`);
+        if (!cleanResult.success) errorMsg.push(`Clean: ${cleanResult.output}`);
+        setError('Gagal membatalkan. ' + errorMsg.join(' | '));
       }
     } catch (err) {
       setError('Gagal membatalkan perubahan: ' + String(err));
