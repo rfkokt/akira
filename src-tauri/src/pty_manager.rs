@@ -60,6 +60,25 @@ impl PtyManager {
         }
         cmd.cwd(&cwd);
 
+        // -- Sanitize Environment Variables --
+        // To prevent VSCode/Fig shell integrations from bleeding into our PTY:
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        cmd.env("TERM_PROGRAM", "Akira");
+        cmd.env_remove("VSCODE_INJECTION");
+        cmd.env_remove("VSCODE_IPC_HOOK_CLI");
+        cmd.env_remove("VSCODE_RESOLVING_ENVIRONMENT");
+        cmd.env_remove("FIG_TERM");
+        
+        // Restore original ZDOTDIR if VSCode hijacked it for shell integration, otherwise remove it
+        if std::env::var("VSCODE_INJECTION").is_ok() {
+            if let Ok(user_zdotdir) = std::env::var("USER_ZDOTDIR") {
+                cmd.env("ZDOTDIR", user_zdotdir);
+            } else {
+                cmd.env_remove("ZDOTDIR");
+            }
+        }
+
         let child = pair
             .slave
             .spawn_command(cmd)
@@ -134,6 +153,13 @@ impl PtyManager {
         };
 
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
+        
+        // Prevent zombie processes and duplicate output loops by killing any existing session with this ID before overwrite
+        if let Some(mut existing) = sessions.remove(&session_id) {
+            let _ = existing.stop_tx.send(());
+            let _ = existing.child.kill();
+        }
+
         sessions.insert(session_id, session);
 
         Ok(())

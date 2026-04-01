@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { useTerminalStore } from '@/store/terminalStore'
 import { PtyTerminal } from './PtyTerminal'
-import { ChevronDown, ChevronUp, X, Terminal as TerminalIcon, GripHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronUp, X, Terminal as TerminalIcon, GripHorizontal, Minus, Plus, Columns } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -27,6 +28,7 @@ export function TerminalPanel() {
   } = useTerminalStore()
 
   const [isDragging, setIsDragging] = useState(false)
+  const [isSplitView, setIsSplitView] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const dragStateRef = useRef({ startY: 0, startHeight: 0, rafId: null as number | null })
 
@@ -92,6 +94,7 @@ export function TerminalPanel() {
         flex flex-col
         ${isPanelMaximized ? 'flex-1' : ''}
         ${isDragging ? '' : 'transition-[height] duration-150 ease-out'}
+        ${!isPanelOpen ? 'hidden' : ''}
       `}
       style={{ height: isPanelMaximized ? undefined : panelHeight }}
     >
@@ -112,25 +115,78 @@ export function TerminalPanel() {
           <TerminalIcon className="w-3.5 h-3.5 text-neutral-400" />
           <span className="text-xs font-medium text-neutral-300 font-geist">Terminal</span>
           {sessions.length > 0 && (
-            <div className="flex items-center gap-1 ml-2">
-              {sessions.map((session) => (
-                <button
-                  key={session.id}
-                  onClick={() => setActiveSession(session.id)}
-                  className={`
-                    px-2 py-0.5 text-[10px] rounded transition-colors font-geist
-                    ${session.id === activeSessionId 
-                      ? 'bg-app-accent/20 text-app-accent border border-app-accent/30' 
-                      : 'bg-app-sidebar text-neutral-400 hover:text-white border border-transparent'}
-                  `}
-                >
-                  {session.workspaceName}
-                </button>
+            <div className="flex items-center gap-1 ml-2 overflow-x-auto hide-scrollbar">
+              {sessions.map((session, index) => (
+                <div key={session.id} className="relative group/tab flex items-center">
+                  <button
+                    onClick={() => setActiveSession(session.id)}
+                    className={`
+                      px-2.5 py-1 pr-6 text-[10px] rounded transition-colors font-geist flex items-center gap-1.5
+                      ${session.id === activeSessionId 
+                        ? 'bg-app-accent/20 text-app-accent border border-app-accent/30 tracking-wide font-medium shadow-[0_0_8px_rgba(255,255,255,0.05)]' 
+                        : 'bg-app-sidebar text-neutral-400 hover:text-neutral-200 border border-transparent'}
+                    `}
+                  >
+                    zsh {index + 1}
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeSession(session.id)
+                      invoke('pty_kill', { sessionId: session.id }).catch(console.error)
+                      if (sessions.length === 1 && isPanelOpen) {
+                        togglePanel()
+                      }
+                    }}
+                    className={`
+                      absolute right-1 top-1/2 -translate-y-1/2 
+                      w-4 h-4 rounded-sm flex items-center justify-center
+                      transition-all duration-200
+                      ${session.id === activeSessionId 
+                        ? 'opacity-100 hover:bg-app-accent/30 text-app-accent hover:text-white' 
+                        : 'opacity-0 group-hover/tab:opacity-100 hover:bg-white/10 text-neutral-400 hover:text-white'}
+                    `}
+                    title="Close Tab"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
               ))}
+              <button
+                onClick={() => setIsSplitView(!isSplitView)}
+                className={`w-5 h-5 ml-1 rounded-md hover:bg-white/10 flex items-center justify-center transition-colors ${isSplitView ? 'text-app-accent bg-app-accent/20' : 'text-neutral-400 hover:text-white'}`}
+                title={isSplitView ? "Single View" : "Split View"}
+              >
+                <Columns className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => {
+                  if (activeSession) {
+                    useTerminalStore.getState().createSession(activeSession.workspaceId, activeSession.workspaceName, activeSession.cwd)
+                  }
+                }}
+                className="w-5 h-5 ml-0.5 rounded-md hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
+                title="New Terminal"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
         </div>
         <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={togglePanel}
+              >
+                <Minus className="w-3 h-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Hide Panel</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger>
               <Button
@@ -153,37 +209,61 @@ export function TerminalPanel() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 hover:bg-red-400/10"
+                className="h-6 w-6 text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
                 onClick={() => {
-                  if (activeSessionId) {
-                    removeSession(activeSessionId)
-                  } else {
-                    togglePanel()
-                  }
+                  // Kill all sessions to completely exit terminal context
+                  sessions.forEach(s => {
+                    removeSession(s.id)
+                    invoke('pty_kill', { sessionId: s.id }).catch(console.error)
+                  })
+                  if (isPanelOpen) togglePanel()
                 }}
+                title="Kill All Terminals"
               >
                 <X className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Close</TooltipContent>
+            <TooltipContent>Kill All Terminals</TooltipContent>
           </Tooltip>
         </div>
       </div>
       
-      <div className="flex-1 overflow-hidden min-h-0">
-        {activeSession ? (
-          <PtyTerminal
-            sessionId={activeSession.id}
-            binary={activeSession.binary}
-            args={activeSession.args}
-            cwd={activeSession.cwd}
-            onClose={() => removeSession(activeSession.id)}
-            onMaximize={toggleMaximize}
-            isMaximized={isPanelMaximized}
-            title={activeSession.workspaceName}
-            showHeader={false}
-          />
-        ) : (
+      <div className={`flex-1 overflow-hidden min-h-0 relative ${isSplitView && sessions.length > 1 ? 'flex bg-app-bg divide-x divide-white/5' : ''}`}>
+        {sessions.map(session => {
+          const isActive = session.id === activeSessionId
+          const showInSplit = isSplitView && sessions.length > 1
+          const isVisible = showInSplit || isActive
+          
+          return (
+            <div 
+              key={session.id} 
+              className={`
+                min-w-0 h-full overflow-hidden shrink-0
+                ${showInSplit ? 'flex-1 flex flex-col relative' : 'absolute inset-0 w-full'}
+                ${!isVisible ? 'hidden' : ''}
+              `}
+              style={showInSplit ? { minWidth: '150px' } : {}}
+            >
+              <PtyTerminal
+                sessionId={session.id}
+                binary={session.binary}
+                args={session.args}
+                cwd={session.cwd}
+                onClose={() => {
+                  removeSession(session.id)
+                  invoke('pty_kill', { sessionId: session.id }).catch(console.error)
+                  if (sessions.length === 1 && isPanelOpen) togglePanel()
+                }}
+                onMaximize={toggleMaximize}
+                isMaximized={isPanelMaximized}
+                title={session.workspaceName}
+                showHeader={false}
+              />
+            </div>
+          )
+        })}
+
+        {sessions.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-neutral-500">
             <TerminalIcon className="w-8 h-8 mb-2 opacity-50" />
             <p className="text-xs font-geist">No terminal session</p>

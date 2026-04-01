@@ -14,6 +14,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
+const spawnedSessions = new Set<string>()
+
 interface PtyTerminalProps {
   sessionId: string
   binary: string
@@ -50,7 +52,7 @@ export function PtyTerminal({
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
+      fontFamily: '"MesloLGS NF", "JetBrainsMono Nerd Font", "FiraCode Nerd Font", "Hack Nerd Font", "JetBrains Mono", Menlo, Monaco, Consolas, monospace',
       theme: {
         background: '#1e1e1e',
         foreground: '#d4d4d4',
@@ -84,7 +86,14 @@ export function PtyTerminal({
     term.loadAddon(new WebLinksAddon())
 
     term.open(terminalRef.current)
-    fit.fit()
+    
+    // Initial fit after fonts load
+    document.fonts.ready.then(() => {
+      fit.fit()
+      if (term.rows > 0 && term.cols > 0) {
+        invoke('pty_resize', { sessionId, rows: term.rows, cols: term.cols }).catch(console.error)
+      }
+    })
 
     terminalInstance.current = term
 
@@ -94,34 +103,51 @@ export function PtyTerminal({
     })
 
     // Spawn PTY
-    invoke('spawn_pty_session', {
-      sessionId,
-      binary,
-      args,
-      cwd,
-    }).then(() => {
+    if (!spawnedSessions.has(sessionId)) {
+      spawnedSessions.add(sessionId)
+      invoke('spawn_pty_session', {
+        sessionId,
+        binary,
+        args,
+        cwd,
+      }).then(() => {
+        setIsConnected(true)
+        // Ensure PTY understands the current dimensions
+        invoke('pty_resize', { sessionId, rows: term.rows, cols: term.cols }).catch(console.error)
+      }).catch((err) => {
+        console.error('[PtyTerminal] Failed to spawn:', err)
+        term.write(`\x1b[31mFailed to start terminal: ${err}\x1b[0m\r\n`)
+      })
+    } else {
       setIsConnected(true)
-    }).catch((err) => {
-      console.error('[PtyTerminal] Failed to spawn:', err)
-      term.write(`\x1b[31mFailed to start terminal: ${err}\x1b[0m\r\n`)
-    })
+    }
 
     // Listen for PTY output events
+    let isCleanedUp = false
+    let unlistenOutput: (() => void) | undefined
+    let unlistenExit: (() => void) | undefined
+
     const setupListener = async () => {
-      const unlisten = await listen<string>(`pty-output-${sessionId}`, (event) => {
+      unlistenOutput = await listen<string>(`pty-output-${sessionId}`, (event) => {
         if (terminalInstance.current) {
           terminalInstance.current.write(event.payload)
         }
       })
-      unlistenRef.current = unlisten
 
-      const unlistenExit = await listen<void>(`pty-exit-${sessionId}`, () => {
+      unlistenExit = await listen<void>(`pty-exit-${sessionId}`, () => {
         if (terminalInstance.current) {
           terminalInstance.current.write('\r\n\x1b[33m[Process exited]\x1b[0m\r\n')
         }
         setIsConnected(false)
       })
-      unlistenExitRef.current = unlistenExit
+
+      if (isCleanedUp) {
+        if (unlistenOutput) unlistenOutput()
+        if (unlistenExit) unlistenExit()
+      } else {
+        unlistenRef.current = unlistenOutput
+        unlistenExitRef.current = unlistenExit
+      }
     }
     setupListener()
 
@@ -131,7 +157,9 @@ export function PtyTerminal({
         try {
           fitAddon.current.fit()
           const { rows, cols } = terminalInstance.current
-          invoke('pty_resize', { sessionId, rows, cols }).catch(console.error)
+          if (rows > 0 && cols > 0) {
+            invoke('pty_resize', { sessionId, rows, cols }).catch(console.error)
+          }
         } catch {
           // Ignore resize errors
         }
@@ -146,6 +174,7 @@ export function PtyTerminal({
     }
 
     return () => {
+      isCleanedUp = true
       window.removeEventListener('resize', handleResize)
       resizeObserver.disconnect()
       
@@ -156,9 +185,7 @@ export function PtyTerminal({
       if (unlistenExitRef.current) {
         unlistenExitRef.current()
       }
-      
-      // Kill PTY
-      invoke('pty_kill', { sessionId }).catch(console.error)
+      // Dispose xterm, leave PTY running on backend unless explicitly killed
       term.dispose()
     }
   }, [sessionId, binary, args, cwd])
@@ -166,13 +193,21 @@ export function PtyTerminal({
   useEffect(() => {
     // Resize on maximize change
     if (fitAddon.current && terminalInstance.current) {
-      setTimeout(() => {
-        try {
-          fitAddon.current?.fit()
-        } catch {
-          // Ignore
-        }
-      }, 100)
+      document.fonts.ready.then(() => {
+        setTimeout(() => {
+          try {
+            fitAddon.current?.fit()
+            if (terminalInstance.current) {
+              const { rows, cols } = terminalInstance.current
+              if (rows > 0 && cols > 0) {
+                invoke('pty_resize', { sessionId, rows, cols }).catch(console.error)
+              }
+            }
+          } catch {
+            // Ignore
+          }
+        }, 100)
+      })
     }
   }, [isMaximized])
 
@@ -224,7 +259,9 @@ export function PtyTerminal({
             </div>
           </div>
         )}
-        <div ref={terminalRef} className={`flex-1 ${showHeader ? 'p-1' : 'h-full'}}`} />
+        <div className={`flex-1 relative overflow-hidden ${showHeader ? 'p-1' : ''}`}>
+          <div ref={terminalRef} className="absolute inset-0 w-full h-full" />
+        </div>
       </div>
     </TooltipProvider>
   )

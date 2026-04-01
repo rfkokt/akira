@@ -42,7 +42,7 @@ function App() {
   const { moveTask, tasks } = useTaskStore()
   const { enqueueTask } = useAIChatStore()
   const { scale, zoomIn, zoomOut, resetZoom } = useZoomStore()
-  const { createSession, sessions, isPanelOpen } = useTerminalStore()
+  const { createSession, sessions, isPanelOpen, setActiveSession, setPanelOpen } = useTerminalStore()
   
   // RTK Status
   const [rtkInstalled, setRtkInstalled] = useState(false)
@@ -355,7 +355,8 @@ function App() {
                   onClick={() => {
                     const existingSession = sessions.find(s => s.workspaceId === activeWorkspace.id)
                     if (existingSession) {
-                      createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
+                      setActiveSession(existingSession.id)
+                      setPanelOpen(!isPanelOpen)
                     } else {
                       createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
                     }
@@ -458,16 +459,20 @@ function App() {
         </nav>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-app-bg relative m-0">
-          <main 
-            className="flex-1 overflow-auto relative"
-            style={{ 
-              transform: `scale(${scale})`,
-              transformOrigin: 'top left',
-              width: `${100 / scale}%`,
-              height: `${100 / scale}%`
-            }}
-          >
+        <div 
+          className={`flex flex-col overflow-hidden bg-app-bg relative m-0 ${scale === 1 ? 'flex-1' : 'shrink-0'}`}
+          style={{ 
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            width: scale === 1 ? '100%' : `${100 / scale}%`,
+            ...(scale !== 1 ? { 
+              height: `${100 / scale}%`,
+              minWidth: `${100 / scale}%`,
+              maxWidth: `${100 / scale}%`
+            } : {})
+          }}
+        >
+          <main className="flex-1 overflow-auto relative flex flex-col min-h-0">
             {renderMainContent()}
           </main>
           

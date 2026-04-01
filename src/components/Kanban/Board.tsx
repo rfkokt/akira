@@ -161,16 +161,16 @@ export function KanbanBoard() {
   }
 
   return (
-    <div className="flex gap-4 h-full relative">
+    <div className="flex h-full w-full overflow-x-auto overflow-y-hidden bg-app-bg relative">
       {showTaskCreator && (
-        <div className="w-[480px] shrink-0 h-full">
+        <div className="w-[480px] shrink-0 h-full sticky left-0 z-20 shadow-2xl bg-app-bg border-r border-app-border">
           <TaskCreatorChat onHide={() => setShowTaskCreator(false)} />
         </div>
       )}
 
-      <div className="flex-1 min-w-0 h-full overflow-auto">
+      <div className="flex flex-col min-w-max h-full relative">
         {!showTaskCreator && (
-          <div className="px-4 py-2 border-b border-app-border">
+          <div className="px-5 py-2 border-b border-app-border bg-app-bg shrink-0 sticky top-0 z-10 w-full flex items-center">
             <Button variant="ghost" size="sm" onClick={() => setShowTaskCreator(true)} className="h-7 px-2 text-xs">
               <MessageSquare className="w-3.5 h-3.5 mr-1" />
               Show Task Creator
@@ -178,9 +178,10 @@ export function KanbanBoard() {
           </div>
         )}
 
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex gap-5 pb-4 min-w-max">
-            {COLUMNS.map((column) => {
+        <div className="flex-1 min-h-0">
+          <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <div className="flex gap-5 p-5 w-max h-full">
+              {COLUMNS.map((column) => {
               const columnTasks = getTasksByStatus(column.id)
               return (
                 <KanbanColumn 
@@ -225,6 +226,7 @@ export function KanbanBoard() {
             )}
           </DragOverlay>
         </DndContext>
+        </div>
 
         {showAddModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
