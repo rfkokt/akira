@@ -1,12 +1,16 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
 #[cfg(unix)]
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub struct PtyManager {
     #[cfg(unix)]
-    sessions: Mutex<HashMap<String, PtySession>>,
+    sessions: std::sync::Mutex<HashMap<String, PtySession>>,
+    app_handle: Option<AppHandle>,
 }
 
 #[cfg(unix)]
@@ -14,23 +18,30 @@ pub struct PtySession {
     pub master: Box<dyn portable_pty::MasterPty + Send>,
     pub child: Box<dyn portable_pty::Child + Send>,
     pub writer: Box<dyn std::io::Write + Send>,
-    pub reader: Box<dyn std::io::Read + Send>,
+    pub read_thread: Option<JoinHandle<()>>,
+    pub stop_tx: Sender<()>,
 }
 
-#[cfg(unix)]
 impl PtyManager {
     pub fn new() -> Self {
         Self {
-            sessions: Mutex::new(HashMap::new()),
+            #[cfg(unix)]
+            sessions: std::sync::Mutex::new(HashMap::new()),
+            app_handle: None,
         }
     }
 
+    pub fn set_app_handle(&mut self, handle: AppHandle) {
+        self.app_handle = Some(handle);
+    }
+
+    #[cfg(unix)]
     pub fn spawn(
         &self,
-        session_id: &str,
-        binary: &str,
-        args: &[String],
-        cwd: &str,
+        session_id: String,
+        binary: String,
+        args: Vec<String>,
+        cwd: String,
     ) -> Result<(), String> {
         let pty_system = native_pty_system();
 
@@ -43,11 +54,11 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let mut cmd = CommandBuilder::new(binary);
-        for arg in args {
+        let mut cmd = CommandBuilder::new(&binary);
+        for arg in &args {
             cmd.arg(arg);
         }
-        cmd.cwd(cwd);
+        cmd.cwd(&cwd);
 
         let child = pair
             .slave
@@ -59,24 +70,87 @@ impl PtyManager {
             .take_writer()
             .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
 
-        let reader = pair
+        let mut reader = pair
             .master
             .try_clone_reader()
             .map_err(|e| format!("Failed to get PTY reader: {}", e))?;
+
+        // Set master PTY to non-blocking mode
+        if let Some(fd) = pair.master.as_raw_fd() {
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL, 0) };
+            if flags >= 0 {
+                unsafe {
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+        }
+
+        let (stop_tx, stop_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
+        let session_id_clone = session_id.clone();
+        let app_handle = self.app_handle.clone();
+
+        // Spawn a thread to continuously read output and emit events
+        let read_thread = thread::spawn(move || {
+            let mut buf = [0u8; 8192];
+            loop {
+                // Check if we should stop
+                if stop_rx.try_recv().is_ok() {
+                    break;
+                }
+
+                match reader.read(&mut buf) {
+                    Ok(0) => {
+                        // EOF - process exited
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(&format!("pty-exit-{}", session_id_clone), ());
+                        }
+                        break;
+                    }
+                    Ok(n) => {
+                        let output = String::from_utf8_lossy(&buf[..n]).to_string();
+                        if let Some(ref handle) = app_handle {
+                            let _ =
+                                handle.emit(&format!("pty-output-{}", session_id_clone), output);
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        // No data available, sleep briefly
+                        thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    Err(e) => {
+                        eprintln!("[PTY] Read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
 
         let session = PtySession {
             master: pair.master,
             child,
             writer,
-            reader,
+            read_thread: Some(read_thread),
+            stop_tx,
         };
 
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
-        sessions.insert(session_id.to_string(), session);
+        sessions.insert(session_id, session);
 
         Ok(())
     }
 
+    #[cfg(not(unix))]
+    pub fn spawn(
+        &self,
+        _session_id: String,
+        _binary: String,
+        _args: Vec<String>,
+        _cwd: String,
+    ) -> Result<(), String> {
+        Err("PTY is only supported on Unix systems".to_string())
+    }
+
+    #[cfg(unix)]
     pub fn write(&self, session_id: &str, data: &str) -> Result<(), String> {
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         if let Some(session) = sessions.get_mut(session_id) {
@@ -94,6 +168,12 @@ impl PtyManager {
         }
     }
 
+    #[cfg(not(unix))]
+    pub fn write(&self, _session_id: &str, _data: &str) -> Result<(), String> {
+        Err("PTY is only supported on Unix systems".to_string())
+    }
+
+    #[cfg(unix)]
     pub fn resize(&self, session_id: &str, rows: u16, cols: u16) -> Result<(), String> {
         let sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         if let Some(session) = sessions.get(session_id) {
@@ -112,74 +192,28 @@ impl PtyManager {
         }
     }
 
-    pub fn kill(&self, session_id: &str) -> Result<(), String> {
-        let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
-        sessions.remove(session_id);
-        Ok(())
-    }
-
-    pub fn is_running(&self, session_id: &str) -> bool {
-        if let Ok(mut sessions) = self.sessions.lock() {
-            if let Some(session) = sessions.get_mut(session_id) {
-                return session
-                    .child
-                    .try_wait()
-                    .map(|r| r.is_none())
-                    .unwrap_or(false);
-            }
-        }
-        false
-    }
-
-    pub fn read_output(&self, session_id: &str) -> Result<String, String> {
-        let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
-        if let Some(session) = sessions.get_mut(session_id) {
-            let mut buf = vec![0u8; 4096];
-            match session.reader.read(&mut buf) {
-                Ok(0) => Ok(String::new()),
-                Ok(n) => Ok(String::from_utf8_lossy(&buf[..n]).to_string()),
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(String::new()),
-                Err(e) => Err(format!("Read error: {}", e)),
-            }
-        } else {
-            Err("Session not found".to_string())
-        }
-    }
-}
-
-#[cfg(not(unix))]
-impl PtyManager {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn spawn(
-        &self,
-        _session_id: &str,
-        _binary: &str,
-        _args: &[String],
-        _cwd: &str,
-    ) -> Result<(), String> {
-        Err("PTY is only supported on Unix systems".to_string())
-    }
-
-    pub fn write(&self, _session_id: &str, _data: &str) -> Result<(), String> {
-        Err("PTY is only supported on Unix systems".to_string())
-    }
-
+    #[cfg(not(unix))]
     pub fn resize(&self, _session_id: &str, _rows: u16, _cols: u16) -> Result<(), String> {
         Err("PTY is only supported on Unix systems".to_string())
     }
 
+    #[cfg(unix)]
+    pub fn kill(&self, session_id: &str) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
+        if let Some(mut session) = sessions.remove(session_id) {
+            // Signal the read thread to stop
+            let _ = session.stop_tx.send(());
+            let _ = session.child.kill();
+            // Wait for read thread to finish
+            if let Some(handle) = session.read_thread {
+                let _ = handle.join();
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
     pub fn kill(&self, _session_id: &str) -> Result<(), String> {
-        Err("PTY is only supported on Unix systems".to_string())
-    }
-
-    pub fn is_running(&self, _session_id: &str) -> bool {
-        false
-    }
-
-    pub fn read_output(&self, _session_id: &str) -> Result<String, String> {
         Err("PTY is only supported on Unix systems".to_string())
     }
 }

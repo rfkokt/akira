@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
-import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore } from '@/store'
+import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
 import { dbService } from '@/lib/db'
 import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
@@ -13,6 +13,7 @@ import { GitSourceControl } from './components/Git/GitSourceControl'
 import { MonacoDiffViewer } from './components/Git/MonacoDiffViewer'
 import { GitBranchSelector } from './components/Git/GitBranchSelector'
 import { RecoveryModal } from './components/RecoveryModal'
+import { TerminalPanel } from './components/TerminalPanel'
 import { getSavedRunningTask, useAIChatStore } from './store/aiChatStore'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,6 +42,7 @@ function App() {
   const { moveTask, tasks } = useTaskStore()
   const { enqueueTask } = useAIChatStore()
   const { scale, zoomIn, zoomOut, resetZoom } = useZoomStore()
+  const { createSession, sessions, isPanelOpen } = useTerminalStore()
   
   // RTK Status
   const [rtkInstalled, setRtkInstalled] = useState(false)
@@ -342,6 +344,30 @@ function App() {
             </Button>
           )}
 
+          {/* Terminal */}
+          {activeWorkspace && (
+            <Tooltip>
+              <TooltipTrigger>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={`h-7 w-7 ${isPanelOpen ? 'text-app-accent' : ''}`}
+                  onClick={() => {
+                    const existingSession = sessions.find(s => s.workspaceId === activeWorkspace.id)
+                    if (existingSession) {
+                      createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
+                    } else {
+                      createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
+                    }
+                  }}
+                >
+                  <Terminal className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open Terminal</TooltipContent>
+            </Tooltip>
+          )}
+
           <Separator orientation="vertical" className="h-4" />
 
           {/* RTK Status Indicator */}
@@ -432,17 +458,21 @@ function App() {
         </nav>
 
         {/* Main Content Area */}
-        <div className="flex-1 bg-app-bg overflow-auto relative m-0">
+        <div className="flex-1 flex flex-col overflow-hidden bg-app-bg relative m-0">
           <main 
-            className="h-full p-4 origin-top-left"
+            className="flex-1 overflow-auto relative"
             style={{ 
               transform: `scale(${scale})`,
+              transformOrigin: 'top left',
               width: `${100 / scale}%`,
               height: `${100 / scale}%`
             }}
           >
             {renderMainContent()}
           </main>
+          
+          {/* Terminal Panel */}
+          <TerminalPanel />
         </div>
       </div>
     </div>

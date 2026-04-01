@@ -1,8 +1,9 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { Minus, Maximize2, X, Terminal as TerminalIcon } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 import { Button } from '@/components/ui/button'
@@ -22,6 +23,7 @@ interface PtyTerminalProps {
   onMaximize?: () => void
   isMaximized?: boolean
   title?: string
+  showHeader?: boolean
 }
 
 export function PtyTerminal({ 
@@ -32,40 +34,15 @@ export function PtyTerminal({
   onClose, 
   onMaximize,
   isMaximized,
-  title 
+  title,
+  showHeader = true
 }: PtyTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const terminalInstance = useRef<Terminal | null>(null)
   const fitAddon = useRef<FitAddon | null>(null)
-  const readInterval = useRef<number | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-
-  const startPty = useCallback(async () => {
-    try {
-      await invoke('spawn_pty_session', {
-        sessionId,
-        binary,
-        args,
-        cwd,
-      })
-      setIsConnected(true)
-    } catch (err) {
-      console.error('[PtyTerminal] Failed to spawn:', err)
-    }
-  }, [sessionId, binary, args, cwd])
-
-  const stopPty = useCallback(async () => {
-    if (readInterval.current) {
-      clearInterval(readInterval.current)
-      readInterval.current = null
-    }
-    try {
-      await invoke('pty_kill', { sessionId })
-    } catch (err) {
-      console.error('[PtyTerminal] Failed to kill:', err)
-    }
-    setIsConnected(false)
-  }, [sessionId])
+  const unlistenRef = useRef<(() => void) | null>(null)
+  const unlistenExitRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (!terminalRef.current) return
@@ -111,30 +88,52 @@ export function PtyTerminal({
 
     terminalInstance.current = term
 
+    // Handle input
     term.onData((data) => {
       invoke('pty_write', { sessionId, data }).catch(console.error)
     })
 
-    startPty()
+    // Spawn PTY
+    invoke('spawn_pty_session', {
+      sessionId,
+      binary,
+      args,
+      cwd,
+    }).then(() => {
+      setIsConnected(true)
+    }).catch((err) => {
+      console.error('[PtyTerminal] Failed to spawn:', err)
+      term.write(`\x1b[31mFailed to start terminal: ${err}\x1b[0m\r\n`)
+    })
 
-    readInterval.current = window.setInterval(async () => {
-      try {
-        const output = await invoke<string>('pty_read', { sessionId })
-        if (output) {
-          term.write(output)
+    // Listen for PTY output events
+    const setupListener = async () => {
+      const unlisten = await listen<string>(`pty-output-${sessionId}`, (event) => {
+        if (terminalInstance.current) {
+          terminalInstance.current.write(event.payload)
         }
-      } catch (err) {
-        console.error('[PtyTerminal] Read error:', err)
-      }
-    }, 50)
+      })
+      unlistenRef.current = unlisten
 
+      const unlistenExit = await listen<void>(`pty-exit-${sessionId}`, () => {
+        if (terminalInstance.current) {
+          terminalInstance.current.write('\r\n\x1b[33m[Process exited]\x1b[0m\r\n')
+        }
+        setIsConnected(false)
+      })
+      unlistenExitRef.current = unlistenExit
+    }
+    setupListener()
+
+    // Handle resize
     const handleResize = () => {
-      if (fitAddon.current) {
+      if (fitAddon.current && terminalInstance.current) {
         try {
           fitAddon.current.fit()
-          const { rows, cols } = term
+          const { rows, cols } = terminalInstance.current
           invoke('pty_resize', { sessionId, rows, cols }).catch(console.error)
         } catch {
+          // Ignore resize errors
         }
       }
     }
@@ -149,61 +148,83 @@ export function PtyTerminal({
     return () => {
       window.removeEventListener('resize', handleResize)
       resizeObserver.disconnect()
-      if (readInterval.current) {
-        clearInterval(readInterval.current)
+      
+      // Cleanup event listeners
+      if (unlistenRef.current) {
+        unlistenRef.current()
       }
-      stopPty()
+      if (unlistenExitRef.current) {
+        unlistenExitRef.current()
+      }
+      
+      // Kill PTY
+      invoke('pty_kill', { sessionId }).catch(console.error)
       term.dispose()
     }
-  }, [sessionId, startPty, stopPty])
+  }, [sessionId, binary, args, cwd])
+
+  useEffect(() => {
+    // Resize on maximize change
+    if (fitAddon.current && terminalInstance.current) {
+      setTimeout(() => {
+        try {
+          fitAddon.current?.fit()
+        } catch {
+          // Ignore
+        }
+      }, 100)
+    }
+  }, [isMaximized])
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full bg-[#1e1e1e] rounded-md overflow-hidden border border-white/10">
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[#323232] border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <TerminalIcon className="w-3.5 h-3.5 text-neutral-400" />
-            <span className="text-xs text-neutral-300 font-medium">
-              {title || `${binary} ${args.join(' ')}`}
-            </span>
-            {!isMaximized && (
-              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-yellow-400'}`} />
-            )}
+      <div className={`flex flex-col h-full bg-[#1e1e1e] ${showHeader ? 'rounded-md overflow-hidden border border-white/10' : ''}`}>
+        {showHeader && (
+          <div className="flex items-center justify-between px-3 py-1.5 bg-[#323232] border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <TerminalIcon className="w-3.5 h-3.5 text-neutral-400" />
+              <span className="text-xs text-neutral-300 font-medium">
+                {title || `${binary} ${args.join(' ')}`}
+              </span>
+              {!isMaximized && (
+                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-yellow-400'}`} />
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onMaximize}
+                    className="h-7 w-7"
+                  >
+                    {isMaximized ? (
+                      <Minus className="w-3 h-3" />
+                    ) : (
+                      <Maximize2 className="w-3 h-3" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isMaximized ? 'Minimize' : 'Maximize'}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onClose}
+                    className="h-7 w-7 hover:bg-red-400/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Close</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onMaximize}
-                  className="h-7 w-7"
-                >
-                  {isMaximized ? (
-                    <Minus className="w-3 h-3" />
-                  ) : (
-                    <Maximize2 className="w-3 h-3" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{isMaximized ? 'Minimize' : 'Maximize'}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onClose}
-                  className="h-7 w-7 hover:bg-red-400/10"
-                >
-                  <X className="w-3 h-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Close</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-        <div ref={terminalRef} className="flex-1 p-1" />
+        )}
+        <div ref={terminalRef} className={`flex-1 ${showHeader ? 'p-1' : 'h-full'}}`} />
       </div>
     </TooltipProvider>
   )

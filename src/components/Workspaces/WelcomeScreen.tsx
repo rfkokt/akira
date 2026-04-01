@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { FolderOpen, Plus, Trash2, Folder, ChevronRight } from 'lucide-react'
+import { FolderOpen, Plus, Trash2, Folder, ChevronRight, Terminal } from 'lucide-react'
 import { useWorkspaceStore } from '@/store/workspaceStore'
+import { useTerminalStore } from '@/store/terminalStore'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -22,6 +23,7 @@ interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
   const { workspaces, createWorkspace, setActiveWorkspace, deleteWorkspace, loadWorkspaces } = useWorkspaceStore()
+  const { createSession } = useTerminalStore()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [selectedFolder, setSelectedFolder] = useState<string>('')
@@ -66,6 +68,16 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
   const handleSelectWorkspace = async (id: string) => {
     await setActiveWorkspace(id)
     onClose()
+  }
+
+  const handleOpenInTerminal = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const workspace = workspaces.find(w => w.id === id)
+    if (workspace) {
+      createSession(workspace.id, workspace.name, workspace.folder_path)
+      await setActiveWorkspace(id)
+      onClose()
+    }
   }
 
   return (
@@ -147,6 +159,15 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-app-accent hover:bg-app-accent/10"
+                          onClick={(e) => handleOpenInTerminal(workspace.id, e)}
+                          title="Open in Terminal"
+                        >
+                          <Terminal className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-red-400 hover:bg-red-400/10"
                           onClick={(e) => {
                             e.stopPropagation()
@@ -168,22 +189,22 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-xl">Create New Workspace</DialogTitle>
-            <DialogDescription className="text-app-text-muted">
+            <DialogTitle>Create New Workspace</DialogTitle>
+            <DialogDescription>
               Select a project folder and give your workspace a name.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-6">
+          <div className="space-y-5 py-4">
             <div className="space-y-3">
-              <Label htmlFor="folder" className="text-app-text-muted font-medium ml-1">Project Folder *</Label>
+              <Label htmlFor="folder" className="text-sm font-medium">Project Folder</Label>
               <div className="flex gap-3">
-                <div className="flex-1 px-4 py-2 bg-app-bg/50 border border-app-border rounded-xl text-sm text-app-text font-geist truncate min-h-[44px] flex items-center shadow-inner">
+                <div className="flex-1 px-3 py-2 bg-app-sidebar/50 border border-app-border rounded-lg text-sm text-app-text font-geist truncate min-h-[40px] flex items-center">
                   {selectedFolder || 'No folder selected'}
                 </div>
-                <Button variant="secondary" onClick={handlePickFolder} className="shadow-lg">
+                <Button variant="secondary" onClick={handlePickFolder} className="shrink-0">
                   <FolderOpen className="w-4 h-4 mr-2" />
                   Browse
                 </Button>
@@ -191,18 +212,18 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
             </div>
 
             <div className="space-y-3">
-              <Label htmlFor="name" className="text-app-text-muted font-medium ml-1">Workspace Name *</Label>
+              <Label htmlFor="name" className="text-sm font-medium">Workspace Name</Label>
               <Input
                 id="name"
                 value={newWorkspaceName}
                 onChange={(e) => setNewWorkspaceName(e.target.value)}
                 placeholder="My Project"
-                className="h-11 rounded-xl bg-app-bg/50 border-app-border text-app-text shadow-inner focus-visible:ring-app-accent"
+                className="h-10"
               />
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 mt-2">
+          <DialogFooter>
             <Button
               variant="ghost"
               onClick={() => {
@@ -216,7 +237,6 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
             <Button
               onClick={handleCreateWorkspace}
               disabled={!newWorkspaceName.trim() || !selectedFolder || isCreating}
-              className="px-6 shadow-[0_0_15px_var(--app-accent-glow)]"
             >
               {isCreating ? 'Creating...' : 'Create Workspace'}
             </Button>

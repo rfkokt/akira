@@ -1,5 +1,7 @@
 use serde::Serialize;
 use std::path::Path;
+use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileEntry {
@@ -56,10 +58,15 @@ pub fn read_directory(path: String) -> Result<Vec<FileEntry>, String> {
 }
 
 #[tauri::command]
-pub fn pick_folder() -> Result<Option<String>, String> {
-    // This would typically use a file dialog
-    // For now, return None as placeholder
-    Ok(None)
+pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
+    let result = app.dialog()
+        .file()
+        .blocking_pick_folder();
+    
+    match result {
+        Some(path) => Ok(Some(path.to_string())),
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]

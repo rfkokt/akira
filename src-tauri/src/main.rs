@@ -25,6 +25,7 @@ pub use models::*;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -36,7 +37,8 @@ fn main() {
             let conn = db::init_db(&app_dir).expect("Failed to initialize database");
 
             let cli_router = Arc::new(CliRouter::new());
-            let pty_manager = Arc::new(PtyManager::new());
+            let mut pty_manager = PtyManager::new();
+            pty_manager.set_app_handle(app.handle().clone());
 
             app.manage(AppState::new(conn, cli_router, pty_manager));
 
@@ -126,7 +128,6 @@ fn main() {
             commands::pty::spawn_pty_session,
             commands::pty::pty_write,
             commands::pty::pty_resize,
-            commands::pty::pty_read,
             commands::pty::pty_kill,
         ])
         .run(tauri::generate_context!())

@@ -85,7 +85,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [message, setMessage] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [isSummarizing, setIsSummarizing] = useState(false)
-  const [conversationSummary, setConversationSummary] = useState<ConversationSummary | null>(null)
+  const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([])
   const [isCreating, setIsCreating] = useState(false)
   const [createdSuccess, setCreatedSuccess] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
@@ -301,7 +301,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const handleSend = async () => {
     if (!message.trim() || !activeEngine) return
     
-    setConversationSummary(null)
+    setConversationSummaries([])
     setIsStreaming(true)
     
     try {
@@ -321,7 +321,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     if (messages.length === 0) return
     
     setIsSummarizing(true)
-    setConversationSummary(null)
+    setConversationSummaries([])
     
     try {
       const conversationText = messages
@@ -329,10 +329,11 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
         .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
         .join('\n\n')
       
-      const summaryPrompt = `Based on this conversation, create a task summary in this exact format (no other text):
+      const summaryPrompt = `Based on this conversation, identify all tasks that need to be created. You can output one or multiple tasks. For each task, use this exact format (repeat for each task):
 
 TASK_TITLE: [Short clear title, max 80 chars]
-TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
+TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]
+---`
 
       await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
       
@@ -341,14 +342,23 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
       const summaryMessages = getMessages(taskId + '_summary')
       const lastResponse = summaryMessages[summaryMessages.length - 1]?.content || ''
       
-      const titleMatch = lastResponse.match(/TASK_TITLE:\s*(.+?)(?:\n|$)/i)
-      const descMatch = lastResponse.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|$)/i)
+      const tasks: ConversationSummary[] = []
+      const blocks = lastResponse.split(/TASK_TITLE:/i).slice(1)
       
-      if (titleMatch) {
-        setConversationSummary({
-          title: titleMatch[1].trim().substring(0, 100),
-          description: cleanDescription(descMatch?.[1] || '').substring(0, 500)
-        })
+      for (const block of blocks) {
+        const titleLine = block.split('\n')[0].trim()
+        const descMatch = block.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|---|$)/i)
+        
+        if (titleLine) {
+          tasks.push({
+            title: titleLine.substring(0, 100),
+            description: cleanDescription(descMatch?.[1] || '').substring(0, 500)
+          })
+        }
+      }
+      
+      if (tasks.length > 0) {
+        setConversationSummaries(tasks)
       }
       
       clearMessages(taskId + '_summary')
@@ -364,25 +374,27 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
     setIsStreaming(false)
   }
 
-  const handleCreateTask = async () => {
-    if (!conversationSummary?.title || !activeWorkspace?.folder_path) return
+  const handleCreateTasks = async () => {
+    if (conversationSummaries.length === 0 || !activeWorkspace?.folder_path) return
     
     setIsCreating(true)
     try {
-      await createTask({
-        title: conversationSummary.title,
-        description: conversationSummary.description,
-        status: 'todo',
-        priority: 'medium',
-      })
+      for (const summary of conversationSummaries) {
+        await createTask({
+          title: summary.title,
+          description: summary.description,
+          status: 'todo',
+          priority: 'medium',
+        })
+      }
       
       setCreatedSuccess(true)
-      setConversationSummary(null)
+      setConversationSummaries([])
       clearMessages(taskId)
       
       setTimeout(() => setCreatedSuccess(false), 2000)
     } catch (err) {
-      console.error('Failed to create task:', err)
+      console.error('Failed to create tasks:', err)
     } finally {
       setIsCreating(false)
     }
@@ -390,7 +402,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
 
   const handleClearChat = () => {
     clearMessages(taskId)
-    setConversationSummary(null)
+    setConversationSummaries([])
     setCreatedSuccess(false)
   }
 
@@ -536,7 +548,7 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
               ))
             )}
             
-            {taskMessages.length > 0 && !conversationSummary && (
+            {taskMessages.length > 0 && conversationSummaries.length === 0 && (
               <div className="flex gap-2 mt-4">
                 <Button
                   onClick={handleSummarize}
@@ -565,37 +577,42 @@ TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]`
               </div>
             )}
             
-            {conversationSummary && (
-              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 mt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Check className="w-4 h-4 text-green-400" />
-                  <span className="text-xs text-green-400 font-geist font-medium">Task Ready</span>
-                </div>
-                <div className="space-y-3">
-                  <div className="bg-app-panel rounded-lg p-3 border border-app-border">
-                    <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
-                    <p className="text-sm text-white font-geist mt-1 break-words">{conversationSummary.title}</p>
-                  </div>
-                  {conversationSummary.description && (
-                    <div className="bg-app-panel rounded-lg p-3 border border-app-border">
-                      <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
-                      <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{conversationSummary.description}</p>
+            {conversationSummaries.length > 0 && (
+              <div className="space-y-4 mt-4">
+                {conversationSummaries.map((summary, idx) => (
+                  <div key={idx} className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Check className="w-4 h-4 text-green-400" />
+                      <span className="text-xs text-green-400 font-geist font-medium">Task {idx + 1} Ready</span>
                     </div>
-                  )}
-                </div>
-                <div className="flex gap-2 mt-3">
+                    <div className="space-y-3">
+                      <div className="bg-app-panel rounded-lg p-3 border border-app-border">
+                        <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
+                        <p className="text-sm text-white font-geist mt-1 break-words">{summary.title}</p>
+                      </div>
+                      {summary.description && (
+                        <div className="bg-app-panel rounded-lg p-3 border border-app-border">
+                          <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
+                          <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{summary.description}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="flex gap-2">
                   <Button
-                    onClick={handleCreateTask}
+                    onClick={handleCreateTasks}
                     disabled={isCreating || createdSuccess}
                     className="flex-1 bg-green-600 hover:bg-green-700"
                   >
-                    {createdSuccess ? 'Created!' : isCreating ? 'Creating...' : 'Create Task'}
+                    {createdSuccess ? 'Created!' : isCreating ? 'Creating Tasks...' : `Create ${conversationSummaries.length} Task${conversationSummaries.length > 1 ? 's' : ''}`}
                   </Button>
                   <Button
                     variant="secondary"
-                    onClick={() => setConversationSummary(null)}
+                    onClick={() => setConversationSummaries([])}
                   >
-                    Edit
+                    Cancel
                   </Button>
                 </div>
               </div>

@@ -13,14 +13,14 @@ pub struct AppState {
     pub should_stop: Mutex<HashMap<String, Arc<AtomicBool>>>,
     pub rtk_path: Mutex<Option<PathBuf>>,
     pub cli_router: Arc<CliRouter>,
-    pub pty_manager: Arc<PtyManager>,
+    pub pty_manager: Arc<std::sync::RwLock<PtyManager>>,
 }
 
 impl AppState {
     pub fn new(
         db: rusqlite::Connection,
         cli_router: Arc<CliRouter>,
-        pty_manager: Arc<PtyManager>,
+        pty_manager: PtyManager,
     ) -> Self {
         Self {
             db: Mutex::new(db),
@@ -28,7 +28,7 @@ impl AppState {
             should_stop: Mutex::new(HashMap::new()),
             rtk_path: Mutex::new(None),
             cli_router,
-            pty_manager,
+            pty_manager: Arc::new(std::sync::RwLock::new(pty_manager)),
         }
     }
 }

@@ -28,6 +28,7 @@ dirs = "5"
 
 [target.'cfg(unix)'.dependencies]
 portable-pty = "0.8"
+libc = "0.2"
 
 [features]
 default = ["custom-protocol"]
