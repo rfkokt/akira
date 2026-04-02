@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, Loader2, Copy, Check } from 'lucide-react'
+import { X, Send, Loader2, Copy, Check, MessageSquare } from 'lucide-react'
 import { useAIChatStore, useEngineStore } from '@/store'
 import type { Task, ChatMessage as DbChatMessage } from '@/types'
 import { dbService } from '@/lib/db'
@@ -257,14 +257,15 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
         {taskMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center mt-10">
             <div className="w-16 h-16 bg-app-accent/10 rounded-full flex items-center justify-center mb-4 shadow-[0_0_20px_var(--app-accent-glow)]">
-              <Loader2 className="w-8 h-8 text-app-accent opacity-50 absolute animate-[spin_4s_linear_infinite]" />
-              <div className="w-4 h-4 bg-app-accent rounded-full animate-pulse shadow-[0_0_10px_var(--app-accent)]" />
+              <MessageSquare className="w-7 h-7 text-app-accent opacity-60" />
             </div>
             <p className="text-sm font-medium text-app-text font-geist mb-1">
-              Start a conversation
+              {task.status === 'review' ? 'Request Revisions' : 'Start a conversation'}
             </p>
-            <p className="text-xs text-app-text-muted/70 font-geist max-w-[200px] leading-relaxed">
-              AI is ready to help you implement "{task.title}"
+            <p className="text-xs text-app-text-muted/70 font-geist max-w-[220px] leading-relaxed">
+              {task.status === 'review' 
+                ? 'Tell the AI what to change — it will directly modify the code'
+                : `AI is ready to help you implement "${task.title}"`}
             </p>
           </div>
         ) : (
@@ -309,9 +310,9 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={activeEngine ? "Ask AI about this task..." : "Select an AI engine first"}
+            placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
             disabled={!activeEngine || isTaskStreaming}
-            className="flex-1 px-4 py-3 rounded-xl text-sm bg-app-bg/60 text-app-text placeholder-app-text-muted/60 border border-app-border focus:outline-none focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 resize-none transition-all shadow-inner custom-scrollbar"
+            className="flex-1 px-4 py-3 rounded-xl text-sm bg-[#1e1e1e] text-white placeholder-neutral-500 border border-app-border focus:outline-none focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 resize-none transition-all shadow-inner custom-scrollbar"
             rows={1}
             style={{ minHeight: '44px', maxHeight: '120px' }}
           />

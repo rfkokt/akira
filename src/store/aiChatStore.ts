@@ -5,6 +5,7 @@ import { useTaskStore } from './taskStore';
 import { useWorkspaceStore } from './workspaceStore';
 import { useConfigStore } from './configStore';
 import { dbService } from '@/lib/db';
+import { getProvider } from '@/lib/providers';
 
 export interface ChatMessage {
   id: string;
@@ -413,49 +414,12 @@ Start working on this now.`;
         const taskMessages = currentMessages[taskId] || [];
         const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
         
-        // For opencode with --format json, parse JSON lines
-        let displayLine = event.payload.line;
-        if (engine.alias === 'opencode') {
-          try {
-            const json = JSON.parse(event.payload.line);
-            console.log('[AI] Opencode event type:', json.type);
-            
-            // Extract text from different event types
-            if (json.type === 'text' && json.part?.text) {
-              displayLine = json.part.text;
-            } else if (json.type === 'step_start') {
-              displayLine = `[${json.part?.type || 'step'}] Thinking...`;
-            } else if (json.type === 'tool_use') {
-              const toolState = json.part?.state;
-              const toolName = json.part?.tool || 'unknown';
-              let toolInfo = `[Tool: ${toolName}]`;
-              if (toolState?.input?.filePath) {
-                toolInfo += ` ${toolState.input.filePath}`;
-              } else if (toolState?.input?.pattern) {
-                toolInfo += ` ${toolState.input.pattern}`;
-              } else if (toolState?.input) {
-                toolInfo += ` ${JSON.stringify(toolState.input).substring(0, 100)}`;
-              }
-              if (toolState?.output) {
-                const output = typeof toolState.output === 'string' 
-                  ? toolState.output.substring(0, 200) 
-                  : JSON.stringify(toolState.output).substring(0, 200);
-                toolInfo += `\n  → ${output}`;
-              }
-              displayLine = toolInfo;
-            } else if (json.type === 'step_finish') {
-              const tokens = json.tokens?.total || 0;
-              const cost = json.cost ? ` ($${json.cost.toFixed(6)})` : '';
-              displayLine = `\n--- Step completed: ${tokens} tokens${cost} ---`;
-            } else if (json.type === 'error') {
-              displayLine = `❌ Error: ${json.message || 'Unknown error'}`;
-            } else {
-              displayLine = ''; // Skip other events (heartbeat, etc.)
-            }
-          } catch (e) {
-            console.log('[AI] JSON parse error:', e);
-            // Not JSON, use as-is
-          }
+        // Parse output using provider
+        const provider = getProvider(engine.alias);
+        let displayLine = '';
+        const parsed = provider.parseOutputLine(event.payload.line);
+        if (parsed) {
+          displayLine = parsed.displayText;
         }
         
         if (displayLine) {
@@ -519,24 +483,15 @@ Start working on this now.`;
       console.log('[AI] Base args from engine config:', engine.args);
       console.log('[AI] CWD:', cwd);
 
-      // Special handling for opencode - needs prompt as argument, not stdin
-      let args: string[];
-      let actualPrompt: string;
-      
-      if (engine.alias === 'opencode') {
-        // For opencode: command structure is `opencode run [options] "message"`
-        // Use --dir to explicitly set working directory
-        const workingDir = cwd || process.cwd?.() || '.';
-        args = ['run', '--format', 'json', '--dir', workingDir, prompt];
-        actualPrompt = ''; // Don't write to stdin
-        console.log('[AI] Opencode mode - final args:', args);
-        console.log('[AI] Full command would be:', engine.binary_path, args.join(' '));
-      } else {
-        // For other engines: write prompt to stdin
-        args = engine.args.split(' ').filter(Boolean);
-        actualPrompt = prompt;
-        console.log('[AI] StdIn mode - prompt as stdin');
-      }
+      // Build CLI args using provider registry
+      const provider = getProvider(engine.alias);
+      const { args, stdinPrompt: actualPrompt } = provider.buildArgs({
+        engineArgs: engine.args,
+        prompt,
+        cwd: cwd || '',
+      });
+
+      console.log('[AI] Provider:', engine.alias, '| Args count:', args.length, '| StdIn:', actualPrompt ? 'yes' : 'no');
 
       // Run CLI with workspace as working directory
       try {
@@ -592,6 +547,19 @@ Start working on this now.`;
             }
           }
         });
+
+        // Save AI chat history to DB so it persists across refreshes
+        try {
+          // Save the system start message
+          await dbService.createChatMessage(taskId, 'system', `🚀 Starting AI workflow for: "${taskTitle}"`, engine.alias);
+          // Save the AI response
+          if (responseContent.trim()) {
+            await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
+          }
+          console.log('[AI] Chat history saved to DB for task:', taskId);
+        } catch (dbErr) {
+          console.error('[AI] Failed to save chat history to DB:', dbErr);
+        }
 
         // Create PR first, then move to review if successful
         setTimeout(async () => {
@@ -841,13 +809,28 @@ Start working on this now.`;
       timestamp,
     };
     
-    // Add user message but don't change task state (keep as is)
+    // Add user message
     set({
       messages: {
         ...messages,
         [taskId]: [...(messages[taskId] || []), userMessage],
       },
     });
+
+    // In revision mode: move task back to in-progress
+    if (isRevisionMode) {
+      await useTaskStore.getState().moveTask(taskId, 'in-progress');
+      set({
+        taskStates: {
+          ...get().taskStates,
+          [taskId]: {
+            ...(get().taskStates[taskId] || defaultTaskState()),
+            status: 'running',
+            startTime: Date.now(),
+          }
+        }
+      });
+    }
 
     // Get AI response
     const engine = useEngineStore.getState().activeEngine;
@@ -941,42 +924,13 @@ Please respond helpfully and concisely.`;
         
         let displayLine = event.payload.line;
 
-        // Handle opencode JSON format
-        if (engine.alias === 'opencode') {
-          try {
-            const json = JSON.parse(event.payload.line);
-            if (json.type === 'text' && json.part?.text) {
-              displayLine = json.part.text;
-            } else if (json.type === 'step_start') {
-              displayLine = `[${json.part?.type || 'step'}] Thinking...`;
-            } else if (json.type === 'tool_use') {
-              const toolState = json.part?.state;
-              const toolName = json.part?.tool || 'unknown';
-              let toolInfo = `[Tool: ${toolName}]`;
-              if (toolState?.input?.filePath) {
-                toolInfo += ` ${toolState.input.filePath}`;
-              } else if (toolState?.input?.pattern) {
-                toolInfo += ` ${toolState.input.pattern}`;
-              }
-              if (toolState?.output) {
-                const output = typeof toolState.output === 'string' 
-                  ? toolState.output.substring(0, 200) 
-                  : JSON.stringify(toolState.output).substring(0, 200);
-                toolInfo += `\n  → ${output}`;
-              }
-              displayLine = toolInfo;
-            } else if (json.type === 'step_finish') {
-              const tokens = json.tokens?.total || 0;
-              const cost = json.cost ? ` ($${json.cost.toFixed(6)})` : '';
-              displayLine = `\n--- Step completed: ${tokens} tokens${cost} ---`;
-            } else if (json.type === 'error') {
-              displayLine = `❌ Error: ${json.message || 'Unknown error'}`;
-            } else {
-              displayLine = '';
-            }
-          } catch (e) {
-            // Not JSON, use as-is
-          }
+        // Parse output using provider
+        const provider = getProvider(engine.alias);
+        const parsed = provider.parseOutputLine(event.payload.line);
+        if (parsed) {
+          displayLine = parsed.displayText;
+        } else {
+          displayLine = '';
         }
 
         if (displayLine) {
@@ -1002,18 +956,13 @@ Please respond helpfully and concisely.`;
       const workspace = useWorkspaceStore.getState().activeWorkspace;
       const cwd = workspace?.folder_path || null;
 
-      // Build args based on engine type (same pattern as runAITask)
-      let args: string[];
-      let actualPrompt: string;
-
-      if (engine.alias === 'opencode') {
-        const workingDir = cwd || '.';
-        args = ['run', '--format', 'json', '--dir', workingDir, chatPrompt];
-        actualPrompt = '';
-      } else {
-        args = engine.args.split(' ').filter(Boolean);
-        actualPrompt = chatPrompt;
-      }
+      // Build CLI args using provider registry
+      const provider = getProvider(engine.alias);
+      const { args, stdinPrompt: actualPrompt } = provider.buildArgs({
+        engineArgs: engine.args,
+        prompt: chatPrompt,
+        cwd: cwd || '',
+      });
 
       await invoke('run_cli', {
         binary: engine.binary_path,
@@ -1044,9 +993,80 @@ Please respond helpfully and concisely.`;
 
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
 
+      // After revision completes: create new PR and move back to review
+      if (isRevisionMode) {
+        set({
+          taskStates: {
+            ...get().taskStates,
+            [taskId]: {
+              ...get().taskStates[taskId],
+              status: 'completed',
+              endTime: Date.now(),
+              lastResponse: responseContent,
+            }
+          }
+        });
+
+        setTimeout(async () => {
+          try {
+            const taskObj = useTaskStore.getState().tasks.find(t => t.id === taskId);
+            const prResult = await get().autoCreatePR(taskId, taskObj?.title || taskTitle);
+
+            const workspacePath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
+            if (workspacePath) {
+              try {
+                const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd: workspacePath });
+                if (diffResult.has_changes) {
+                  await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
+                }
+              } catch (diffErr) {
+                console.error('[sendMessage] Failed to capture diff:', diffErr);
+              }
+            }
+
+            const { messages: latestMessages } = get();
+            const resultMsg: ChatMessage = {
+              id: `msg-${Date.now()}-result`,
+              taskId,
+              role: 'system',
+              content: prResult
+                ? `✅ **Revision completed and branch updated!**\n\nBranch: \`${prResult.branch}\`${prResult.prUrl ? `\n\n[View PR](${prResult.prUrl})` : ''}`
+                : '⚠️ **Revision completed** but could not push to remote. Use "View Diff" to review changes.',
+              timestamp: Date.now(),
+            };
+
+            set({
+              messages: {
+                ...latestMessages,
+                [taskId]: [...(latestMessages[taskId] || []), resultMsg],
+              }
+            });
+
+            await useTaskStore.getState().moveTask(taskId, 'review');
+            console.log('[sendMessage] Revision complete, task moved back to review');
+          } catch (prErr) {
+            console.error('[sendMessage] Post-revision PR failed:', prErr);
+            await useTaskStore.getState().moveTask(taskId, 'review');
+          }
+        }, 500);
+      }
+
     } catch (error) {
       console.error('Error sending message:', error);
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+
+      if (isRevisionMode) {
+        set({
+          taskStates: {
+            ...get().taskStates,
+            [taskId]: {
+              ...get().taskStates[taskId],
+              status: 'completed',
+            }
+          }
+        });
+        await useTaskStore.getState().moveTask(taskId, 'review');
+      }
     }
   },
 

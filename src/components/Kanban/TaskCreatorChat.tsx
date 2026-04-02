@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
 import { dbService } from '@/lib/db'
+import { getProvider } from '@/lib/providers'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -95,8 +97,12 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [showFileSuggestions, setShowFileSuggestions] = useState(false)
   const [selectedFileIndex, setSelectedFileIndex] = useState(0)
   const [atSymbolIndex, setAtSymbolIndex] = useState(-1)
+  const [executionSteps, setExecutionSteps] = useState<{ type: string; content: string; timestamp: number }[]>([])
+  const [showProgress, setShowProgress] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const progressEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const unlistenFns = useRef<UnlistenFn[]>([])
   const aiChatStore = useAIChatStore()
   const { sendSimpleMessage, stopMessage, getMessages, setMessages, clearMessages, streamingMessageId } = aiChatStore
   const { activeEngine, engines, setActiveEngine } = useEngineStore()
@@ -140,6 +146,64 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [taskMessages])
+
+  useEffect(() => {
+    progressEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [executionSteps])
+
+  useEffect(() => {
+    const setupListeners = async () => {
+      const unlistenOutput = await listen<{ line: string; is_error: boolean }>('cli-output', (event) => {
+        const { line, is_error } = event.payload
+        const timestamp = Date.now()
+        
+        // Get fresh engine state from store
+        const currentEngine = useEngineStore.getState().activeEngine
+        console.log('[TaskCreatorChat] cli-output received:', line.substring(0, 100), '| is_error:', is_error, '| engine:', currentEngine?.alias)
+        
+        if (is_error) {
+          setExecutionSteps(prev => [...prev, {
+            type: 'error',
+            content: line,
+            timestamp
+          }])
+          return
+        }
+        
+        // Parse output using provider registry
+        const provider = getProvider(currentEngine?.alias || '')
+        const parsed = provider.parseOutputLine(line)
+        
+        if (parsed?.step) {
+          setExecutionSteps(prev => [...prev, {
+            type: parsed.step!.type,
+            content: parsed.step!.content,
+            timestamp
+          }])
+        }
+      })
+
+      const unlistenComplete = await listen<{ success: boolean; error_message?: string }>('cli-complete', (event) => {
+        const { success, error_message } = event.payload
+        console.log('[TaskCreatorChat] cli-complete received, success:', success)
+        setExecutionSteps(prev => [...prev, {
+          type: success ? 'complete' : 'error',
+          content: success ? 'Completed' : (error_message || 'Failed'),
+          timestamp: Date.now()
+        }])
+      })
+
+      unlistenFns.current = [unlistenOutput, unlistenComplete]
+      console.log('[TaskCreatorChat] Listeners set up')
+    }
+
+    setupListeners()
+
+    return () => {
+      unlistenFns.current.forEach(fn => fn())
+      unlistenFns.current = []
+    }
+  }, []) // Empty dependency - listener stays active, gets engine from store
 
   const loadAllHistory = useCallback(async () => {
     try {
@@ -302,6 +366,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     if (!message.trim() || !activeEngine) return
     
     setConversationSummaries([])
+    setExecutionSteps([])
     setIsStreaming(true)
     
     try {
@@ -405,6 +470,8 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
     clearMessages(taskId)
     setConversationSummaries([])
     setCreatedSuccess(false)
+    setExecutionSteps([])
+    setShowProgress(true)
   }
 
   const suggestedPrompts = [
@@ -533,7 +600,11 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
                   <span className="text-neutral-500 mr-2">{msg.role}:</span>
                   {msg.role === 'assistant' ? (
                     <span className="overflow-x-hidden">
-                      <MarkdownContent content={msg.content} />
+                      {msg.content ? (
+                        <MarkdownContent content={msg.content} />
+                      ) : currentStreamingId === msg.id ? (
+                        <span className="text-neutral-500 italic">Processing...</span>
+                      ) : null}
                     </span>
                   ) : (
                     <pre className="inline whitespace-pre-wrap break-words overflow-hidden">{msg.content}</pre>
@@ -547,6 +618,69 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
                   )}
                 </div>
               ))
+            )}
+            
+            {isStreaming && showProgress && (
+              <div className="mt-4 border border-app-border/50 rounded-lg overflow-hidden bg-app-bg/50">
+                <div className="flex items-center justify-between px-3 py-2 bg-app-sidebar/40 border-b border-app-border/40">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-3.5 h-3.5 text-app-accent" />
+                    <span className="text-[10px] font-semibold text-app-text-muted uppercase tracking-wider">AI Progress</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowProgress(false)}
+                    className="h-5 px-1.5 text-[10px] text-app-text-muted hover:text-white"
+                  >
+                    Hide
+                  </Button>
+                </div>
+                <div className="max-h-32 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
+                  {executionSteps.length === 0 ? (
+                    <div className="flex items-center gap-2 text-neutral-400">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Waiting for response...</span>
+                    </div>
+                  ) : (
+                    executionSteps.map((step, idx) => (
+                      <div key={idx} className="flex items-start gap-1.5">
+                        {step.type === 'step_start' && (
+                          <>
+                            <Zap className="w-3 h-3 text-yellow-400 flex-shrink-0 mt-0.5" />
+                            <span className="text-yellow-400">{step.content}</span>
+                          </>
+                        )}
+                        {step.type === 'tool_use' && (
+                          <>
+                            <Wrench className="w-3 h-3 text-cyan-400 flex-shrink-0 mt-0.5" />
+                            <span className="text-cyan-300">{step.content}</span>
+                          </>
+                        )}
+                        {step.type === 'text' && (
+                          <>
+                            <FileText className="w-3 h-3 text-neutral-500 flex-shrink-0 mt-0.5" />
+                            <span className="text-neutral-400">{step.content}</span>
+                          </>
+                        )}
+                        {step.type === 'error' && (
+                          <>
+                            <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
+                            <span className="text-red-400">{step.content}</span>
+                          </>
+                        )}
+                        {step.type === 'complete' && (
+                          <>
+                            <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" />
+                            <span className="text-green-400">Completed</span>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                  <div ref={progressEndRef} />
+                </div>
+              </div>
             )}
             
             {taskMessages.length > 0 && conversationSummaries.length === 0 && (
