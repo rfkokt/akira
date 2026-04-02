@@ -57,8 +57,8 @@ export const dbService = {
     invoke<void>('clear_chat_history', { taskId }),
 
   // CLI Runner
-  runCli: (binary: string, args: string[], prompt: string, cwd?: string) =>
-    invoke<void>('run_cli', { binary, args, prompt, cwd }),
+  runCli: (id: string, binary: string, args: string[], prompt: string, cwd?: string) =>
+    invoke<void>('run_cli', { id, binary, args, prompt, cwd }),
 
   stopCli: () =>
     invoke<void>('stop_cli'),

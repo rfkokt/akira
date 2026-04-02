@@ -443,18 +443,18 @@ TASK_DESCRIPTION: [A highly detailed context prompt for the AI agent that will i
 ${projectRules ? '\nThe tasks MUST adhere to these project rules:\n' + projectRules + '\n\nEmbed the relevant rules into each TASK_DESCRIPTION so the executing AI knows the conventions.' : ''}
 Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for committing code, creating pull requests, testing, or updating git workflows.`
 
-      await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
-      
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      const summaryMessages = getMessages(taskId + '_summary')
-      const lastResponse = summaryMessages[summaryMessages.length - 1]?.content || ''
+      const lastResponse = await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
       
       const tasks: ConversationSummary[] = []
-      const blocks = lastResponse.split(/TASK_TITLE:/i).slice(1)
+      // Normalize markdown bolding
+      const cleanResponse = lastResponse
+        .replace(/\*\*?TASK_TITLE:\*\*?/gi, 'TASK_TITLE:')
+        .replace(/\*\*?TASK_DESCRIPTION:\*\*?/gi, 'TASK_DESCRIPTION:');
+        
+      const blocks = cleanResponse.split(/TASK_TITLE:/i).slice(1)
       
       for (const block of blocks) {
-        const titleLine = block.split('\n')[0].trim()
+        const titleLine = block.split('\n')[0].replace(/[*_~`]/g, '').trim()
         const descMatch = block.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|---|$)/i)
         
         if (titleLine) {
@@ -620,7 +620,7 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
           </div>
         </div>
 
-        <ScrollArea className="h-full">
+        <ScrollArea className="flex-1 min-h-0 w-full">
           <div className="p-4 space-y-4">
             {showHistoryModal && (
               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">

@@ -131,7 +131,8 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
     if (!isOpen) return
 
     const setupListeners = async () => {
-      const unlistenOutput = await listen<CliOutputEvent>('cli-output', (event) => {
+      const unlistenOutput = await listen<CliOutputEvent & { id: string }>('cli-output', (event) => {
+        if (event.payload.id !== (taskId || 'chatbox')) return;
         const { line, is_error } = event.payload
         
         setTerminalLines(prev => [...prev, {
@@ -169,7 +170,8 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
         setIsStreaming(false)
       })
 
-      const unlistenComplete = await listen<CliCompleteEvent>('cli-complete', async (event) => {
+      const unlistenComplete = await listen<CliCompleteEvent & { id: string }>('cli-complete', async (event) => {
+        if (event.payload.id !== (taskId || 'chatbox')) return;
         setIsStreaming(false)
         const { success, exit_code, error_message } = event.payload
         
@@ -424,7 +426,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
           { type: 'stdout', content: '', timestamp: new Date() }
         ])
 
-        await dbService.runCli(activeEngine!.binary_path, args, fullPrompt + '\n', projectPath)
+        await dbService.runCli(taskId || 'chatbox', activeEngine!.binary_path, args, fullPrompt + '\n', projectPath)
       }
     } catch (err) {
       const errorMsg = String(err)
