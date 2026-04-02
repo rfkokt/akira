@@ -53,7 +53,21 @@ export function AIActivityIndicator({
     if (!latestOutput) return 'Initializing...'
     
     const output = latestOutput.toLowerCase()
-    
+    const lines = latestOutput.split('\n').filter(Boolean)
+    const lastLine = lines[lines.length - 1] || ''
+    const lastLower = lastLine.toLowerCase()
+
+    // Claude stream-json tool use format: [Tool: write_file] path/to/file
+    if (lastLower.includes('[tool:') || lastLower.includes('tool_use')) {
+      const toolMatch = lastLine.match(/\[Tool:\s*([^\]]+)\]/i)
+      const toolName = toolMatch ? toolMatch[1].trim() : 'tool'
+      if (toolName.includes('write') || toolName.includes('create') || toolName.includes('edit')) return 'Writing files...'
+      if (toolName.includes('read') || toolName.includes('view')) return 'Reading files...'
+      if (toolName.includes('bash') || toolName.includes('exec') || toolName.includes('run')) return 'Running commands...'
+      return `Using ${toolName}...`
+    }
+
+    // Generic keyword detection across full output
     if (output.includes('write') || output.includes('create') || output.includes('modify')) {
       return 'Writing files...'
     }
@@ -66,8 +80,8 @@ export function AIActivityIndicator({
     if (output.includes('error') || output.includes('failed') || output.includes('exception')) {
       return 'Error occurred'
     }
-    if (output.includes('complete') || output.includes('done') || output.includes('finished')) {
-      return 'Completed'
+    if (output.includes('✅') || output.includes('complete') || output.includes('done') || output.includes('finished')) {
+      return 'Completed ✅'
     }
     
     return 'AI is working...'

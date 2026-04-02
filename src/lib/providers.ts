@@ -129,47 +129,113 @@ const claudeProvider: ProviderConfig = {
   alias: 'claude',
 
   buildArgs({ engineArgs, prompt }) {
-    const args = engineArgs.split(' ').filter(Boolean);
-    if (!args.includes('--verbose')) {
-      args.push('--verbose');
-    }
+    // Keep any user-defined args (e.g., --dangerously-skip-permissions / --permission-mode bypassPermissions)
+    // then add -p (print/non-interactive) + stream-json output for proper streaming
+    const userArgs = engineArgs.split(' ').filter(Boolean);
+
+    // Remove any existing output-format / print flags to avoid duplicates
+    const baseArgs = userArgs.filter(
+      a => !['--output-format', '-p', '--print', '--verbose', '--include-partial-messages'].includes(a)
+        && !a.startsWith('--output-format=')
+    );
+
     return {
-      args,
-      stdinPrompt: prompt, // Claude reads prompt from stdin
+      args: [
+        ...baseArgs,
+        '-p',                                // non-interactive print mode
+        '--output-format', 'stream-json',    // real-time JSON streaming
+        '--include-partial-messages',        // stream text as it arrives
+        '--verbose',                         // required by --output-format=stream-json
+      ],
+      stdinPrompt: prompt,
     };
   },
 
   parseOutputLine(line: string): ParsedOutput | null {
-    // Strip ANSI escape sequences
-    const cleanLine = line.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
-    if (!cleanLine) return null;
+    if (!line.trim()) return null;
 
-    let type: 'step_start' | 'tool_use' | 'text' | 'error' | 'complete' = 'text';
-    const lowerLine = cleanLine.toLowerCase();
+    // Claude stream-json format outputs newline-delimited JSON events
+    try {
+      const json = JSON.parse(line);
+      const type = json.type as string;
 
-    // Parse verbose logs as progress steps
-    if (lowerLine.includes('tool') || cleanLine.includes('[DEBUG] Tool')) {
-      type = 'tool_use';
-    } else if (cleanLine.includes('[DEBUG]') || lowerLine.includes('thinking')) {
-      type = 'step_start';
-    } else if (lowerLine.match(/\berror\b/i) || cleanLine.includes('[ERROR]')) {
-      type = 'error';
-    }
+      // ── System init — skip silently ──────────────────────────────
+      if (type === 'system') return null;
 
-    // If it's just a raw debug line, format it nicely
-    if (cleanLine.startsWith('[DEBUG]') || cleanLine.startsWith('[INFO]')) {
-      const label = cleanLine.match(/\[(.*?)\]/)?.[1] || 'thinking';
-      const cleanContent = cleanLine.replace(/\[\w+\]/, '').trim();
+      // ── User echo — skip ─────────────────────────────────────────
+      if (type === 'user') return null;
+
+      // ── Assistant text (main content) ────────────────────────────
+      if (type === 'assistant') {
+        const content = json.message?.content ?? [];
+        const texts: string[] = [];
+
+        for (const block of content) {
+          if (block.type === 'text' && block.text) {
+            texts.push(block.text);
+          }
+          if (block.type === 'tool_use') {
+            const input = block.input ?? {};
+            const detail = input.file_path || input.path || input.command || input.pattern || '';
+            texts.push(`[Tool: ${block.name}]${detail ? ` ${detail}` : ''}`);
+          }
+        }
+
+        const text = texts.join('\n');
+        if (!text) return null;
+        return {
+          displayText: text,
+          step: { type: 'text', content: text.substring(0, 100) },
+        };
+      }
+
+      // ── Tool result ──────────────────────────────────────────────
+      if (type === 'tool_result') {
+        const content = Array.isArray(json.content) ? json.content : [];
+        const text = content.map((c: { text?: string }) => c.text || '').filter(Boolean).join('\n');
+        if (!text) return null;
+        return {
+          displayText: `  → ${text.substring(0, 200)}`,
+          step: { type: 'tool_use', content: text.substring(0, 100) },
+        };
+      }
+
+      // ── Final result ─────────────────────────────────────────────
+      if (type === 'result') {
+        const subtype = json.subtype as string;
+        const cost = json.total_cost_usd ? ` ($${Number(json.total_cost_usd).toFixed(4)})` : '';
+        const duration = json.duration_ms ? ` in ${Math.round(json.duration_ms / 1000)}s` : '';
+        if (subtype === 'success') {
+          return {
+            displayText: `\n✅ Completed${duration}${cost}`,
+            step: { type: 'complete', content: `Done${duration}${cost}` },
+          };
+        }
+        if (subtype === 'error_max_turns' || subtype === 'error') {
+          const msg = json.result || 'Unknown error';
+          return {
+            displayText: `❌ ${msg}`,
+            step: { type: 'error', content: msg.substring(0, 100) },
+          };
+        }
+        return null;
+      }
+
+      // ── Unknown JSON — skip ──────────────────────────────────────
+      return null;
+
+    } catch {
+      // Not JSON — Claude might emit plain text in some edge cases
+      // Strip ANSI escape sequences before displaying
+      const clean = line
+        .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
+        .trim();
+      if (!clean) return null;
       return {
-        displayText: `[${label.toLowerCase()}] ${cleanContent}`,
-        step: { type, content: cleanContent.substring(0, 100) },
+        displayText: clean,
+        step: { type: 'text', content: clean.substring(0, 100) },
       };
     }
-
-    return {
-      displayText: cleanLine, // Show in conversational UI
-      step: { type, content: cleanLine.substring(0, 100) },
-    };
   },
 };
 

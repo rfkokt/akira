@@ -21,6 +21,7 @@ export interface GitRemoteInfo {
 
 export interface PRResult {
   branch: string;
+  baseBranch: string;
   prUrl?: string;
   error?: string;
 }
@@ -204,11 +205,10 @@ export async function autoCreatePR(
     const remoteResult = await runGit(['remote'], cwd);
     const remoteName = remoteResult.success ? remoteResult.output.trim().split('\n')[0] : 'origin';
 
-    // Push
     const pushResult = await runGit(['push', '-u', remoteName, branchName], cwd);
     if (!pushResult.success) {
       console.error('[git] git push failed:', pushResult.output);
-      return { branch: branchName, error: `Push failed: ${pushResult.output}` };
+      return { branch: branchName, baseBranch: currentBranchName, error: `Push failed: ${pushResult.output}` };
     }
 
     // Build PR URL — try auto-create via API if token is configured
@@ -262,7 +262,7 @@ export async function autoCreatePR(
       console.error('[git] Failed to save PR info to database:', e);
     }
 
-    return { branch: branchName, prUrl };
+    return { branch: branchName, baseBranch: currentBranchName, prUrl };
   } catch (err) {
     console.error('[git] autoCreatePR failed:', err);
     return null;

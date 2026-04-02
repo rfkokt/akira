@@ -193,14 +193,8 @@ async function handleTaskCompletion(
 
   // Capture diff snapshot — use branch diff if we have a PR branch (isolated per task)
   try {
-    if (prResult?.branch) {
-      // Get the base branch from git (what we branched from)
-      const baseBranchResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
-        command: 'git',
-        args: ['rev-parse', '--abbrev-ref', 'HEAD@{-1}'],
-        cwd,
-      }).catch(() => null);
-      const baseBranch = baseBranchResult?.stdout?.trim() || 'main';
+    if (prResult?.branch && prResult?.baseBranch) {
+      const baseBranch = prResult.baseBranch;
 
       const diffResult = await invoke<{ diff: string; has_changes: boolean }>
         ('git_get_branch_diff', { cwd, baseBranch, headBranch: prResult.branch });

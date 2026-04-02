@@ -253,15 +253,18 @@ const style = {
             </div>
             {taskStates[task.id]?.prUrl && (
               <div className="mt-1">
-                <a 
-                  href={taskStates[task.id].prUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-app-accent hover:text-app-accent-hover underline truncate block"
-                  onClick={(e) => e.stopPropagation()}
+                <Button 
+                  variant="link"
+                  size="sm"
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    const { open } = await import('@tauri-apps/plugin-shell')
+                    await open(taskStates[task.id].prUrl!)
+                  }}
+                  className="h-auto p-0 text-xs text-app-accent hover:text-app-accent-hover truncate"
                 >
                   View PR
-                </a>
+                </Button>
               </div>
             )}
           </div>

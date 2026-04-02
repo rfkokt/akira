@@ -81,7 +81,17 @@ function MarkdownContent({ content }: { content: string }) {
         },
         a({ href, children }) {
           return (
-            <a href={href} className="text-app-accent hover:text-app-accent-hover hover:underline transition-colors" target="_blank" rel="noopener noreferrer">
+            <a 
+              href={href} 
+              className="text-app-accent hover:text-app-accent-hover hover:underline transition-colors cursor-pointer" 
+              onClick={async (e) => {
+                e.preventDefault();
+                if (href) {
+                  const { open } = await import('@tauri-apps/plugin-shell');
+                  await open(href);
+                }
+              }}
+            >
               {children}
             </a>
           );
@@ -105,7 +115,7 @@ function MarkdownContent({ content }: { content: string }) {
           return <li className="text-app-text/90">{children}</li>;
         },
         p({ children }) {
-          return <p className="mb-2.5 last:mb-0 leading-relaxed text-app-text/90">{children}</p>;
+          return <p className="mb-2.5 last:mb-0 leading-relaxed text-app-text/90 break-words overflow-wrap-anywhere">{children}</p>;
         },
         blockquote({ children }) {
           return (
@@ -293,7 +303,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
                     : 'bg-app-bg/50 border-app-border text-app-text rounded-tl-sm'
               }`}>
                 {msg.role === 'assistant' ? (
-                  <div className="text-[13px] leading-relaxed">
+                  <div className="text-[13px] leading-relaxed min-w-0 overflow-hidden">
                     <MarkdownContent content={msg.content} />
                     {currentStreamingId === msg.id && (
                       <span className="inline-flex mt-1">
@@ -304,7 +314,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
                     )}
                   </div>
                 ) : (
-                  <pre className="whitespace-pre-wrap text-[13px] leading-relaxed font-geist">{msg.content}</pre>
+                  <pre className="whitespace-pre-wrap break-all text-[13px] leading-relaxed font-geist">{msg.content}</pre>
                 )}
               </div>
             </div>
