@@ -242,9 +242,10 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
       return;
     }
     
-    const featureBranch = taskState?.prBranch;
+    // Fallback: use task.pr_branch from DB if taskState memory is missing
+    const featureBranch = taskState?.prBranch || task.pr_branch;
     if (!featureBranch) {
-      alert("AI feature branch PR could not be found for this task.");
+      alert("AI feature branch PR could not be found for this task. The task may not have been run by AI, or the branch info was not saved.");
       return;
     }
 
@@ -300,7 +301,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
               </Select>
             </div>
             <p className="text-[11px] text-neutral-500 font-geist">
-              Source branch: <span className="text-app-accent">{taskState?.prBranch || 'Unknown'}</span>
+              Source branch: <span className="text-app-accent">{taskState?.prBranch || task.pr_branch || 'Unknown'}</span>
             </p>
           </div>
 
@@ -385,7 +386,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
           </Button>
           <Button
             onClick={handleMerge}
-            disabled={isExecuting || !taskState?.prBranch}
+            disabled={isExecuting || (!taskState?.prBranch && !task.pr_branch)}
             className="bg-[#0e639c] hover:bg-[#1177bb] text-xs font-medium min-w-[120px]"
           >
             {isExecuting ? (

@@ -53,24 +53,30 @@ export const useTaskStore = create<TaskState>()(
           tasks.forEach(task => {
             if (task.pr_branch || task.is_merged) {
               const existingState = aiStore.taskStates[task.id];
-              if (!existingState?.prBranch && !existingState?.isMerged) {
+              // Always sync from DB if DB has pr_branch and memory either doesn't have it
+              // or has a different value (ensures consistency after app restart)
+              const needsSync = task.pr_branch && existingState?.prBranch !== task.pr_branch;
+              const needsMergeSync = task.is_merged && existingState?.isMerged !== task.is_merged;
+              if (needsSync || needsMergeSync || !existingState) {
                 useAIChatStore.setState({
                   taskStates: {
-                    ...aiStore.taskStates,
+                    ...useAIChatStore.getState().taskStates,
                     [task.id]: {
-                      status: 'idle',
-                      startTime: null,
-                      endTime: null,
-                      errorMessage: null,
-                      lastResponse: null,
-                      queuePosition: null,
-                      currentFile: null,
-                      filesModified: [],
-                      prBranch: task.pr_branch || undefined,
-                      prUrl: task.pr_url || undefined,
-                      prCreatedAt: task.pr_created_at ? new Date(task.pr_created_at).getTime() : undefined,
+                      ...(existingState || {
+                        status: 'idle',
+                        startTime: null,
+                        endTime: null,
+                        errorMessage: null,
+                        lastResponse: null,
+                        queuePosition: null,
+                        currentFile: null,
+                        filesModified: [],
+                      }),
+                      prBranch: task.pr_branch || existingState?.prBranch,
+                      prUrl: task.pr_url || existingState?.prUrl,
+                      prCreatedAt: task.pr_created_at ? new Date(task.pr_created_at).getTime() : existingState?.prCreatedAt,
                       isMerged: task.is_merged,
-                      mergeSourceBranch: task.merge_source_branch || undefined,
+                      mergeSourceBranch: task.merge_source_branch || existingState?.mergeSourceBranch,
                     }
                   }
                 });

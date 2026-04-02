@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle, Sparkles, MessageSquarePlus } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
@@ -20,6 +20,7 @@ import {
 interface ConversationSummary {
   title: string
   description: string
+  priority: 'high' | 'medium' | 'low'
 }
 
 interface FileEntry {
@@ -93,6 +94,8 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [createdSuccess, setCreatedSuccess] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [chatSessionId, setChatSessionId] = useState<string>('')
+  const [summarizedAtLength, setSummarizedAtLength] = useState<number>(-1)
   const [historyList, setHistoryList] = useState<{ task_id: string; created_at: string; role: string; preview: string; content: string }[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
   const [showFileSuggestions, setShowFileSuggestions] = useState(false)
@@ -112,7 +115,8 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const { activeWorkspace } = useWorkspaceStore()
   const { config, updateField, saveConfig } = useConfigStore()
 
-  const taskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
+  const baseTaskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
+  const taskId = chatSessionId ? `${baseTaskId}_${chatSessionId}` : baseTaskId
   const taskMessages = getMessages(taskId)
   const currentStreamingId = streamingMessageId[taskId]
   
@@ -150,7 +154,8 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   useEffect(() => {
     clearMessages(taskId)
     loadChatHistory()
-  }, [activeWorkspace?.id])
+    setSummarizedAtLength(-1)
+  }, [taskId, activeWorkspace?.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -220,32 +225,46 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
 
   const loadAllHistory = useCallback(async () => {
     try {
-      const history = await dbService.getChatHistory(taskId)
-      const grouped = history.reduce((acc: Record<string, { task_id: string; created_at: string; role: string; content: string }[]>, msg) => {
-        const key = msg.task_id
-        if (!acc[key]) acc[key] = []
-        acc[key].push(msg)
-        return acc
-      }, {})
+      const allTasks = await dbService.getAllTasks()
+      const basePrefix = `__task_creator__:${activeWorkspace?.id || 'default'}`
       
-      const list = Object.entries(grouped).map(([tid, msgs]) => {
-        const sorted = msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-        const first = sorted[0]
-        const preview = first?.content?.substring(0, 50) || ''
-        return {
-          task_id: tid,
-          created_at: first?.created_at || '',
-          role: first?.role || '',
-          preview: preview + (first?.content?.length > 50 ? '...' : ''),
-          content: first?.content || ''
+      const sessionTaskIds = allTasks
+          .map(t => t.id)
+          .filter(id => id === basePrefix || id.startsWith(`${basePrefix}_`))
+          
+      // Also potentially include current taskId if it's not yet saved as Task
+      if (!sessionTaskIds.includes(taskId)) {
+        sessionTaskIds.push(taskId)
+      }
+      
+      const rawHistories = await Promise.all(sessionTaskIds.map(id => dbService.getChatHistory(id)))
+      const list: { task_id: string; created_at: string; role: string; preview: string; content: string }[] = []
+      
+      rawHistories.forEach((msgs, index) => {
+        if (msgs.length > 0) {
+          const tid = sessionTaskIds[index]
+          const sorted = msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          const first = sorted[0]
+          
+          let preview = first?.content?.substring(0, 50) || ''
+          if (first?.content?.length > 50) preview += '...'
+          
+          list.push({
+            task_id: tid,
+            created_at: first?.created_at || '',
+            role: first?.role || '',
+            preview,
+            content: first?.content || ''
+          })
         }
-      }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      })
       
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       setHistoryList(list)
     } catch (err) {
       console.error('Failed to load history:', err)
     }
-  }, [taskId])
+  }, [activeWorkspace?.id, taskId])
 
   const loadChatHistory = useCallback(async () => {
     if (!taskId) return
@@ -366,19 +385,16 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const cleanDescription = (text: string): string => {
     if (!text) return ''
     
-    let cleaned = text.replace(/```[\s\S]*?```/g, '')
-    cleaned = cleaned.replace(/`([^`]+)`/g, '$1')
+    let cleaned = text
+    // Remove heading markers but keep the text
     cleaned = cleaned.replace(/^#{1,6}\s+/gm, '')
-    cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1')
-    cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1')
-    cleaned = cleaned.replace(/__([^_]+)__/g, '$1')
-    cleaned = cleaned.replace(/_([^_]+)_/g, '$1')
-    cleaned = cleaned.replace(/^[\s]*[-*+]\s+/gm, '')
-    cleaned = cleaned.replace(/^[\s]*\d+\.\s+/gm, '')
-    cleaned = cleaned.replace(/^\s*\[[ x]\]\s*/gim, '')
+    // Remove horizontal rules
     cleaned = cleaned.replace(/^[-*_]{3,}\s*$/gm, '')
+    // Remove checkbox markers
+    cleaned = cleaned.replace(/^\s*\[[ x]\]\s*/gim, '')
+    // Collapse excessive newlines
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
-    cleaned = cleaned.split('\n').map(line => line.trim()).join('\n').trim()
+    cleaned = cleaned.trim()
     
     return cleaned.substring(0, 2500)
   }
@@ -420,58 +436,137 @@ Assistant:`
     }
   }
 
+  const parseSummaryResponse = (raw: string): ConversationSummary[] => {
+    // Strategy 1: Try JSON parse first
+    try {
+      const jsonMatch = raw.match(/\[\s*\{[\s\S]*\}\s*\]/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+            .filter((t: any) => t.title && typeof t.title === 'string')
+            .map((t: any) => ({
+              title: String(t.title).substring(0, 100),
+              description: cleanDescription(String(t.description || '')),
+              priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
+            }))
+        }
+      }
+    } catch (e) {
+      console.warn('[Summarize] JSON parse failed, trying fallback:', e)
+    }
+
+    // Strategy 2: Fallback to regex-based parsing (legacy format)
+    try {
+      const cleanResponse = raw
+        .replace(/\*\*?TASK_TITLE:\*\*?/gi, 'TASK_TITLE:')
+        .replace(/\*\*?TASK_DESCRIPTION:\*\*?/gi, 'TASK_DESCRIPTION:')
+        .replace(/\*\*?TASK_PRIORITY:\*\*?/gi, 'TASK_PRIORITY:')
+
+      const blocks = cleanResponse.split(/TASK_TITLE:/i).slice(1)
+      const tasks: ConversationSummary[] = []
+
+      for (const block of blocks) {
+        const titleLine = block.split('\n')[0].replace(/[*_~`]/g, '').trim()
+        const descMatch = block.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|TASK_PRIORITY:|---|$)/i)
+        const priorityMatch = block.match(/TASK_PRIORITY:\s*(high|medium|low)/i)
+
+        if (titleLine) {
+          tasks.push({
+            title: titleLine.substring(0, 100),
+            description: cleanDescription(descMatch?.[1] || ''),
+            priority: (priorityMatch?.[1]?.toLowerCase() as 'high' | 'medium' | 'low') || 'medium',
+          })
+        }
+      }
+
+      if (tasks.length > 0) return tasks
+    } catch (e) {
+      console.warn('[Summarize] Regex fallback also failed:', e)
+    }
+
+    return []
+  }
+
   const handleSummarize = async () => {
     const messages = getMessages(taskId)
     if (messages.length === 0) return
     
+    setSummarizedAtLength(messages.length)
     setIsSummarizing(true)
     setConversationSummaries([])
     
     try {
+      // Limit context window: max 20 messages, max 1500 chars per message
       const conversationText = messages
         .filter(m => m.content.trim())
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+        .slice(-20)
+        .map(m => {
+          const content = m.content.length > 1500 ? m.content.substring(0, 1500) + '...[truncated]' : m.content
+          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`
+        })
         .join('\n\n')
       
       const projectRules = useConfigStore.getState().getSystemPrompt()
       
-      const summaryPrompt = `Based on this conversation, identify all coding tasks that need to be created. For each task, use this exact format (repeat for each task):
+      const summaryPrompt = `You are a task extraction specialist. Analyze the conversation below and extract all actionable coding tasks discussed.
 
-TASK_TITLE: [Short clear title, max 80 chars]
-TASK_DESCRIPTION: [A highly detailed context prompt for the AI agent that will implement this. Include exact file paths, design decisions, and specific coding instructions based on our discussion. This must be comprehensive to help the next AI agent execute it flawlessly without losing context. Treat this as the raw instruction prompt. Max 2000 chars.]
----
-${projectRules ? '\nThe tasks MUST adhere to these project rules:\n' + projectRules + '\n\nEmbed the relevant rules into each TASK_DESCRIPTION so the executing AI knows the conventions.' : ''}
-Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for committing code, creating pull requests, testing, or updating git workflows.`
+You MUST output a valid JSON array. No markdown, no explanation, ONLY the JSON array.
 
-      const lastResponse = await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
+JSON Schema:
+[
+  {
+    "title": "Short clear title, max 80 chars",
+    "description": "A comprehensive implementation prompt for the AI agent. Include: exact file paths mentioned, design decisions agreed upon, specific coding steps, and technical constraints from the discussion. This is the raw instruction the next AI agent will receive — be thorough and precise. Max 2000 chars.",
+    "priority": "high | medium | low"
+  }
+]
+
+Priority guidelines:
+- "high": Bug fixes, breaking issues, security concerns, blockers
+- "medium": New features, enhancements, refactoring
+- "low": Nice-to-have improvements, cosmetic changes, documentation
+${projectRules ? '\nThe tasks MUST follow these project rules. Embed relevant rules into each task description so the executing AI follows the conventions:\n' + projectRules : ''}
+
+Rules:
+- Extract ONLY coding implementation tasks
+- Do NOT create tasks for: git commits, PRs, testing, deployment
+- If the conversation is unclear or has no actionable tasks, return an empty array: []
+- Output ONLY valid JSON, no surrounding text or markdown fences`
+
+      const summaryId = `__summarize_temp_${Date.now()}__`
+      const lastResponse = await sendSimpleMessage(summaryId, `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`)
       
-      const tasks: ConversationSummary[] = []
-      // Normalize markdown bolding
-      const cleanResponse = lastResponse
-        .replace(/\*\*?TASK_TITLE:\*\*?/gi, 'TASK_TITLE:')
-        .replace(/\*\*?TASK_DESCRIPTION:\*\*?/gi, 'TASK_DESCRIPTION:');
-        
-      const blocks = cleanResponse.split(/TASK_TITLE:/i).slice(1)
-      
-      for (const block of blocks) {
-        const titleLine = block.split('\n')[0].replace(/[*_~`]/g, '').trim()
-        const descMatch = block.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|---|$)/i)
-        
-        if (titleLine) {
-          tasks.push({
-            title: titleLine.substring(0, 100),
-            description: cleanDescription(descMatch?.[1] || '').substring(0, 2500)
-          })
-        }
-      }
+      const tasks = parseSummaryResponse(lastResponse)
       
       if (tasks.length > 0) {
         setConversationSummaries(tasks)
+      } else {
+        // Provide feedback to user when no tasks could be extracted
+        const warningMsg = {
+          id: `warn-${Date.now()}`,
+          taskId,
+          role: 'system' as const,
+          content: '⚠️ Tidak bisa mengekstrak task dari percakapan ini. Coba diskusikan lebih detail tentang apa yang ingin dikerjakan, lalu tekan Summarize lagi.',
+          timestamp: Date.now(),
+        }
+        setMessages(taskId, [...getMessages(taskId), warningMsg])
+        setSummarizedAtLength(-1) // Allow re-summarize
       }
       
-      clearMessages(taskId + '_summary')
+      clearMessages(summaryId)
     } catch (err) {
       console.error('Failed to summarize:', err)
+      // Show error feedback to user
+      const errorMsg = {
+        id: `err-${Date.now()}`,
+        taskId,
+        role: 'system' as const,
+        content: `❌ Gagal melakukan summarize: ${err instanceof Error ? err.message : 'Unknown error'}. Silakan coba lagi.`,
+        timestamp: Date.now(),
+      }
+      setMessages(taskId, [...getMessages(taskId), errorMsg])
+      setSummarizedAtLength(-1) // Allow retry
     } finally {
       setIsSummarizing(false)
     }
@@ -492,13 +587,14 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
           title: summary.title,
           description: (summary.description || '') + '\n<!-- auto-rules-embedded -->',
           status: 'todo',
-          priority: 'medium',
+          priority: summary.priority || 'medium',
         })
       }
       
       setCreatedSuccess(true)
       setConversationSummaries([])
       clearMessages(taskId)
+      setSummarizedAtLength(-1)
       
       setTimeout(() => setCreatedSuccess(false), 2000)
     } catch (err) {
@@ -514,6 +610,7 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
     setCreatedSuccess(false)
     setExecutionSteps([])
     setShowProgress(true)
+    setSummarizedAtLength(-1)
   }
 
   const suggestedPrompts = [
@@ -596,6 +693,23 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
             <Tooltip>
               <TooltipTrigger
                 className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+                onClick={() => {
+                  setChatSessionId(Date.now().toString());
+                  setExecutionSteps([]);
+                  setShowProgress(true);
+                  setConversationSummaries([]);
+                  clearMessages(taskId);
+                }}
+              >
+                <div className="p-2">
+                  <MessageSquarePlus className="w-4 h-4 text-neutral-400" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>New Chat</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
                 onClick={() => { loadAllHistory(); setShowHistoryModal(true); }}
               >
                 <div className="p-2">
@@ -643,10 +757,14 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
                         <Button
                           key={idx}
                           variant="ghost"
-                          className="w-full justify-start h-auto py-3 px-4 rounded-none border-b border-app-border"
+                          className={`w-full justify-start h-auto py-3 px-4 rounded-none border-b border-app-border ${item.task_id === taskId ? 'bg-app-accent/10 block' : 'block'}`}
                           onClick={() => {
-                            clearMessages(taskId)
-                            setMessages(taskId, [])
+                            const base = `__task_creator__:${activeWorkspace?.id || 'default'}`
+                            if (item.task_id === base) {
+                              setChatSessionId('')
+                            } else if (item.task_id.startsWith(`${base}_`)) {
+                              setChatSessionId(item.task_id.substring(base.length + 1))
+                            }
                             setShowHistoryModal(false)
                           }}
                         >
@@ -803,24 +921,15 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
               </div>
             )}
             
-            {taskMessages.length > 0 && conversationSummaries.length === 0 && (
+            {taskMessages.length > 0 && taskMessages.length > summarizedAtLength && conversationSummaries.length === 0 && !isSummarizing && (
               <div className="flex gap-2 mt-4">
                 <Button
                   onClick={handleSummarize}
-                  disabled={isSummarizing || isStreaming}
+                  disabled={isStreaming}
                   className="flex-1 bg-app-accent hover:bg-app-accent-hover"
                 >
-                  {isSummarizing ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin mr-2" />
-                      Summarizing...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-3 h-3 mr-2" />
-                      Summarize & Create Task
-                    </>
-                  )}
+                  <Check className="w-3 h-3 mr-2" />
+                  Summarize & Create Task
                 </Button>
                 <Button
                   variant="secondary"
@@ -832,28 +941,48 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
               </div>
             )}
             
+            {isSummarizing && (
+              <div className="flex items-center justify-center p-4 mt-4 bg-app-accent/5 rounded-lg border border-app-accent/20">
+                <Loader2 className="w-4 h-4 animate-spin text-app-accent" />
+                <span className="ml-2 text-xs text-neutral-300 font-geist">Summarizing conversation into tasks...</span>
+              </div>
+            )}
+            
             {conversationSummaries.length > 0 && (
               <div className="space-y-4 mt-4">
-                {conversationSummaries.map((summary, idx) => (
-                  <div key={idx} className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Check className="w-4 h-4 text-green-400" />
-                      <span className="text-xs text-green-400 font-geist font-medium">Task {idx + 1} Ready</span>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="bg-app-panel rounded-lg p-3 border border-app-border">
-                        <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
-                        <p className="text-sm text-white font-geist mt-1 break-words">{summary.title}</p>
-                      </div>
-                      {summary.description && (
-                        <div className="bg-app-panel rounded-lg p-3 border border-app-border">
-                          <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
-                          <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{summary.description}</p>
+                {conversationSummaries.map((summary, idx) => {
+                  const priorityConfig = {
+                    high: { color: 'text-red-400', bg: 'bg-red-500/15', border: 'border-red-500/30', label: 'High' },
+                    medium: { color: 'text-yellow-400', bg: 'bg-yellow-500/15', border: 'border-yellow-500/30', label: 'Medium' },
+                    low: { color: 'text-blue-400', bg: 'bg-blue-500/15', border: 'border-blue-500/30', label: 'Low' },
+                  }[summary.priority || 'medium']
+                  
+                  return (
+                    <div key={idx} className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Check className="w-4 h-4 text-green-400" />
+                          <span className="text-xs text-green-400 font-geist font-medium">Task {idx + 1} Ready</span>
                         </div>
-                      )}
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${priorityConfig.bg} ${priorityConfig.border} border ${priorityConfig.color} uppercase tracking-wider`}>
+                          {priorityConfig.label}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="bg-app-panel rounded-lg p-3 border border-app-border">
+                          <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
+                          <p className="text-sm text-white font-geist mt-1 break-words">{summary.title}</p>
+                        </div>
+                        {summary.description && (
+                          <div className="bg-app-panel rounded-lg p-3 border border-app-border">
+                            <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
+                            <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{summary.description}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
                 
                 <div className="flex gap-2">
                   <Button
@@ -865,7 +994,10 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
                   </Button>
                   <Button
                     variant="secondary"
-                    onClick={() => setConversationSummaries([])}
+                    onClick={() => {
+                      setConversationSummaries([])
+                      setSummarizedAtLength(-1)
+                    }}
                   >
                     Cancel
                   </Button>
