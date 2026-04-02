@@ -47,7 +47,7 @@ export function TaskCard({
   } = useSortable({ 
     id: task.id, 
     data: task,
-    disabled: isAIWorking
+    disabled: isAIWorking || task.status === 'done'
   })
 
 const style = {
@@ -73,7 +73,7 @@ const style = {
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...(isAIWorking ? {} : listeners)}
+      {...((isAIWorking || task.status === 'done') ? {} : listeners)}
       onClick={handleClick}
       className={`group rounded-lg p-4 transition-all duration-300 border relative ${
         isAIWorking 

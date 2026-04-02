@@ -306,12 +306,13 @@ export async function getLatestAlphaTag(cwd: string): Promise<string | null> {
   return tags[tags.length - 1]; // Return highest
 }
 
-export interface TagParams {
+export interface MergeOptions {
   createTag: boolean;
   tagName: string;
+  deleteBranch?: boolean;
 }
 
-export async function mergeTaskToBranch(cwd: string, featureBranch: string, targetBranch: string, tagParams?: TagParams): Promise<{ success: boolean; log: string }> {
+export async function mergeTaskToBranch(cwd: string, featureBranch: string, targetBranch: string, options?: MergeOptions): Promise<{ success: boolean; log: string }> {
   let fullLog = '';
 
   const exec = async (args: string[], allowFail = false) => {
@@ -340,16 +341,22 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
     await exec(['merge', '--no-ff', featureBranch, '-m', `Merge branch '${featureBranch}' into ${targetBranch}`]);
 
     // 5. Create tag if requested
-    if (tagParams && tagParams.createTag) {
-      await exec(['tag', '-a', tagParams.tagName, '-m', `Version ${tagParams.tagName}`]);
+    if (options && options.createTag) {
+      await exec(['tag', '-a', options.tagName, '-m', `Version ${options.tagName}`]);
     }
 
     // 6. Push target branch
     await exec(['push', 'origin', targetBranch]);
 
     // 7. Push tags if applied
-    if (tagParams && tagParams.createTag) {
+    if (options && options.createTag) {
       await exec(['push', 'origin', '--tags']);
+    }
+
+    // 8. Delete feature branch if requested
+    if (options && options.deleteBranch) {
+      await exec(['branch', '-d', featureBranch], true); // local
+      await exec(['push', 'origin', '--delete', featureBranch], true); // remote
     }
 
     return { success: true, log: fullLog };

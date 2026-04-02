@@ -179,6 +179,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
   const [branches, setBranches] = useState<string[]>([]);
   const [targetBranch, setTargetBranch] = useState('main');
   const [createTag, setCreateTag] = useState(false);
+  const [deleteBranch, setDeleteBranch] = useState(true);
   const [latestTag, setLatestTag] = useState<string | null>(null);
   const [bumpType, setBumpType] = useState<'patch' | 'minor' | 'major'>('patch');
   const [calcNextTag, setCalcNextTag] = useState('alpha.0.0.1');
@@ -244,7 +245,11 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
     setIsExecuting(true);
     setExecLog('Starting Git Merge Workflow...\n');
 
-    const result = await mergeTaskToBranch(workspacePath, featureBranch, targetBranch, createTag ? { createTag: true, tagName: calcNextTag } : undefined);
+    const result = await mergeTaskToBranch(workspacePath, featureBranch, targetBranch, { 
+      createTag, 
+      tagName: calcNextTag,
+      deleteBranch 
+    });
 
     if (result.success) {
       setExecLog(prev => prev + '\n' + result.log + '\n\n✅ Merge and Push completed successfully!');
@@ -341,6 +346,14 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="p-3 bg-[#252526] border border-white/5 rounded-lg flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-white font-geist">Delete Feature Branch</h4>
+              <p className="text-[11px] text-neutral-500 font-geist mt-0.5">Automatically clean up local & remote branch</p>
+            </div>
+            <Switch checked={deleteBranch} onCheckedChange={setDeleteBranch} disabled={isExecuting} />
           </div>
 
           {/* Terminal Logs (If executing or failed) */}
