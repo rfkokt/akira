@@ -5,7 +5,17 @@ import { useTaskStore } from './taskStore';
 import { useWorkspaceStore } from './workspaceStore';
 import { useConfigStore } from './configStore';
 import { dbService } from '@/lib/db';
-import { getProvider } from '@/lib/providers';
+import { runCLIWithStreaming } from '@/lib/cli';
+import { autoCreatePR } from '@/lib/git';
+import {
+  extractFileInfo,
+  saveRunningTask,
+  clearRunningTask,
+  getSavedRunningTask as getSavedTask,
+  type SavedTask,
+} from '@/lib/helpers';
+
+// ─── Types ──────────────────────────────────────────────────────────────
 
 export interface ChatMessage {
   id: string;
@@ -51,7 +61,7 @@ interface AIChatState {
   currentSessionId: string | null;
   streamingMessageId: Record<string, string | null>;
   stopStreaming: (taskId: string) => void;
-  
+
   // Actions
   enqueueTask: (taskId: string, taskTitle: string, taskDescription?: string) => Promise<void>;
   processQueue: () => Promise<void>;
@@ -65,28 +75,16 @@ interface AIChatState {
   setMessages: (taskId: string, msgs: ChatMessage[]) => void;
   getTaskState: (taskId: string) => AITaskState;
   isStreaming: (taskId: string) => boolean;
-  autoCreatePR: (taskId: string, taskTitle: string) => Promise<{ branch: string; prUrl?: string } | null>;
   setUseRouter: (useRouter: boolean) => void;
   setRouterProvider: (provider: string | null) => void;
 }
 
-// Get saved running task from localStorage
-export const getSavedRunningTask = (): SavedTask | null => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved) as SavedTask;
-    }
-  } catch (e) {
-    console.error('Failed to get saved task:', e);
-  }
-  return null;
-};
+// ─── Exports ────────────────────────────────────────────────────────────
 
-// Clear saved running task
-export const clearSavedRunningTask = () => {
-  clearRunningTask();
-};
+export const getSavedRunningTask = (): SavedTask | null => getSavedTask();
+export const clearSavedRunningTask = () => clearRunningTask();
+
+// ─── Defaults ───────────────────────────────────────────────────────────
 
 const defaultTaskState = (): AITaskState => ({
   status: 'idle',
@@ -99,88 +97,113 @@ const defaultTaskState = (): AITaskState => ({
   filesModified: [],
 });
 
-// LocalStorage keys
-const STORAGE_KEY = 'akira_running_task';
+// ─── Helpers ────────────────────────────────────────────────────────────
 
-interface SavedTask {
-  taskId: string;
-  taskTitle: string;
-  startedAt: number;
+/** Add a message to a task's chat */
+function addMessage(get: () => AIChatState, set: (s: Partial<AIChatState>) => void, taskId: string, msg: ChatMessage) {
+  const { messages } = get();
+  set({ messages: { ...messages, [taskId]: [...(messages[taskId] || []), msg] } });
 }
 
-// Save running task to localStorage
-const saveRunningTask = (taskId: string, taskTitle: string) => {
-  const saved: SavedTask = {
+/** Update the content of an existing message by ID */
+function appendToMessage(get: () => AIChatState, set: (s: Partial<AIChatState>) => void, taskId: string, messageId: string, text: string) {
+  const { messages } = get();
+  const taskMessages = messages[taskId] || [];
+  const idx = taskMessages.findIndex(m => m.id === messageId);
+  if (idx < 0) return;
+
+  const updated = [...taskMessages];
+  updated[idx] = { ...updated[idx], content: updated[idx].content + text };
+  set({ messages: { ...messages, [taskId]: updated } });
+}
+
+/** Update task state partially */
+function updateTaskState(get: () => AIChatState, set: (s: Partial<AIChatState>) => void, taskId: string, patch: Partial<AITaskState>) {
+  const { taskStates } = get();
+  set({
+    taskStates: {
+      ...taskStates,
+      [taskId]: { ...(taskStates[taskId] || defaultTaskState()), ...patch },
+    },
+  });
+}
+
+/** Get workspace cwd */
+function getWorkspaceCwd(): string | null {
+  return useWorkspaceStore.getState().activeWorkspace?.folder_path || null;
+}
+
+/** Build system prompt with task context */
+function buildTaskPrompt(taskTitle: string, taskDescription?: string): string {
+  const { getSystemPrompt } = useConfigStore.getState();
+  let systemPrompt = '';
+  try { systemPrompt = getSystemPrompt(); } catch { /* no config */ }
+
+  return `${systemPrompt ? systemPrompt + '\n\n---\n\n' : ''}I need you to implement this task:
+
+Title: ${taskTitle}
+${taskDescription ? `Description: ${taskDescription}` : ''}
+
+Please:
+1. Analyze what needs to be done
+2. Implement the necessary code changes
+3. Explain what you did
+
+Start working on this now.`;
+}
+
+/** Post-task completion: capture diff, create PR, move to review */
+async function handleTaskCompletion(
+  get: () => AIChatState,
+  set: (s: Partial<AIChatState>) => void,
+  taskId: string,
+  taskTitle: string,
+) {
+  const cwd = getWorkspaceCwd();
+  if (!cwd) {
+    await useTaskStore.getState().moveTask(taskId, 'review');
+    return;
+  }
+
+  const prResult = await autoCreatePR(taskId, taskTitle, cwd);
+
+  // Capture diff snapshot
+  try {
+    const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd });
+    if (diffResult.has_changes) {
+      await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
+    }
+  } catch (e) {
+    console.error('[AI] Failed to capture diff:', e);
+  }
+
+  // Add result message
+  const resultContent = prResult
+    ? prResult.prUrl
+      ? `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: git checkout ${prResult.branch}`
+      : `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`
+    : `⚠️ **Task completed but PR automation failed**\n\nAI finished the task but could not automatically push to remote.\n\n${get().taskStates[taskId]?.prError ? `**Error:** ${get().taskStates[taskId]?.prError}\n\n` : ''}You can:\n1. Check git configuration\n2. Create branch and PR manually\n3. Or use "View Diff" to see changes\n\nTask moved to **Review** for manual handling.`;
+
+  addMessage(get, set, taskId, {
+    id: crypto.randomUUID(),
     taskId,
-    taskTitle,
-    startedAt: Date.now(),
-  };
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-  } catch (e) {
-    console.error('Failed to save running task:', e);
-  }
-};
+    role: 'system',
+    content: resultContent,
+    timestamp: Date.now(),
+  });
 
-// Clear running task from localStorage
-const clearRunningTask = () => {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (e) {
-    console.error('Failed to clear running task:', e);
+  if (prResult) {
+    updateTaskState(get, set, taskId, {
+      prBranch: prResult.branch,
+      prUrl: prResult.prUrl,
+      prCreatedAt: Date.now(),
+    });
   }
-};
 
-// Helper function to extract file information from AI output
-function extractFileInfo(content: string): { currentFile: string | null; filesModified: string[] } {
-  const filesModified: string[] = [];
-  let currentFile: string | null = null;
-  
-  // Strip workspace prefix pattern (e.g., "a/resources/js/app/" from paths)
-  const stripPrefix = (path: string): string => {
-    // Match patterns like "a/resources/js/app/" anywhere in the path
-    // Also handles paths that start with workspace root + "a/resources/js/app/"
-    if (path.includes('/a/resources/js/app/')) {
-      const parts = path.split('/a/resources/js/app/');
-      return parts[parts.length - 1] || path;
-    }
-    // Fallback: strip if it starts with single letter prefix
-    return path.replace(/^[a-z]\/resources\/js\/app\//i, '');
-  };
-  
-  // Look for file path patterns like "src/components/Foo.tsx", "path/to/file.js", etc.
-  const filePatterns = [
-    /(?:creating|updating|modifying|editing|writing to)\s+[`"]?(\S+\.(?:tsx|ts|jsx|js|css|scss|json|md|py|rs|go|java|cpp|c|h|yaml|yml|xml|html|vue|svelte))[`"]?/i,
-    /[`"]([^`"]+\.(?:tsx|ts|jsx|js|css|scss|json|md|py|rs|go|java|cpp|c|h|yaml|yml|xml|html|vue|svelte))[`"]/i,
-    /(src\/[^\s:]+\.(?:tsx|ts|jsx|js))/i,
-    /(components\/[^\s:]+\.(?:tsx|ts|jsx|js))/i,
-    /(pages\/[^\s:]+\.(?:tsx|ts|jsx|js))/i,
-    /(lib\/[^\s:]+\.(?:tsx|ts|jsx|js))/i,
-    /(app\/[^\s:]+\.(?:tsx|ts|jsx|js))/i,
-  ];
-  
-  for (const pattern of filePatterns) {
-    const matches = content.match(new RegExp(pattern, 'gi'));
-    if (matches) {
-      for (const match of matches) {
-        const fileMatch = match.match(/[`"']?([^`"'\s]+\.(?:tsx|ts|jsx|js|css|scss|json|md|py|rs|go|java|cpp|c|h|yaml|yml|xml|html|vue|svelte))[`"]?/i);
-        if (fileMatch) {
-          const cleanPath = stripPrefix(fileMatch[1]);
-          if (!filesModified.includes(cleanPath)) {
-            filesModified.push(cleanPath);
-          }
-        }
-      }
-    }
-  }
-  
-  // Get the most recent/current file (last one mentioned)
-  if (filesModified.length > 0) {
-    currentFile = filesModified[filesModified.length - 1];
-  }
-  
-  return { currentFile, filesModified };
+  await useTaskStore.getState().moveTask(taskId, 'review');
 }
+
+// ─── Store ──────────────────────────────────────────────────────────────
 
 export const useAIChatStore = create<AIChatState>((set, get) => ({
   messages: {},
@@ -192,694 +215,231 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
   routerProvider: null,
   currentSessionId: null,
   streamingMessageId: {},
-  stopStreaming: (taskId: string) => {
+
+  stopStreaming: (taskId) => {
     set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
   },
 
-  enqueueTask: async (taskId: string, taskTitle: string, taskDescription?: string) => {
-    const { taskQueue, taskStates } = get();
-    
-    // Check if task already in queue or running
-    if (taskQueue.find(t => t.taskId === taskId) || get().currentRunningTask === taskId) {
-      console.log(`Task ${taskId} already in queue or running`);
-      return;
-    }
+  // ── Queue Management ────────────────────────────────────────────────
 
-    // Add to queue
+  enqueueTask: async (taskId, taskTitle, taskDescription) => {
+    const { taskQueue } = get();
+    if (taskQueue.find(t => t.taskId === taskId) || get().currentRunningTask === taskId) return;
+
     const newQueue = [...taskQueue, { taskId, taskTitle, taskDescription }];
-    
-    set({
-      taskQueue: newQueue,
-      taskStates: {
-        ...taskStates,
-        [taskId]: {
-          ...defaultTaskState(),
-          status: 'queued',
-          queuePosition: newQueue.length,
-        }
-      }
-    });
 
-    // Start processing queue if not already processing
-    if (!get().isProcessingQueue) {
-      get().processQueue();
-    }
+    set({ taskQueue: newQueue });
+    updateTaskState(get, set, taskId, { status: 'queued', queuePosition: newQueue.length });
+
+    if (!get().isProcessingQueue) get().processQueue();
   },
 
   processQueue: async () => {
     const { taskQueue, isProcessingQueue, currentRunningTask } = get();
-    
-    if (isProcessingQueue) return;
-    if (taskQueue.length === 0) {
-      set({ isProcessingQueue: false });
-      return;
-    }
-    if (currentRunningTask) {
-      // Another task is running, wait
-      return;
-    }
+    if (isProcessingQueue || taskQueue.length === 0 || currentRunningTask) return;
 
     set({ isProcessingQueue: true });
-
-    // Get next task from queue
-    const [nextTask, ...remainingQueue] = taskQueue;
-    
-    set({ 
-      taskQueue: remainingQueue,
-      currentRunningTask: nextTask.taskId,
-    });
-
-    // Save to localStorage for recovery
+    const [nextTask, ...remaining] = taskQueue;
+    set({ taskQueue: remaining, currentRunningTask: nextTask.taskId });
     saveRunningTask(nextTask.taskId, nextTask.taskTitle);
 
     // Update queue positions
     const { taskStates } = get();
-    const updatedStates = { ...taskStates };
-    remainingQueue.forEach((item, index) => {
-      if (updatedStates[item.taskId]) {
-        updatedStates[item.taskId] = {
-          ...updatedStates[item.taskId],
-          queuePosition: index + 1,
-        };
+    const updated = { ...taskStates };
+    remaining.forEach((item, i) => {
+      if (updated[item.taskId]) {
+        updated[item.taskId] = { ...updated[item.taskId], queuePosition: i + 1 };
       }
     });
-    set({ taskStates: updatedStates });
+    set({ taskStates: updated });
 
-    // Run the task
     try {
       await get().runAITask(nextTask.taskId, nextTask.taskTitle, nextTask.taskDescription);
     } catch (error) {
       console.error('Error running AI task:', error);
     }
 
-    // Mark as done and process next
-    set({ 
-      currentRunningTask: null,
-      isProcessingQueue: false,
-    });
-
-    // Clear from localStorage
+    set({ currentRunningTask: null, isProcessingQueue: false });
     clearRunningTask();
-
-    // Process next task in queue
-    setTimeout(() => {
-      get().processQueue();
-    }, 100);
+    setTimeout(() => get().processQueue(), 100);
   },
 
-  runAITask: async (taskId: string, taskTitle: string, taskDescription?: string) => {
-    const { messages, taskStates } = get();
+  // ── Run AI Task ─────────────────────────────────────────────────────
+
+  runAITask: async (taskId, taskTitle, taskDescription) => {
     const engine = useEngineStore.getState().activeEngine;
-    
+
     if (!engine) {
-      const errorMsg: ChatMessage = {
-        id: `msg-${Date.now()}`,
-        taskId,
-        role: 'system',
+      addMessage(get, set, taskId, {
+        id: `msg-${Date.now()}`, taskId, role: 'system',
         content: '❌ Error: No AI engine selected. Please configure an engine in Settings.',
         timestamp: Date.now(),
-      };
-      
-      set({
-        messages: {
-          ...messages,
-          [taskId]: [...(messages[taskId] || []), errorMsg],
-        },
-        taskStates: {
-          ...taskStates,
-          [taskId]: {
-            ...defaultTaskState(),
-            status: 'error',
-            errorMessage: 'No AI engine selected',
-          }
-        }
       });
+      updateTaskState(get, set, taskId, { status: 'error', errorMessage: 'No AI engine selected' });
       return;
     }
 
-    // Debug: log engine selection
-    console.log('[AI] Selected engine:', engine.alias, engine.binary_path, engine.model, engine.args);
-
     const startTime = Date.now();
-    
-    // Add system message
-    const systemMessage: ChatMessage = {
-      id: `msg-${startTime}-system`,
-      taskId,
-      role: 'system',
+
+    // System message
+    addMessage(get, set, taskId, {
+      id: `msg-${startTime}-system`, taskId, role: 'system',
       content: `🚀 Starting AI workflow for: "${taskTitle}"`,
       timestamp: startTime,
-    };
-
-    set({
-      messages: {
-        ...messages,
-        [taskId]: [...(messages[taskId] || []), systemMessage],
-      },
-      taskStates: {
-        ...taskStates,
-        [taskId]: {
-          ...defaultTaskState(),
-          status: 'running',
-          startTime,
-        }
-      }
     });
+    updateTaskState(get, set, taskId, { status: 'running', startTime });
 
-    // Get system prompt from config
-    const { getSystemPrompt } = useConfigStore.getState();
-    let systemPrompt = '';
-    try {
-      systemPrompt = getSystemPrompt();
-    } catch (e) {
-      console.log('[AI] No config available, using default prompt');
-    }
-
-    // Build prompt with system context
-    const prompt = `${systemPrompt ? systemPrompt + '\n\n---\n\n' : ''}I need you to implement this task:
-
-Title: ${taskTitle}
-${taskDescription ? `Description: ${taskDescription}` : ''}
-
-Please:
-1. Analyze what needs to be done
-2. Implement the necessary code changes
-3. Explain what you did
-
-Start working on this now.`;
-
-    // Create placeholder for AI response
+    // AI response placeholder
     const aiMessageId = `msg-${Date.now()}-ai`;
-    const aiMessage: ChatMessage = {
-      id: aiMessageId,
-      taskId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-    };
-
-    set({
-      messages: {
-        ...get().messages,
-        [taskId]: [...(get().messages[taskId] || []), aiMessage],
-      },
+    addMessage(get, set, taskId, {
+      id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
     });
 
+    const prompt = buildTaskPrompt(taskTitle, taskDescription);
+    const cwd = getWorkspaceCwd();
     let responseContent = '';
-    let unlistenOutput: (() => void) | null = null;
-    let unlistenComplete: (() => void) | null = null;
 
     try {
-      // Setup listeners
-      const { listen } = await import('@tauri-apps/api/event');
-      
-      console.log('[AI] Setting up listeners for task:', taskId);
-      console.log('[AI] Engine:', engine.binary_path, engine.args);
-
-      let completionResolve: ((result: { success: boolean; error_message?: string }) => void) | undefined;
-
-      // Listen for completion - register BEFORE invoking CLI to avoid race condition
-      unlistenComplete = await listen('cli-complete', (event: { payload: { success: boolean; error_message?: string } }) => {
-        console.log('[AI] Received cli-complete event');
-        if (completionResolve) {
-          completionResolve(event.payload);
-        }
-      });
-
-      // Listen for output
-      unlistenOutput = await listen('cli-output', (event: { payload: { line: string; is_error: boolean } }) => {
-        console.log('[AI] Received output:', event.payload.line.substring(0, 100));
-        // Always get fresh state inside callback
-        const { messages: currentMessages, taskStates: currentTaskStates } = get();
-        const taskMessages = currentMessages[taskId] || [];
-        const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
-        
-        // Parse output using provider
-        const provider = getProvider(engine.alias);
-        let displayLine = '';
-        const parsed = provider.parseOutputLine(event.payload.line);
-        if (parsed) {
-          displayLine = parsed.displayText;
-        }
-        
-        if (displayLine) {
-          responseContent += displayLine + '\n';
-        }
-
-        if (aiMsgIndex >= 0 && displayLine) {
-          const updatedMessages = [...taskMessages];
-          updatedMessages[aiMsgIndex] = {
-            ...updatedMessages[aiMsgIndex],
-            content: updatedMessages[aiMsgIndex].content + displayLine + '\n',
-          };
-
-          set({
-            messages: {
-              ...currentMessages,
-              [taskId]: updatedMessages,
-            },
-          });
-        }
-
-        // Extract file information from the output - use fresh state
-        const { currentFile, filesModified } = extractFileInfo(responseContent);
-        if (currentFile || filesModified.length > 0) {
-          const currentTaskState = currentTaskStates[taskId];
-          if (currentTaskState) {
-            set({
-              taskStates: {
-                ...currentTaskStates,
-                [taskId]: {
-                  ...currentTaskState,
-                  currentFile,
-                  filesModified: [...new Set([...currentTaskState.filesModified, ...filesModified])],
-                }
-              }
-            });
-          }
-        }
-      });
-
-      // Create a promise to wait for completion with timeout (5 minutes)
-      const completionPromise = new Promise<{ success: boolean; error_message?: string }>((resolve) => {
-        completionResolve = resolve;
-      });
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('AI process timed out after 5 minutes')), 5 * 60 * 1000);
-      });
-
-      // Race between completion and timeout
-      const waitForCompletion = Promise.race([completionPromise, timeoutPromise]);
-
-      // Get workspace path
-      const workspace = useWorkspaceStore.getState().activeWorkspace;
-      const cwd = workspace?.folder_path || null;
-
-      console.log('[AI] Workspace:', workspace);
-      console.log('[AI] Invoking run_cli with binary:', engine.binary_path);
-      console.log('[AI] Engine alias:', engine.alias);
-      console.log('[AI] Binary path:', engine.binary_path);
-      console.log('[AI] Base args from engine config:', engine.args);
-      console.log('[AI] CWD:', cwd);
-
-      // Build CLI args using provider registry
-      const provider = getProvider(engine.alias);
-      const { args, stdinPrompt: actualPrompt } = provider.buildArgs({
+      const result = await runCLIWithStreaming({
+        engineAlias: engine.alias,
+        binaryPath: engine.binary_path,
         engineArgs: engine.args,
         prompt,
-        cwd: cwd || '',
+        cwd,
+        onOutput: (text) => {
+          responseContent += text + '\n';
+          appendToMessage(get, set, taskId, aiMessageId, text + '\n');
+
+          // Track files
+          const { currentFile, filesModified } = extractFileInfo(responseContent);
+          if (currentFile || filesModified.length > 0) {
+            const state = get().taskStates[taskId];
+            if (state) {
+              updateTaskState(get, set, taskId, {
+                currentFile,
+                filesModified: [...new Set([...state.filesModified, ...filesModified])],
+              });
+            }
+          }
+        },
       });
 
-      console.log('[AI] Provider:', engine.alias, '| Args count:', args.length, '| StdIn:', actualPrompt ? 'yes' : 'no');
-
-      // Run CLI with workspace as working directory
-      try {
-        await invoke('run_cli', {
-          binary: engine.binary_path,
-          args: args,
-          prompt: actualPrompt,
-          cwd: cwd,
-        });
-      } catch (err) {
-        console.error('[AI] run_cli error:', err);
-        throw err;
-      }
-
-      console.log('[AI] run_cli completed, waiting for completion event...');
-      // Wait for completion (with timeout)
-      const result = await waitForCompletion;
-      console.log('[AI] Completion result:', result);
-
-      // Handle result
       const endTime = Date.now();
-      const { taskStates } = get();
 
       if (result.success) {
-        // Calculate duration and estimate cost
-        const duration = (endTime - (taskStates[taskId]?.startTime || endTime)) / 1000; // seconds
-        const estimatedInputTokens = Math.ceil(responseContent.length / 4);
-        const estimatedOutputTokens = Math.ceil(responseContent.length / 4);
-        const estimatedCost = duration * 0.001; // Rough estimate: $0.001 per second
-        
-        // Record cost to database
+        // Record cost
+        const duration = (endTime - startTime) / 1000;
         try {
           await invoke('record_cli_cost', {
             providerAlias: engine.alias,
-            inputTokens: estimatedInputTokens,
-            outputTokens: estimatedOutputTokens,
-            cost: estimatedCost,
+            inputTokens: Math.ceil(responseContent.length / 4),
+            outputTokens: Math.ceil(responseContent.length / 4),
+            cost: duration * 0.001,
           });
-          console.log(`[AI] Cost recorded: ${engine.alias} - $${estimatedCost.toFixed(4)}`);
-        } catch (costErr) {
-          console.error('[AI] Failed to record cost:', costErr);
-        }
-        
-        // Success - update state to completed
-        set({
-          taskStates: {
-            ...taskStates,
-            [taskId]: {
-              ...taskStates[taskId],
-              status: 'completed',
-              endTime,
-              lastResponse: responseContent,
-            }
-          }
+        } catch { /* cost recording is non-critical */ }
+
+        updateTaskState(get, set, taskId, {
+          status: 'completed', endTime, lastResponse: responseContent,
         });
 
-        // Save AI chat history to DB so it persists across refreshes
+        // Save chat history to DB
         try {
-          // Save the system start message
           await dbService.createChatMessage(taskId, 'system', `🚀 Starting AI workflow for: "${taskTitle}"`, engine.alias);
-          // Save the AI response
           if (responseContent.trim()) {
             await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
           }
-          console.log('[AI] Chat history saved to DB for task:', taskId);
-        } catch (dbErr) {
-          console.error('[AI] Failed to save chat history to DB:', dbErr);
-        }
+        } catch { /* non-critical */ }
 
-        // Create PR first, then move to review if successful
-        setTimeout(async () => {
-          const prResult = await get().autoCreatePR(taskId, taskTitle);
-          
-          // Capture diff snapshot before moving to review
-          const workspacePath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
-          let diffContent: string | null = null;
-          
-          if (workspacePath) {
-            try {
-              const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', {
-                cwd: workspacePath
-              });
-              if (diffResult.has_changes) {
-                diffContent = diffResult.diff;
-              }
-            } catch (diffErr) {
-              console.error('[AI] Failed to capture diff:', diffErr);
-            }
-          }
-          
-          // Update task with diff snapshot
-          if (diffContent) {
-            try {
-              await dbService.updateTaskDiffInfo(taskId, diffContent, new Date().toISOString());
-              console.log('[AI] Diff snapshot captured for task:', taskId);
-            } catch (updateErr) {
-              console.error('[AI] Failed to save diff to task:', updateErr);
-            }
-          }
-          
-          if (prResult) {
-            // Branch pushed successfully - move to review
-            console.log(`✓ Branch pushed: ${prResult.branch}`, prResult.prUrl || 'Compare URL available');
-            
-            // Add success message with PR creation link
-            const { messages } = get();
-            const taskMessages = messages[taskId] || [];
-            
-            set({
-              messages: {
-                ...messages,
-                [taskId]: [
-                  ...taskMessages,
-                  {
-                    id: crypto.randomUUID(),
-                    taskId: taskId,
-                    role: 'system',
-                    content: prResult.prUrl 
-                      ? `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: git checkout ${prResult.branch}`
-                      : `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`,
-                    timestamp: Date.now(),
-                  }
-                ]
-              }
-            });
-            
-            await useTaskStore.getState().moveTask(taskId, 'review');
-          } else {
-            // PR creation failed - tetap pindah ke review dengan warning
-            console.error('❌ Failed to create PR but moving to review anyway');
-            const { messages, taskStates } = get();
-            const taskMessages = messages[taskId] || [];
-            const prError = taskStates[taskId]?.prError;
-            
-            set({
-              messages: {
-                ...messages,
-                [taskId]: [
-                  ...taskMessages,
-                  {
-                    id: crypto.randomUUID(),
-                    taskId: taskId,
-                    role: 'system',
-                    content: '⚠️ **Task completed but PR automation failed**\n\n' +
-                             'AI finished the task but could not automatically push to remote.\n\n' +
-                             (prError ? `**Error:** ${prError}\n\n` : '') +
-                             'You can:\n' +
-                             '1. Check git configuration\n' +
-                             '2. Create branch and PR manually\n' +
-                             '3. Or use "View Diff" to see changes\n\n' +
-                             'Task moved to **Review** for manual handling.',
-                    timestamp: Date.now(),
-                  }
-                ]
-              }
-            });
-            
-            // Tetap pindah ke review meskipun PR gagal
-            await useTaskStore.getState().moveTask(taskId, 'review');
-          }
-        }, 500);
+        // Create PR and move to review
+        setTimeout(() => handleTaskCompletion(get, set, taskId, taskTitle), 500);
       } else {
-        // Failed - move to failed column
-        const errorMsg = result.error_message || 'AI process failed';
-        
-        // Add error message to chat
-        const { messages } = get();
-        const taskMessages = messages[taskId] || [];
-        const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
-
-        if (aiMsgIndex >= 0) {
-          const updatedMessages = [...taskMessages];
-          updatedMessages[aiMsgIndex] = {
-            ...updatedMessages[aiMsgIndex],
-            content: updatedMessages[aiMsgIndex].content + `\n\n❌ Error: ${errorMsg}`,
-          };
-
-          set({
-            messages: {
-              ...messages,
-              [taskId]: updatedMessages,
-            },
-          });
-        }
-
-        set({
-          taskStates: {
-            ...taskStates,
-            [taskId]: {
-              ...taskStates[taskId],
-              status: 'error',
-              endTime,
-              errorMessage: errorMsg,
-            }
-          }
+        // Failed
+        appendToMessage(get, set, taskId, aiMessageId, `\n\n❌ Error: ${result.errorMessage || 'AI process failed'}`);
+        updateTaskState(get, set, taskId, {
+          status: 'error', endTime, errorMessage: result.errorMessage || 'AI process failed',
         });
-
-        // Auto-move to failed column
-        setTimeout(() => {
-          useTaskStore.getState().moveTask(taskId, 'failed');
-        }, 500);
+        setTimeout(() => useTaskStore.getState().moveTask(taskId, 'failed'), 500);
       }
-
     } catch (error) {
-      console.error('AI streaming error:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : 'Failed to get AI response';
-      const { messages, taskStates } = get();
-      const taskMessages = messages[taskId] || [];
-      const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
-      const endTime = Date.now();
-
-      if (aiMsgIndex >= 0) {
-        const updatedMessages = [...taskMessages];
-        updatedMessages[aiMsgIndex] = {
-          ...updatedMessages[aiMsgIndex],
-          content: updatedMessages[aiMsgIndex].content + `\n\n❌ Error: ${errorMessage}`,
-        };
-
-        set({
-          messages: {
-            ...messages,
-            [taskId]: updatedMessages,
-          },
-        });
-      }
-
-      set({
-        taskStates: {
-          ...taskStates,
-          [taskId]: {
-            ...taskStates[taskId],
-            status: 'error',
-            endTime,
-            errorMessage: errorMessage,
-          }
-        }
+      const errorMsg = error instanceof Error ? error.message : 'Failed to get AI response';
+      appendToMessage(get, set, taskId, aiMessageId, `\n\n❌ Error: ${errorMsg}`);
+      updateTaskState(get, set, taskId, {
+        status: 'error', endTime: Date.now(), errorMessage: errorMsg,
       });
-
-      // Auto-move to failed column
-      setTimeout(() => {
-        useTaskStore.getState().moveTask(taskId, 'failed');
-      }, 500);
-    } finally {
-      // Cleanup listeners
-      if (unlistenOutput) {
-        unlistenOutput();
-      }
-      if (unlistenComplete) {
-        unlistenComplete();
-      }
+      setTimeout(() => useTaskStore.getState().moveTask(taskId, 'failed'), 500);
     }
   },
 
-  retryTask: async (taskId: string) => {
-    // Get fresh state
-    const currentMessages = get().messages[taskId] || [];
-    
-    // Find the last system message to get task info
-    const systemMsg = currentMessages.find(m => m.role === 'system' && m.content.includes('Starting AI workflow'));
-    
-    if (!systemMsg) {
-      console.error('retryTask: No system message found for task', taskId);
-      return;
-    }
-    
-    // Extract task title from message
+  // ── Retry Task ──────────────────────────────────────────────────────
+
+  retryTask: async (taskId) => {
+    const msgs = get().messages[taskId] || [];
+    const systemMsg = msgs.find(m => m.role === 'system' && m.content.includes('Starting AI workflow'));
+    if (!systemMsg) return;
+
     const match = systemMsg.content.match(/"([^"]+)"/);
     const taskTitle = match ? match[1] : 'Unknown Task';
-    console.log('Retrying task directly:', taskId, taskTitle);
-    
-    // Reset state to running
-    const currentTaskStates = get().taskStates;
-    set({
-      taskStates: {
-        ...currentTaskStates,
-        [taskId]: {
-          ...defaultTaskState(),
-          status: 'running',
-          startTime: Date.now(),
-        },
-      },
-      currentRunningTask: taskId,
-    });
 
-    // Run the task directly (bypass queue to avoid race conditions)
+    updateTaskState(get, set, taskId, { status: 'running', startTime: Date.now() });
+    set({ currentRunningTask: taskId });
     get().runAITask(taskId, taskTitle);
   },
 
-  sendMessage: async (taskId: string, content: string) => {
-    const { messages, taskStates } = get();
-    const timestamp = Date.now();
-    
-    // Get task info for context
-    const existingMessages = messages[taskId] || [];
-    
-    // Extract task info from existing system message
+  // ── Send Message (Chat / Revision) ─────────────────────────────────
+
+  sendMessage: async (taskId, content) => {
+    const existingMessages = get().messages[taskId] || [];
+
+    // Extract task title from system message
     let taskTitle = 'Unknown Task';
-    const systemMsg = existingMessages.find(m => m.role === 'system' && m.content.includes('Starting AI workflow'));
-    if (systemMsg) {
-      const titleMatch = systemMsg.content.match(/"([^"]+)"/);
-      if (titleMatch) taskTitle = titleMatch[1];
+    const sysMsg = existingMessages.find(m => m.role === 'system' && m.content.includes('Starting AI workflow'));
+    if (sysMsg) {
+      const m = sysMsg.content.match(/"([^"]+)"/);
+      if (m) taskTitle = m[1];
     }
 
-    // Determine task status — if in review or in-progress, this is a revision request
+    // Detect revision mode
     const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
-    const taskStatus = task?.status || taskStates[taskId]?.status || 'unknown';
-    const isRevisionMode = taskStatus === 'review' || taskStatus === 'in-progress';
-    
-    const userMessage: ChatMessage = {
-      id: `msg-${timestamp}`,
-      taskId,
-      role: 'user',
-      content,
-      timestamp,
-    };
-    
+    const isRevisionMode = task?.status === 'review' || task?.status === 'in-progress';
+
     // Add user message
-    set({
-      messages: {
-        ...messages,
-        [taskId]: [...(messages[taskId] || []), userMessage],
-      },
+    addMessage(get, set, taskId, {
+      id: `msg-${Date.now()}`, taskId, role: 'user', content, timestamp: Date.now(),
     });
 
-    // In revision mode: move task back to in-progress
+    // Move to in-progress if revision
     if (isRevisionMode) {
       await useTaskStore.getState().moveTask(taskId, 'in-progress');
-      set({
-        taskStates: {
-          ...get().taskStates,
-          [taskId]: {
-            ...(get().taskStates[taskId] || defaultTaskState()),
-            status: 'running',
-            startTime: Date.now(),
-          }
-        }
-      });
+      updateTaskState(get, set, taskId, { status: 'running', startTime: Date.now() });
     }
 
-    // Get AI response
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return;
 
+    // AI response placeholder
     const aiMessageId = `msg-${Date.now()}-ai`;
-    const aiMessage: ChatMessage = {
-      id: aiMessageId,
-      taskId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-    };
-
-    set({
-      messages: {
-        ...get().messages,
-        [taskId]: [...(get().messages[taskId] || []), aiMessage],
-      },
-      streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId },
+    addMessage(get, set, taskId, {
+      id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
     });
+    set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId } });
 
-    let responseContent = '';
-
-    // Build prompt based on mode
+    // Build prompt
     let chatPrompt: string;
-
     if (isRevisionMode) {
-      // REVISION MODE: send as a coding instruction, like runAITask
       const { getSystemPrompt } = useConfigStore.getState();
-      let systemPrompt = '';
-      try {
-        systemPrompt = getSystemPrompt();
-      } catch (e) {
-        console.log('[sendMessage] No config available, using default prompt');
-      }
+      let sysPrompt = '';
+      try { sysPrompt = getSystemPrompt(); } catch { /* */ }
 
-      // Build a summary of recent conversation for context
-      const recentMessages = existingMessages
-        .filter(m => m.role !== 'system')
-        .slice(-10) // Last 10 messages for context
+      const recent = existingMessages
+        .filter(m => m.role !== 'system').slice(-10)
         .map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content.substring(0, 500)}`)
         .join('\n');
 
-      chatPrompt = `${systemPrompt ? systemPrompt + '\n\n---\n\n' : ''}You are currently working on a task: "${taskTitle}"
+      chatPrompt = `${sysPrompt ? sysPrompt + '\n\n---\n\n' : ''}You are currently working on a task: "${taskTitle}"
 ${task?.description ? `Task description: ${task.description}` : ''}
 
 Previous conversation context:
-${recentMessages}
+${recent}
 
 The user has reviewed your work and is requesting the following revision:
 
@@ -887,9 +447,8 @@ ${content}
 
 Please implement the requested changes now. Modify the code directly.`;
     } else {
-      // CHAT MODE: simple Q&A
       chatPrompt = `You are helping with a task called "${taskTitle}".
-    
+
 Previous conversation:
 ${existingMessages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}
 
@@ -898,371 +457,103 @@ User's new question: ${content}
 Please respond helpfully and concisely.`;
     }
 
+    const cwd = getWorkspaceCwd();
+
     try {
-      const { listen } = await import('@tauri-apps/api/event');
-      
-      const unlistenFns: { output: (() => void) | null; complete: (() => void) | null } = {
-        output: null,
-        complete: null,
-      };
-
-      let completionResolve: ((value: string) => void) | undefined;
-
-      // Register completion listener BEFORE cli-output to avoid race condition
-      const completionPromise = new Promise<string>((resolve) => {
-        completionResolve = resolve;
-      });
-
-      unlistenFns.complete = await listen('cli-complete', (_event: { payload: { success: boolean; exit_code?: number; error_message?: string } }) => {
-        if (completionResolve) completionResolve(responseContent);
-      });
-
-      unlistenFns.output = await listen('cli-output', (event: { payload: { line: string; is_error?: boolean } }) => {
-        const { messages } = get();
-        const taskMessages = messages[taskId] || [];
-        const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
-        
-        let displayLine = event.payload.line;
-
-        // Parse output using provider
-        const provider = getProvider(engine.alias);
-        const parsed = provider.parseOutputLine(event.payload.line);
-        if (parsed) {
-          displayLine = parsed.displayText;
-        } else {
-          displayLine = '';
-        }
-
-        if (displayLine) {
-          responseContent += displayLine + '\n';
-        }
-
-        if (aiMsgIndex >= 0 && displayLine) {
-          const updatedMessages = [...taskMessages];
-          updatedMessages[aiMsgIndex] = {
-            ...updatedMessages[aiMsgIndex],
-            content: updatedMessages[aiMsgIndex].content + displayLine + '\n',
-          };
-
-          set({
-            messages: {
-              ...messages,
-              [taskId]: updatedMessages,
-            },
-          });
-        }
-      });
-
-      const workspace = useWorkspaceStore.getState().activeWorkspace;
-      const cwd = workspace?.folder_path || null;
-
-      // Build CLI args using provider registry
-      const provider = getProvider(engine.alias);
-      const { args, stdinPrompt: actualPrompt } = provider.buildArgs({
+      const result = await runCLIWithStreaming({
+        engineAlias: engine.alias,
+        binaryPath: engine.binary_path,
         engineArgs: engine.args,
         prompt: chatPrompt,
-        cwd: cwd || '',
+        cwd,
+        onOutput: (text) => {
+          appendToMessage(get, set, taskId, aiMessageId, text + '\n');
+        },
       });
 
-      await invoke('run_cli', {
-        binary: engine.binary_path,
-        args: args,
-        prompt: actualPrompt,
-        cwd: cwd,
-      });
-
-      const timeoutPromise = new Promise<string>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout waiting for CLI')), 5 * 60 * 1000);
-      });
-
-      const finalContent = await Promise.race([completionPromise, timeoutPromise]);
-
-      if (finalContent) {
+      // Save to DB
+      if (result.content.trim()) {
         try {
-          await dbService.createChatMessage(taskId, 'assistant', finalContent.trim(), engine.alias);
-          console.log('[sendMessage] Saved assistant message to DB, length:', finalContent.length);
-        } catch (err) {
-          console.error('Failed to save assistant message:', err);
-        }
-      } else {
-        console.log('[sendMessage] No response content to save');
+          await dbService.createChatMessage(taskId, 'assistant', result.content.trim(), engine.alias);
+        } catch { /* non-critical */ }
       }
-
-      if (unlistenFns.output) unlistenFns.output();
-      if (unlistenFns.complete) unlistenFns.complete();
 
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
 
-      // After revision completes: create new PR and move back to review
+      // Post-revision: create PR and move back to review
       if (isRevisionMode) {
-        set({
-          taskStates: {
-            ...get().taskStates,
-            [taskId]: {
-              ...get().taskStates[taskId],
-              status: 'completed',
-              endTime: Date.now(),
-              lastResponse: responseContent,
-            }
-          }
+        updateTaskState(get, set, taskId, {
+          status: 'completed', endTime: Date.now(), lastResponse: result.content,
         });
-
-        setTimeout(async () => {
-          try {
-            const taskObj = useTaskStore.getState().tasks.find(t => t.id === taskId);
-            const prResult = await get().autoCreatePR(taskId, taskObj?.title || taskTitle);
-
-            const workspacePath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
-            if (workspacePath) {
-              try {
-                const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd: workspacePath });
-                if (diffResult.has_changes) {
-                  await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
-                }
-              } catch (diffErr) {
-                console.error('[sendMessage] Failed to capture diff:', diffErr);
-              }
-            }
-
-            const { messages: latestMessages } = get();
-            const resultMsg: ChatMessage = {
-              id: `msg-${Date.now()}-result`,
-              taskId,
-              role: 'system',
-              content: prResult
-                ? `✅ **Revision completed and branch updated!**\n\nBranch: \`${prResult.branch}\`${prResult.prUrl ? `\n\n[View PR](${prResult.prUrl})` : ''}`
-                : '⚠️ **Revision completed** but could not push to remote. Use "View Diff" to review changes.',
-              timestamp: Date.now(),
-            };
-
-            set({
-              messages: {
-                ...latestMessages,
-                [taskId]: [...(latestMessages[taskId] || []), resultMsg],
-              }
-            });
-
-            await useTaskStore.getState().moveTask(taskId, 'review');
-            console.log('[sendMessage] Revision complete, task moved back to review');
-          } catch (prErr) {
-            console.error('[sendMessage] Post-revision PR failed:', prErr);
-            await useTaskStore.getState().moveTask(taskId, 'review');
-          }
-        }, 500);
+        setTimeout(() => handleTaskCompletion(get, set, taskId, task?.title || taskTitle), 500);
       }
-
     } catch (error) {
       console.error('Error sending message:', error);
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
 
       if (isRevisionMode) {
-        set({
-          taskStates: {
-            ...get().taskStates,
-            [taskId]: {
-              ...get().taskStates[taskId],
-              status: 'completed',
-            }
-          }
-        });
+        updateTaskState(get, set, taskId, { status: 'completed' });
         await useTaskStore.getState().moveTask(taskId, 'review');
       }
     }
   },
 
-  sendSimpleMessage: async (taskId: string, prompt: string): Promise<string> => {
-    const { messages } = get();
-    const timestamp = Date.now();
-    
-    const userMessage: ChatMessage = {
-      id: `msg-${timestamp}`,
-      taskId,
-      role: 'user',
-      content: prompt,
-      timestamp,
-    };
-    
-    set({
-      messages: {
-        ...messages,
-        [taskId]: [...(messages[taskId] || []), userMessage],
-      },
+  // ── Send Simple Message ─────────────────────────────────────────────
+
+  sendSimpleMessage: async (taskId, prompt) => {
+    addMessage(get, set, taskId, {
+      id: `msg-${Date.now()}`, taskId, role: 'user', content: prompt, timestamp: Date.now(),
     });
 
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return '';
 
     const aiMessageId = `msg-${Date.now()}-ai`;
-    const aiMessage: ChatMessage = {
-      id: aiMessageId,
-      taskId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-    };
-
-    set({
-      messages: {
-        ...get().messages,
-        [taskId]: [...(get().messages[taskId] || []), aiMessage],
-      },
-      streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId },
+    addMessage(get, set, taskId, {
+      id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
     });
+    set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId } });
 
-    let responseContent = '';
+    const cwd = getWorkspaceCwd();
 
     try {
-      const { listen } = await import('@tauri-apps/api/event');
-      
-      const unlistenFns: { output: (() => void) | null; complete: (() => void) | null } = {
-        output: null,
-        complete: null,
-      };
-
-      // Create completion promise FIRST
-      const completionPromise = new Promise<string>((resolve) => {
-        const handleComplete = (_event: { payload: { success: boolean; exit_code?: number; error_message?: string } }) => {
-          resolve(responseContent);
-        };
-        
-        listen('cli-complete', handleComplete).then((fn) => {
-          unlistenFns.complete = fn;
-        });
+      const result = await runCLIWithStreaming({
+        engineAlias: engine.alias,
+        binaryPath: engine.binary_path,
+        engineArgs: engine.args,
+        prompt,
+        cwd,
+        onOutput: (text) => {
+          appendToMessage(get, set, taskId, aiMessageId, text + '\n');
+        },
       });
 
-      // Setup output listener
-      unlistenFns.output = await listen('cli-output', (event: { payload: { line: string; is_error: boolean } }) => {
-        const { messages } = get();
-        const taskMessages = messages[taskId] || [];
-        const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
-        
-        let displayLine = event.payload.line;
-        
-        if (engine.alias === 'opencode') {
-          try {
-            const json = JSON.parse(event.payload.line);
-            if (json.type === 'text' && json.part?.text) {
-              displayLine = json.part.text;
-            } else if (json.type === 'step_start') {
-              displayLine = '';
-            } else if (json.type === 'tool_use') {
-              const toolName = json.part?.tool || 'unknown';
-              displayLine = `[Tool: ${toolName}]`;
-            } else if (json.type === 'step_finish') {
-              displayLine = '';
-            } else {
-              displayLine = '';
-            }
-          } catch (e) {
-            // Not JSON, use as-is
-          }
-        }
-        
-        if (displayLine) {
-          responseContent += displayLine + '\n';
-        }
-
-        if (aiMsgIndex >= 0 && displayLine) {
-          const updatedMessages = [...taskMessages];
-          updatedMessages[aiMsgIndex] = {
-            ...updatedMessages[aiMsgIndex],
-            content: updatedMessages[aiMsgIndex].content + displayLine + '\n',
-          };
-
-          set({
-            messages: {
-              ...messages,
-              [taskId]: updatedMessages,
-            },
-          });
-        }
-      });
-
-      const workspace = useWorkspaceStore.getState().activeWorkspace;
-      const cwd = workspace?.folder_path || null;
-
-      let args: string[];
-      let actualPrompt: string;
-      
-      if (engine.alias === 'opencode') {
-        const workingDir = cwd || process.cwd?.() || '.';
-        args = ['run', '--format', 'json', '--dir', workingDir, prompt];
-        actualPrompt = '';
-      } else {
-        args = engine.args.split(' ').filter(Boolean);
-        actualPrompt = prompt;
-      }
-
-      // Start CLI
-      await invoke('run_cli', {
-        binary: engine.binary_path,
-        args: args,
-        prompt: actualPrompt,
-        cwd: cwd,
-      });
-
-      // Wait for completion with timeout
-      const timeoutPromise = new Promise<string>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout waiting for CLI')), 5 * 60 * 1000);
-      });
-
-      const finalContent = await Promise.race([completionPromise, timeoutPromise]);
-
-      // Save assistant response to database after completion
-      if (finalContent) {
+      if (result.content.trim()) {
         try {
-          await dbService.createChatMessage(taskId, 'assistant', finalContent.trim(), engine.alias);
-          console.log('[sendSimpleMessage] Saved assistant message to DB, length:', finalContent.length);
-        } catch (err) {
-          console.error('Failed to save assistant message:', err);
-        }
-      } else {
-        console.log('[sendSimpleMessage] No response content to save');
+          await dbService.createChatMessage(taskId, 'assistant', result.content.trim(), engine.alias);
+        } catch { /* non-critical */ }
       }
 
-      // Cleanup
-      if (unlistenFns.output) unlistenFns.output();
-      if (unlistenFns.complete) unlistenFns.complete();
-
-      // Clear streaming state
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
-
-      return finalContent;
-
+      return result.content;
     } catch (error) {
-      console.error('Error sending simple message:', error);
-      // Cleanup on error
-      if (responseContent) {
-        try {
-          await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
-        } catch (err) {
-          console.error('Failed to save partial assistant message:', err);
-        }
-      }
-      // Clear streaming state on error
+      console.error('Error in sendSimpleMessage:', error);
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+      return '';
     }
-
-    return responseContent;
   },
 
-  stopMessage: async (taskId: string) => {
+  // ── Message Management ──────────────────────────────────────────────
+
+  stopMessage: async (taskId) => {
     try {
       await invoke('stop_cli');
-      
       const { messages } = get();
       const taskMessages = messages[taskId] || [];
-      
       if (taskMessages.length > 0) {
-        const lastMsg = taskMessages[taskMessages.length - 1];
-        if (lastMsg.role === 'assistant' && lastMsg.content === '') {
-          const updatedMessages = taskMessages.slice(0, -1);
-          set({
-            messages: {
-              ...messages,
-              [taskId]: updatedMessages,
-            },
-          });
+        const last = taskMessages[taskMessages.length - 1];
+        if (last.role === 'assistant' && last.content === '') {
+          set({ messages: { ...messages, [taskId]: taskMessages.slice(0, -1) } });
         }
       }
     } catch (error) {
@@ -1270,187 +561,24 @@ Please respond helpfully and concisely.`;
     }
   },
 
-  clearMessages: (taskId: string) => {
+  clearMessages: (taskId) => {
     const { messages } = get();
-    const newMessages = { ...messages };
-    delete newMessages[taskId];
-    set({ messages: newMessages });
+    const updated = { ...messages };
+    delete updated[taskId];
+    set({ messages: updated });
   },
 
-  getMessages: (taskId: string) => {
-    return get().messages[taskId] || [];
-  },
+  getMessages: (taskId) => get().messages[taskId] || [],
 
-  setMessages: (taskId: string, msgs: ChatMessage[]) => {
+  setMessages: (taskId, msgs) => {
     set({ messages: { ...get().messages, [taskId]: msgs } });
   },
 
-  getTaskState: (taskId: string) => {
-    return get().taskStates[taskId] || defaultTaskState();
-  },
+  getTaskState: (taskId) => get().taskStates[taskId] || defaultTaskState(),
 
-  isStreaming: (taskId: string) => {
-    const state = get().taskStates[taskId];
-    return state?.status === 'running' || false;
-  },
+  isStreaming: (taskId) => get().taskStates[taskId]?.status === 'running' || false,
 
-  autoCreatePR: async (taskId: string, taskTitle: string): Promise<{ branch: string; prUrl?: string; error?: string } | null> => {
-    const workspace = useWorkspaceStore.getState().activeWorkspace;
-    if (!workspace?.folder_path) {
-      set({
-        taskStates: {
-          ...get().taskStates,
-          [taskId]: {
-            ...get().taskStates[taskId],
-            prError: 'No workspace folder path available',
-          }
-        }
-      });
-      return null;
-    }
+  setUseRouter: (useRouter) => set({ useRouter }),
 
-    const runGit = async (args: string[]): Promise<{ success: boolean; output: string }> => {
-      return invoke<{ success: boolean; output: string }>('run_shell_command', {
-        command: 'git',
-        args,
-        cwd: workspace.folder_path,
-      });
-    };
-
-    const slugify = (text: string): string => {
-      return text
-        .toLowerCase()
-        .trim()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/[\s_-]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 50);
-    };
-
-    try {
-      const timestamp = Date.now();
-      const shortId = taskId.slice(0, 8);
-      const slugifiedTitle = slugify(taskTitle);
-      const branchName = `task/${slugifiedTitle}-${shortId}`;
-      const commitMsg = `feat: ${taskTitle}`;
-
-      const currentBranch = await runGit(['branch', '--show-current']);
-      const currentBranchName = currentBranch.success ? currentBranch.output.trim() : 'main';
-
-      await runGit(['checkout', '-b', branchName]);
-
-      const addResult = await runGit(['add', '.']);
-      console.log('[PR] git add result:', addResult);
-      if (!addResult.success) {
-        console.error('[PR] git add failed:', addResult.output);
-        set({
-          taskStates: {
-            ...get().taskStates,
-            [taskId]: {
-              ...get().taskStates[taskId],
-              prError: `Git add failed: ${addResult.output}`,
-            }
-          }
-        });
-        await runGit(['checkout', currentBranchName]);
-        await runGit(['branch', '-d', branchName]);
-        return null;
-      }
-
-      const commitResult = await runGit(['commit', '-m', commitMsg]);
-      console.log('[PR] git commit result:', commitResult);
-      if (!commitResult.success) {
-        console.error('[PR] git commit failed:', commitResult.output);
-        set({
-          taskStates: {
-            ...get().taskStates,
-            [taskId]: {
-              ...get().taskStates[taskId],
-              prError: `Git commit failed: ${commitResult.output}`,
-            }
-          }
-        });
-        await runGit(['checkout', currentBranchName]);
-        await runGit(['branch', '-d', branchName]);
-        return null;
-      }
-
-      const remoteResult = await runGit(['remote']);
-      const remoteName = remoteResult.success ? remoteResult.output.trim().split('\n')[0] : 'origin';
-
-      const pushResult = await runGit(['push', '-u', remoteName, branchName]);
-      console.log('[PR] git push result:', pushResult);
-      if (!pushResult.success) {
-        console.error('[PR] git push failed:', pushResult.output);
-        set({
-          taskStates: {
-            ...get().taskStates,
-            [taskId]: {
-              ...get().taskStates[taskId],
-              prError: `Git push failed: ${pushResult.output}. Branch created locally.`,
-            }
-          }
-        });
-        // We do NOT checkout the original branch or delete the new branch here
-        // so the user can see their local commits!
-        
-        // Return success for branch creation, but without PR URL
-        return { branch: branchName };
-      }
-
-      // Get remote URL to construct PR creation link (without using gh CLI)
-      let prUrl: string | undefined;
-      const remoteUrlResult = await runGit(['remote', 'get-url', remoteName]);
-      if (remoteUrlResult.success) {
-        const remoteUrl = remoteUrlResult.output.trim();
-        // Extract repo info from remote URL (supports both HTTPS and SSH)
-        const repoMatch = remoteUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
-        if (repoMatch) {
-          const [, owner, repo] = repoMatch;
-          // Generate compare URL for manual PR creation
-          prUrl = `https://github.com/${owner}/${repo}/compare/${currentBranchName}...${branchName}`;
-        }
-      }
-
-      // Do not switch back to the main branch here to ensure the user stays on the new branch
-      // await runGit(['checkout', currentBranchName]);
-
-      // Save PR info to database
-      try {
-        await invoke('update_task_pr_info', {
-          id: taskId,
-          prBranch: branchName,
-          prUrl: prUrl || null,
-          remote: remoteName || null,
-        });
-      } catch (e) {
-        console.error('Failed to save PR info to database:', e);
-      }
-
-      set({
-        taskStates: {
-          ...get().taskStates,
-          [taskId]: {
-            ...get().taskStates[taskId],
-            prBranch: branchName,
-            prUrl,
-            prCreatedAt: timestamp,
-          }
-        }
-      });
-
-      return { branch: branchName, prUrl };
-    } catch (err) {
-      console.error('Failed to auto-create PR:', err);
-      return null;
-    }
-  },
-
-  setUseRouter: (useRouter: boolean) => {
-    set({ useRouter });
-  },
-
-  setRouterProvider: (provider: string | null) => {
-    set({ routerProvider: provider });
-  },
+  setRouterProvider: (provider) => set({ routerProvider: provider }),
 }));
