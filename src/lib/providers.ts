@@ -129,17 +129,46 @@ const claudeProvider: ProviderConfig = {
   alias: 'claude',
 
   buildArgs({ engineArgs, prompt }) {
+    const args = engineArgs.split(' ').filter(Boolean);
+    if (!args.includes('--verbose')) {
+      args.push('--verbose');
+    }
     return {
-      args: engineArgs.split(' ').filter(Boolean),
+      args,
       stdinPrompt: prompt, // Claude reads prompt from stdin
     };
   },
 
   parseOutputLine(line: string): ParsedOutput | null {
-    if (!line.trim()) return null;
+    // Strip ANSI escape sequences
+    const cleanLine = line.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '').trim();
+    if (!cleanLine) return null;
+
+    let type: 'step_start' | 'tool_use' | 'text' | 'error' | 'complete' = 'text';
+    const lowerLine = cleanLine.toLowerCase();
+
+    // Parse verbose logs as progress steps
+    if (lowerLine.includes('tool') || cleanLine.includes('[DEBUG] Tool')) {
+      type = 'tool_use';
+    } else if (cleanLine.includes('[DEBUG]') || lowerLine.includes('thinking')) {
+      type = 'step_start';
+    } else if (lowerLine.match(/\berror\b/i) || cleanLine.includes('[ERROR]')) {
+      type = 'error';
+    }
+
+    // If it's just a raw debug line, format it nicely
+    if (cleanLine.startsWith('[DEBUG]') || cleanLine.startsWith('[INFO]')) {
+      const label = cleanLine.match(/\[(.*?)\]/)?.[1] || 'thinking';
+      const cleanContent = cleanLine.replace(/\[\w+\]/, '').trim();
+      return {
+        displayText: `[${label.toLowerCase()}] ${cleanContent}`,
+        step: { type, content: cleanContent.substring(0, 100) },
+      };
+    }
+
     return {
-      displayText: line,
-      step: { type: 'text', content: line.substring(0, 100) },
+      displayText: cleanLine, // Show in conversational UI
+      step: { type, content: cleanLine.substring(0, 100) },
     };
   },
 };

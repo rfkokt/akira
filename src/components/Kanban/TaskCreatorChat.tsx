@@ -367,21 +367,36 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
     cleaned = cleaned.split('\n').map(line => line.trim()).join('\n').trim()
     
-    return cleaned.substring(0, 500)
+    return cleaned.substring(0, 2500)
   }
 
   const handleSend = async () => {
     if (!message.trim() || !activeEngine) return
     
     setConversationSummaries([])
-    setExecutionSteps([])
+    setExecutionSteps([{
+      type: 'step_start',
+      content: 'Initializing and thinking...',
+      timestamp: Date.now()
+    }])
     setIsStreaming(true)
     
     try {
       const userMsg = message
       setMessage('')
       
-      await sendSimpleMessage(taskId, userMsg)
+      const historyMsg = getMessages(taskId)
+        .filter(m => m.role !== 'system')
+        .slice(-6)
+        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+        .join('\n\n')
+        
+      const internalPrompt = `[System Instruction: You are an analyst helping the user plan project tasks. DO NOT execute tools to edit files. DO NOT write code to disk. ONLY discuss, clarify, and analyze what needs to be done. Keep it conversational and concise.]
+${historyMsg ? '\nPrevious conversation context:\n' + historyMsg + '\n\n' : ''}
+User: ${userMsg}
+Assistant:`
+
+      await sendSimpleMessage(taskId, userMsg, internalPrompt)
     } catch (err) {
       console.error('Failed to send message:', err)
     } finally {
@@ -402,12 +417,12 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
         .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
         .join('\n\n')
       
-      const summaryPrompt = `Based on this conversation, identify all tasks that need to be created. You can output one or multiple tasks. For each task, use this exact format (repeat for each task):
+      const summaryPrompt = `Based on this conversation, identify all coding tasks that need to be created. For each task, use this exact format (repeat for each task):
 
 TASK_TITLE: [Short clear title, max 80 chars]
-TASK_DESCRIPTION: [Clean description without markdown, max 400 chars]
+TASK_DESCRIPTION: [A highly detailed context prompt for the AI agent that will implement this. Include exact file paths, design decisions, and specific coding instructions based on our discussion. This must be comprehensive to help the next AI agent execute it flawlessly without losing context. Treat this as the raw instruction prompt. Max 2000 chars.]
 ---
-Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for committing code, creating pull requests, testing, or updating git workflows, because those are automatically handled by the system.`
+Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for committing code, creating pull requests, testing, or updating git workflows.`
 
       await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
       
@@ -426,7 +441,7 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
         if (titleLine) {
           tasks.push({
             title: titleLine.substring(0, 100),
-            description: cleanDescription(descMatch?.[1] || '').substring(0, 500)
+            description: cleanDescription(descMatch?.[1] || '').substring(0, 2500)
           })
         }
       }

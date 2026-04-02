@@ -68,7 +68,7 @@ interface AIChatState {
   runAITask: (taskId: string, taskTitle: string, taskDescription?: string) => Promise<void>;
   retryTask: (taskId: string) => Promise<void>;
   sendMessage: (taskId: string, content: string) => Promise<void>;
-  sendSimpleMessage: (taskId: string, prompt: string) => Promise<string>;
+  sendSimpleMessage: (taskId: string, prompt: string, internalPrompt?: string) => Promise<string>;
   stopMessage: (taskId: string) => Promise<void>;
   clearMessages: (taskId: string) => void;
   getMessages: (taskId: string) => ChatMessage[];
@@ -139,7 +139,21 @@ function buildTaskPrompt(taskTitle: string, taskDescription?: string): string {
   let systemPrompt = '';
   try { systemPrompt = getSystemPrompt(); } catch { /* no config */ }
 
-  return `${systemPrompt ? systemPrompt + '\n\n---\n\n' : ''}I need you to implement this task:
+  const rtkInstruction = `
+[IMPORTANT COMMAND GUIDELINE]
+You must prefix the following CLI tools with 'rtk' to minimize token usage:
+- Git: 'rtk git <args>'
+- Lint: 'rtk lint eslint', 'rtk lint rustc', etc.
+- Test: 'rtk test npm', 'rtk test cargo', etc.
+- Build/Package: 'rtk build npm', 'rtk package pip', 'rtk container docker'
+- Search/System: 'rtk search grep', 'rtk system ps'
+Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands for these utilities.`;
+
+  return `${systemPrompt ? systemPrompt + '\n' : ''}${rtkInstruction}
+
+---
+
+I need you to implement this task:
 
 Title: ${taskTitle}
 ${taskDescription ? `Description: ${taskDescription}` : ''}
@@ -435,7 +449,21 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
         .map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content.substring(0, 500)}`)
         .join('\n');
 
-      chatPrompt = `${sysPrompt ? sysPrompt + '\n\n---\n\n' : ''}You are currently working on a task: "${taskTitle}"
+      const rtkInstruction = `
+[IMPORTANT COMMAND GUIDELINE]
+You must prefix the following CLI tools with 'rtk' to minimize token usage:
+- Git: 'rtk git <args>'
+- Lint: 'rtk lint eslint', 'rtk lint rustc', etc.
+- Test: 'rtk test npm', 'rtk test cargo', etc.
+- Build/Package: 'rtk build npm', 'rtk package pip', 'rtk container docker'
+- Search/System: 'rtk search grep', 'rtk system ps'
+Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands.`;
+
+      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${rtkInstruction}
+      
+---
+
+You are currently working on a task: "${taskTitle}"
 ${task?.description ? `Task description: ${task.description}` : ''}
 
 Previous conversation context:
@@ -500,7 +528,7 @@ Please respond helpfully and concisely.`;
 
   // ── Send Simple Message ─────────────────────────────────────────────
 
-  sendSimpleMessage: async (taskId, prompt) => {
+  sendSimpleMessage: async (taskId, prompt, internalPrompt) => {
     addMessage(get, set, taskId, {
       id: `msg-${Date.now()}`, taskId, role: 'user', content: prompt, timestamp: Date.now(),
     });
@@ -521,7 +549,7 @@ Please respond helpfully and concisely.`;
         engineAlias: engine.alias,
         binaryPath: engine.binary_path,
         engineArgs: engine.args,
-        prompt,
+        prompt: internalPrompt || prompt,
         cwd,
         onOutput: (text) => {
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
