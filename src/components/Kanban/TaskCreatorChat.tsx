@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
+import { useConfigStore } from '@/store/configStore'
 import { dbService } from '@/lib/db'
 import { getProvider } from '@/lib/providers'
 import ReactMarkdown from 'react-markdown'
@@ -99,6 +100,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [atSymbolIndex, setAtSymbolIndex] = useState(-1)
   const [executionSteps, setExecutionSteps] = useState<{ type: string; content: string; timestamp: number }[]>([])
   const [showProgress, setShowProgress] = useState(true)
+  const [isAnalyzingProject, setIsAnalyzingProject] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const progressEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -108,10 +110,17 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const { activeEngine, engines, setActiveEngine } = useEngineStore()
   const { createTask } = useTaskStore()
   const { activeWorkspace } = useWorkspaceStore()
+  const { config, updateField, saveConfig } = useConfigStore()
 
   const taskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
   const taskMessages = getMessages(taskId)
   const currentStreamingId = streamingMessageId[taskId]
+  
+  // Check if rules are already populated (not just the default template)
+  const hasRules = config?.md_rules 
+    && config.md_rules.trim() !== '' 
+    && config.md_rules.trim() !== '# Rules\n\n## DO\n- \n\n## DON\'T\n- '
+    && config.md_rules.split('\n').filter(l => l.trim().startsWith('-') && l.trim().length > 2).length > 2
 
   const fetchFiles = useCallback(async (path: string) => {
     if (!path) return
@@ -391,7 +400,10 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
         .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
         .join('\n\n')
         
+      const projectRules = useConfigStore.getState().getSystemPrompt()
+      
       const internalPrompt = `[System Instruction: You are an analyst helping the user plan project tasks. DO NOT execute tools to edit files. DO NOT write code to disk. ONLY discuss, clarify, and analyze what needs to be done. Keep it conversational and concise.]
+${projectRules ? '\nProject Rules & Conventions:\n' + projectRules + '\n' : ''}
 ${historyMsg ? '\nPrevious conversation context:\n' + historyMsg + '\n\n' : ''}
 User: ${userMsg}
 Assistant:`
@@ -417,11 +429,14 @@ Assistant:`
         .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
         .join('\n\n')
       
+      const projectRules = useConfigStore.getState().getSystemPrompt()
+      
       const summaryPrompt = `Based on this conversation, identify all coding tasks that need to be created. For each task, use this exact format (repeat for each task):
 
 TASK_TITLE: [Short clear title, max 80 chars]
 TASK_DESCRIPTION: [A highly detailed context prompt for the AI agent that will implement this. Include exact file paths, design decisions, and specific coding instructions based on our discussion. This must be comprehensive to help the next AI agent execute it flawlessly without losing context. Treat this as the raw instruction prompt. Max 2000 chars.]
 ---
+${projectRules ? '\nThe tasks MUST adhere to these project rules:\n' + projectRules + '\n\nEmbed the relevant rules into each TASK_DESCRIPTION so the executing AI knows the conventions.' : ''}
 Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for committing code, creating pull requests, testing, or updating git workflows.`
 
       await sendSimpleMessage(taskId + '_summary', `${summaryPrompt}\n\n---\n${conversationText}`)
@@ -471,7 +486,7 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
       for (const summary of conversationSummaries) {
         await createTask({
           title: summary.title,
-          description: summary.description,
+          description: (summary.description || '') + '\n<!-- auto-rules-embedded -->',
           status: 'todo',
           priority: 'medium',
         })
@@ -503,6 +518,67 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
     "Build a settings page",
     "Implement search functionality"
   ]
+
+  const handleAnalyzeInCreator = async () => {
+    const cwd = activeWorkspace?.folder_path
+    if (!activeEngine || !cwd) return
+
+    setIsAnalyzingProject(true)
+    const analysisPrompt = `[System: You are a code analyzer. DO NOT modify any files. DO NOT use any tools that write to disk. ONLY read and analyze.]
+
+Analyze the project at ${cwd}. Read package.json, folder structure, and key .ts/.tsx source files.
+
+Generate coding rules that enforce: clean code, reusability, and secure coding practices.
+
+Output EXACTLY in this markdown format and nothing else:
+
+# Rules
+
+## DO
+- [specific convention or best practice found in this project]
+- [another convention...]
+(list 8-15 rules)
+
+## DON'T
+- [specific anti-pattern to avoid in this project]
+- [another anti-pattern...]
+(list 8-15 rules)
+
+Base the rules on the ACTUAL tech stack, patterns, and file structure you find. Be specific to THIS project, not generic advice.`
+
+    const tempId = '__analyze_project_creator__'
+    try {
+      await sendSimpleMessage(tempId, analysisPrompt)
+      await new Promise(r => setTimeout(r, 1500))
+      const msgs = getMessages(tempId)
+      const aiResponse = msgs.filter(m => m.role === 'assistant').pop()?.content || ''
+      clearMessages(tempId)
+
+      if (aiResponse.trim() && config) {
+        const existingRules = config.md_rules || ''
+        let combinedRules: string
+
+        if (existingRules.trim() && existingRules.split('\n').filter(l => l.trim().startsWith('-') && l.trim().length > 2).length > 2) {
+          const existingDos = (existingRules.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
+          const existingDonts = (existingRules.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
+          const newDos = (aiResponse.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
+          const newDonts = (aiResponse.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
+          const allDos = [...new Set([...existingDos, ...newDos])]
+          const allDonts = [...new Set([...existingDonts, ...newDonts])]
+          combinedRules = `# Rules\n\n## DO\n${allDos.join('\n')}\n\n## DON'T\n${allDonts.join('\n')}`
+        } else {
+          combinedRules = aiResponse
+        }
+
+        updateField('md_rules', combinedRules)
+        await saveConfig({ ...config, md_rules: combinedRules })
+      }
+    } catch (err) {
+      console.error('Analysis in creator failed:', err)
+    } finally {
+      setIsAnalyzingProject(false)
+    }
+  }
 
   const currentQuery = atSymbolIndex !== -1 ? message.slice(atSymbolIndex + 1) : ''
   const filteredFiles = filterFiles(currentQuery)
@@ -611,6 +687,23 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
                     </Button>
                   ))}
                 </div>
+                {!hasRules && (
+                  <div className="w-full pt-2">
+                    <Button
+                      variant="secondary"
+                      className="w-full justify-center h-auto py-3 bg-app-accent/10 hover:bg-app-accent/20 text-app-accent border border-app-accent/30 hover:border-app-accent/50 transition-all"
+                      onClick={handleAnalyzeInCreator}
+                      disabled={isAnalyzingProject || !activeEngine}
+                    >
+                      {isAnalyzingProject ? (
+                        <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Analyzing project...</>
+                      ) : (
+                        <><Sparkles className="w-3.5 h-3.5 mr-2" /> Analyze Project & Generate Rules</>
+                      )}
+                    </Button>
+                    <p className="text-[10px] text-neutral-600 text-center mt-1.5">Auto-generate DO/DON'T rules for cleaner AI output</p>
+                  </div>
+                )}
               </div>
             ) : (
               taskMessages.map((msg, idx) => (

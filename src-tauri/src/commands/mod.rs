@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod akira_config;
 pub mod chat;
 pub mod cli;
 pub mod engines;

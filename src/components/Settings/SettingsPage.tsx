@@ -6,10 +6,11 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { 
   Eye, Save, Layers, Shield, Check, Copy,
-  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings
+  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
-import { useEngineStore } from '@/store';
+import { useEngineStore, useWorkspaceStore } from '@/store';
+import { useAIChatStore } from '@/store/aiChatStore';
 import { MarkdownEditor } from './MarkdownBlockEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,10 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
   const [activeProjectTab, setActiveProjectTab] = useState<string>('rules');
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | null>(null);
+  const { activeWorkspace } = useWorkspaceStore();
 
   // Load project config
   useEffect(() => {
@@ -62,7 +67,14 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
 
   const handleSaveConfig = useCallback(async () => {
     if (!config) return;
-    await saveConfig(config);
+    try {
+      await saveConfig(config);
+      setSyncStatus('synced');
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus(null), 3000);
+    }
   }, [config, saveConfig]);
 
   const handleEditorChange = useCallback((value: string) => {
@@ -87,6 +99,90 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
       console.error('Failed to copy', err);
     }
   }, [getSystemPrompt]);
+
+  const handleAnalyzeProject = useCallback(async () => {
+    const engine = useEngineStore.getState().activeEngine;
+    const cwd = activeWorkspace?.folder_path;
+    if (!engine || !cwd) {
+      setAnalysisStatus('No active engine or workspace selected.');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisStatus('Scanning project structure...');
+
+    const analysisPrompt = `[System: You are a code analyzer. DO NOT modify any files. DO NOT use any tools that write to disk. ONLY read and analyze.]
+
+Analyze the project at ${cwd}. Read package.json, folder structure, and key .ts/.tsx source files.
+
+Generate coding rules that enforce: clean code, reusability, and secure coding practices.
+
+Output EXACTLY in this markdown format and nothing else:
+
+# Rules
+
+## DO
+- [specific convention or best practice found in this project]
+- [another convention...]
+(list 8-15 rules)
+
+## DON'T
+- [specific anti-pattern to avoid in this project]
+- [another anti-pattern...]
+(list 8-15 rules)
+
+Base the rules on the ACTUAL tech stack, patterns, and file structure you find. Be specific to THIS project, not generic advice.`;
+
+    const tempTaskId = '__analyze_project__';
+    const { sendSimpleMessage, getMessages, clearMessages } = useAIChatStore.getState();
+
+    try {
+      setAnalysisStatus('AI is analyzing project files...');
+      await sendSimpleMessage(tempTaskId, analysisPrompt);
+
+      // Wait briefly for streaming to settle
+      await new Promise(r => setTimeout(r, 1500));
+
+      const msgs = getMessages(tempTaskId);
+      const aiResponse = msgs.filter(m => m.role === 'assistant').pop()?.content || '';
+      clearMessages(tempTaskId);
+
+      if (!aiResponse.trim()) {
+        setAnalysisStatus('Analysis returned empty. Try again.');
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Combine with existing rules
+      const existingRules = config?.md_rules || '';
+      let combinedRules: string;
+
+      if (existingRules.trim() && existingRules.trim() !== '# Rules\n\n## DO\n- \n\n## DON\'T\n- ') {
+        // Merge: extract existing DOs and DON'Ts, then combine with new ones
+        const existingDos = (existingRules.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
+        const existingDonts = (existingRules.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
+        const newDos = (aiResponse.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
+        const newDonts = (aiResponse.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
+
+        const allDos = [...new Set([...existingDos, ...newDos])];
+        const allDonts = [...new Set([...existingDonts, ...newDonts])];
+
+        combinedRules = `# Rules\n\n## DO\n${allDos.join('\n')}\n\n## DON'T\n${allDonts.join('\n')}`;
+      } else {
+        combinedRules = aiResponse;
+      }
+
+      updateField('md_rules', combinedRules);
+      await saveConfig({ ...config!, md_rules: combinedRules });
+      setAnalysisStatus('✅ Rules generated and saved!');
+    } catch (err) {
+      console.error('Analysis failed:', err);
+      setAnalysisStatus(`❌ Analysis failed: ${err}`);
+    } finally {
+      setIsAnalyzing(false);
+      setTimeout(() => setAnalysisStatus(null), 4000);
+    }
+  }, [config, activeWorkspace, updateField, saveConfig]);
 
   const getCurrentValue = () => {
     if (!config) return '';
@@ -186,6 +282,16 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
               <Save className="w-3.5 h-3.5 mr-2" /> 
               Save Changes
             </Button>
+            {syncStatus === 'synced' && (
+              <div className="flex items-center gap-1.5 justify-center animate-in fade-in">
+                <CheckCircle2 className="w-3 h-3 text-green-400" />
+                <span className="text-[10px] text-green-400 font-geist">Synced to .akira/</span>
+                <FolderOpen className="w-3 h-3 text-green-400" />
+              </div>
+            )}
+            {syncStatus === 'error' && (
+              <span className="text-[10px] text-red-400 text-center font-geist animate-in fade-in">⚠ Save failed</span>
+            )}
           </div>
         )}
       </div>
@@ -322,6 +428,25 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                      })}
                    </div>
                  </div>
+              </div>
+              {/* Analyze Project Button */}
+              <div className="px-8 py-3 border-b border-white/5 flex items-center gap-3 shrink-0">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleAnalyzeProject}
+                  disabled={isAnalyzing}
+                  className="bg-app-accent/10 hover:bg-app-accent/20 text-app-accent border border-app-accent/30 hover:border-app-accent/50 transition-all text-xs h-8"
+                >
+                  {isAnalyzing ? (
+                    <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Analyzing...</>
+                  ) : (
+                    <><Sparkles className="w-3.5 h-3.5 mr-2" /> Analyze Project & Generate Rules</>
+                  )}
+                </Button>
+                {analysisStatus && (
+                  <span className="text-xs text-neutral-400 font-geist animate-in fade-in">{analysisStatus}</span>
+                )}
               </div>
               <div className="flex-1 relative">
                 {config ? (

@@ -102,6 +102,9 @@ fn main() {
             // Project Config
             commands::project::get_project_config,
             commands::project::save_project_config,
+            // .akira/ config sync
+            commands::akira_config::export_akira_config,
+            commands::akira_config::import_akira_config,
             // RTK
             commands::rtk::check_rtk_status,
             commands::rtk::install_rtk,

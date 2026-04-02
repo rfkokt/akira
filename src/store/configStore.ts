@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { useWorkspaceStore } from './workspaceStore';
 
 export interface ProjectConfig {
   id?: number;
@@ -63,17 +64,30 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await invoke<ProjectConfig | null>('get_project_config', { workspaceId });
+      
+      // Check if .akira/rules.md exists in workspace folder
+      const folderPath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
+      let akiraImport: { md_rules: string } | null = null;
+      if (folderPath) {
+        try {
+          akiraImport = await invoke<{ md_rules: string } | null>('import_akira_config', { folderPath });
+        } catch { /* .akira/ might not exist yet */ }
+      }
+
       if (result) {
-        set({ config: result, isLoading: false });
+        // If .akira/ has different rules, prefer .akira/ (newer from another device)
+        const mergedConfig: ProjectConfig = {
+          ...result,
+          md_rules: akiraImport?.md_rules || result.md_rules,
+        };
+        set({ config: mergedConfig, isLoading: false });
       } else {
-        // Create default config if not exists
-        set({ 
-          config: { 
-            ...defaultConfig, 
-            workspace_id: workspaceId
-          }, 
-          isLoading: false 
-        });
+        const defaultWithAkira: ProjectConfig = {
+          ...defaultConfig,
+          workspace_id: workspaceId,
+          md_rules: akiraImport?.md_rules || defaultConfig.md_rules,
+        };
+        set({ config: defaultWithAkira, isLoading: false });
       }
     } catch (error) {
       console.error('Failed to load config:', error);
@@ -93,6 +107,19 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     try {
       await invoke('save_project_config', { config: updatedConfig });
       set({ config: updatedConfig });
+
+      // Also export to .akira/ for portability
+      const folderPath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
+      if (folderPath) {
+        try {
+          await invoke('export_akira_config', {
+            folderPath,
+            config: { md_rules: updatedConfig.md_rules },
+          });
+        } catch (e) {
+          console.warn('Failed to export to .akira/:', e);
+        }
+      }
     } catch (error) {
       console.error('Failed to save config:', error);
       set({ error: error instanceof Error ? error.message : 'Failed to save config' });

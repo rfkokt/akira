@@ -135,9 +135,17 @@ function getWorkspaceCwd(): string | null {
 
 /** Build system prompt with task context */
 function buildTaskPrompt(taskTitle: string, taskDescription?: string): string {
-  const { getSystemPrompt } = useConfigStore.getState();
+  // Check if rules are already embedded in the description (auto-generated task)
+  const hasEmbeddedRules = taskDescription?.includes('<!-- auto-rules-embedded -->');
+  
   let systemPrompt = '';
-  try { systemPrompt = getSystemPrompt(); } catch { /* no config */ }
+  if (!hasEmbeddedRules) {
+    // Manual task → inject global config
+    try { systemPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* no config */ }
+  }
+
+  // Clean the marker from description before sending to AI
+  const cleanDescription = taskDescription?.replace('<!-- auto-rules-embedded -->', '').trim();
 
   const rtkInstruction = `
 [IMPORTANT COMMAND GUIDELINE]
@@ -156,7 +164,7 @@ Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands fo
 I need you to implement this task:
 
 Title: ${taskTitle}
-${taskDescription ? `Description: ${taskDescription}` : ''}
+${cleanDescription ? `Description: ${cleanDescription}` : ''}
 
 Please:
 1. Analyze what needs to be done
@@ -440,14 +448,20 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     // Build prompt
     let chatPrompt: string;
     if (isRevisionMode) {
-      const { getSystemPrompt } = useConfigStore.getState();
+      // Check if rules are already embedded (auto-generated task)
+      const hasEmbeddedRules = task?.description?.includes('<!-- auto-rules-embedded -->');
+      
       let sysPrompt = '';
-      try { sysPrompt = getSystemPrompt(); } catch { /* */ }
+      if (!hasEmbeddedRules) {
+        try { sysPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* */ }
+      }
 
       const recent = existingMessages
         .filter(m => m.role !== 'system').slice(-10)
         .map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content.substring(0, 500)}`)
         .join('\n');
+
+      const cleanDesc = task?.description?.replace('<!-- auto-rules-embedded -->', '').trim();
 
       const rtkInstruction = `
 [IMPORTANT COMMAND GUIDELINE]
@@ -464,7 +478,7 @@ Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands.`;
 ---
 
 You are currently working on a task: "${taskTitle}"
-${task?.description ? `Task description: ${task.description}` : ''}
+${cleanDesc ? `Task description: ${cleanDesc}` : ''}
 
 Previous conversation context:
 ${recent}
