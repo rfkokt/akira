@@ -257,6 +257,14 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     loadChatHistory()
   }, [loadChatHistory])
 
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`
+    }
+  }, [message])
+
   const filterFiles = (query: string): FileEntry[] => {
     if (!query) return files.slice(0, 10)
     const lowerQuery = query.toLowerCase()
@@ -780,7 +788,7 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
             </div>
           )}
           
-          <div className="relative">
+          <div className="relative flex flex-col bg-app-panel rounded-xl border border-app-border focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/20 transition-all shadow-inner">
             <textarea
               ref={textareaRef}
               value={message}
@@ -788,21 +796,21 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
               onKeyDown={handleKeyDown}
               placeholder={activeEngine ? "Describe what you want to build..." : "Select a model first"}
               disabled={!activeEngine || isStreaming}
-              className="w-full px-4 py-3 pb-10 rounded-xl text-sm bg-app-panel text-white placeholder-neutral-600 border border-app-border focus:outline-none focus:border-cyan-500/50 resize-none transition-all"
-              rows={3}
+              className="w-full px-4 pt-3 pb-2 text-sm bg-transparent text-white placeholder-neutral-600 focus:outline-none resize-none custom-scrollbar"
+              rows={1}
+              style={{ minHeight: '52px', maxHeight: '150px' }}
             />
             
-            <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+            <div className="flex items-center justify-between px-3 pb-3 pt-1">
               <div className="relative">
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   size="sm"
+                  className="h-8 px-2.5 bg-white/5 hover:bg-white/10 text-neutral-300 rounded-lg text-xs font-medium transition-colors"
                   onClick={() => setShowModelDropdown(!showModelDropdown)}
                 >
-                  <span className="text-xs">
-                    {activeEngine?.alias || 'Model'}
-                  </span>
-                  <ChevronDown className="w-3 h-3 ml-1.5 text-neutral-500" />
+                  {activeEngine?.alias || 'Model'}
+                  <ChevronDown className="w-3 h-3 ml-1.5 opacity-70" />
                 </Button>
                 
                 {showModelDropdown && (
@@ -836,18 +844,19 @@ Focus ONLY on the actual coding implementation tasks. Do NOT create tasks for co
                 <Button
                   variant="ghost"
                   size="icon"
+                  className="h-8 w-8 text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg"
                   onClick={handleStop}
                 >
                   <Square className="w-4 h-4 fill-current" />
                 </Button>
               ) : (
                 <Button
-                  variant="ghost"
                   size="icon"
+                  className="h-8 w-8 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:bg-neutral-800 disabled:text-neutral-600 text-white shadow-md disabled:shadow-none transition-all"
                   onClick={handleSend}
                   disabled={!message.trim() || !activeEngine || isStreaming}
                 >
-                  <Send className="w-4 h-4" />
+                  <Send className="w-4 h-4 -ml-0.5" />
                 </Button>
               )}
             </div>

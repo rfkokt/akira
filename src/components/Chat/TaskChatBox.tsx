@@ -152,6 +152,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   const [message, setMessage] = useState('')
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const aiChatStore = useAIChatStore()
   const { sendMessage, getMessages, isStreaming, setMessages, streamingMessageId } = aiChatStore
   const { activeEngine } = useEngineStore()
@@ -195,6 +196,14 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [taskMessages, isTaskStreaming])
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`
+    }
+  }, [message])
 
   const handleSend = async () => {
     if (!message.trim() || !activeEngine) return
@@ -307,6 +316,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
       <div className="absolute bottom-0 left-0 right-0 p-3 bg-app-sidebar/80 backdrop-blur-md border-t border-app-border/60">
         <div className="flex items-end gap-2.5">
           <textarea
+            ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
