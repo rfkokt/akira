@@ -7,6 +7,7 @@ import { useConfigStore } from './configStore';
 import { dbService } from '@/lib/db';
 import { runCLIWithStreaming } from '@/lib/cli';
 import { autoCreatePR } from '@/lib/git';
+import { notify } from '@/lib/notify';
 import {
   extractFileInfo,
   saveRunningTask,
@@ -184,6 +185,7 @@ async function handleTaskCompletion(
   const cwd = getWorkspaceCwd();
   if (!cwd) {
     await useTaskStore.getState().moveTask(taskId, 'review');
+    await notify('Task Ready for Review ✅', `"${taskTitle}" has been completed and is ready for review.`);
     return;
   }
 
@@ -223,6 +225,7 @@ async function handleTaskCompletion(
   }
 
   await useTaskStore.getState().moveTask(taskId, 'review');
+  await notify('Task Ready for Review ✅', `"${taskTitle}" has been completed and moved to review.`);
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────
@@ -536,6 +539,7 @@ Please respond helpfully and concisely.`;
       if (isRevisionMode) {
         updateTaskState(get, set, taskId, { status: 'completed' });
         await useTaskStore.getState().moveTask(taskId, 'review');
+        await notify('Task Ready for Review ✅', `Task has been moved back to review after revision.`);
       }
     }
   },
