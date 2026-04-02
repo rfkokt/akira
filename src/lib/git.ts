@@ -280,8 +280,13 @@ export async function getGitBranches(cwd: string): Promise<string[]> {
     .filter(b => b && b.length > 0);
 }
 
-export async function getLatestAlphaTag(cwd: string): Promise<string | null> {
-  const result = await runGit(['tag', '-l', 'alpha.*'], cwd);
+export async function getLatestAlphaTag(cwd: string, targetBranch?: string): Promise<string | null> {
+  const args = ['tag', '-l', 'alpha.*'];
+  if (targetBranch) {
+    args.push('--merged');
+    args.push(targetBranch);
+  }
+  const result = await runGit(args, cwd);
   if (!result.success || !result.output.trim()) return null;
 
   const tags = result.output

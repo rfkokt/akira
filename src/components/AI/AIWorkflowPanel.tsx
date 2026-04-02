@@ -205,23 +205,29 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
         setTargetBranch(res[0]);
       }
     });
+  }, [workspacePath, task.id]);
 
-    // Load latest alpha tag
-    getLatestAlphaTag(workspacePath).then(tag => {
+  useEffect(() => {
+    if (!workspacePath || !targetBranch) return;
+    
+    // Load latest alpha tag explicitly belonging to the targetBranch
+    getLatestAlphaTag(workspacePath, targetBranch).then(tag => {
       setLatestTag(tag);
       if (!tag) {
         setCalcNextTag('alpha.0.0.1');
       }
     });
-  }, [workspacePath, task.id]);
+  }, [workspacePath, targetBranch]);
 
   useEffect(() => {
-    if (!latestTag) {
-      setCalcNextTag('alpha.0.0.1');
-      return;
+    let major = 0, minor = 0, patch = 0;
+    
+    if (latestTag) {
+      const parts = latestTag.replace('alpha.', '').split('.').map(Number);
+      if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+        [major, minor, patch] = parts;
+      }
     }
-    const parts = latestTag.replace('alpha.', '').split('.').map(Number);
-    let [major, minor, patch] = parts;
     
     if (bumpType === 'patch') patch += 1;
     else if (bumpType === 'minor') { minor += 1; patch = 0; }
