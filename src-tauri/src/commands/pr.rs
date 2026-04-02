@@ -129,7 +129,12 @@ pub fn git_get_branch_diff(
         .args(["diff", "--name-only", &range])
         .current_dir(&cwd)
         .output()
-        .map_err(|e| format!("Failed to get branch diff files: {}", e))?;
+        .map_err(|e| format!("Failed to execute branch diff files cmd: {}", e))?;
+
+    if !files_output.status.success() {
+        let stderr = String::from_utf8_lossy(&files_output.stderr);
+        return Err(format!("git diff failed: {}", stderr.trim()));
+    }
 
     let files_str = String::from_utf8_lossy(&files_output.stdout);
     let changed_files: Vec<String> = files_str

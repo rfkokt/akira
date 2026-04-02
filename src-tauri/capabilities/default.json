@@ -16,10 +16,14 @@
     "dialog:default",
     "notification:default",
     "shell:default",
-    "shell:allow-execute",
-    "shell:allow-spawn",
-    "shell:allow-kill",
     "shell:allow-stdin-write",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "name": "https://*", "cmd": "" },
+        { "name": "http://*", "cmd": "" }
+      ]
+    },
     {
       "identifier": "shell:allow-execute",
       "allow": [

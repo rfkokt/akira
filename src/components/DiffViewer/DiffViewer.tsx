@@ -156,13 +156,18 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
               cwd: workspacePath,
             }).catch(() => null);
 
-            // Fallback chain: upstream parent → HEAD@{-1} → 'main'
             let baseBranch = baseBranchResult?.stdout?.trim();
             if (!baseBranch || baseBranch.startsWith('fatal')) {
-              const prevBranchResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
-                command: 'git', args: ['rev-parse', '--abbrev-ref', 'HEAD@{-1}'], cwd: workspacePath,
+              // Priority 3: Fallback reliably to main or master without relying on reflog
+              const mainCheck = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+                command: 'git', args: ['show-ref', '--verify', '--quiet', 'refs/heads/main'], cwd: workspacePath,
               }).catch(() => null);
-              baseBranch = prevBranchResult?.stdout?.trim() || 'main';
+              
+              if (mainCheck?.success) {
+                baseBranch = 'main';
+              } else {
+                baseBranch = 'master'; // default fallback
+              }
             }
 
             const branchDiff = await invoke<GitDiffResult>('git_get_branch_diff', {
@@ -180,21 +185,9 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
               setError(`Tidak ada perubahan di branch ${branch} dibanding ${baseBranch}`);
             }
           } catch (branchErr) {
-            console.warn('[DiffViewer] Branch diff failed, fallback to working dir:', branchErr);
-            setLoadingStep('fetching');
-            setLoadingMessage('Mengambil perubahan lokal...');
-            const unstagedResult = await invoke<GitDiffResult>('git_get_diff', { cwd: workspacePath });
-            if (unstagedResult.has_changes) {
-              parseDiff(unstagedResult.diff);
-            } else {
-              const stagedResult = await invoke<GitDiffResult>('git_get_staged_diff', { cwd: workspacePath });
-              if (stagedResult.has_changes) {
-                parseDiff(stagedResult.diff);
-              } else {
-                setParsedFiles([]);
-                setError('Tidak ada perubahan untuk ditampilkan');
-              }
-            }
+            console.warn('[DiffViewer] Branch diff failed:', branchErr);
+            setParsedFiles([]);
+            setError(`Gagal mengambil diff: ${branchErr}`);
           }
         } else {
           setLoadingStep('fetching');

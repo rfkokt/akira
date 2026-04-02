@@ -199,13 +199,17 @@ async function handleTaskCompletion(
       const diffResult = await invoke<{ diff: string; has_changes: boolean }>
         ('git_get_branch_diff', { cwd, baseBranch, headBranch: prResult.branch });
       if (diffResult.has_changes) {
-        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
+        const diffLastCapturedAt = new Date().toISOString();
+        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, diffLastCapturedAt);
+        await useTaskStore.getState().fetchTasks();
       }
     } else {
       // Fallback: working directory diff
       const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd });
       if (diffResult.has_changes) {
-        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
+        const diffLastCapturedAt = new Date().toISOString();
+        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, diffLastCapturedAt);
+        await useTaskStore.getState().fetchTasks();
       }
     }
   } catch (e) {
@@ -213,22 +217,39 @@ async function handleTaskCompletion(
   }
 
   // Add result message
-  const isRealPR = prResult?.prUrl && !prResult.prUrl.includes('/compare/');
-  const resultContent = prResult
-    ? prResult.prUrl
-      ? isRealPR
-        ? `✅ **Task completed! PR auto-created.**\n\nBranch: \`${prResult.branch}\`\n\n🔗 [View Pull Request](${prResult.prUrl})`
-        : `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: git checkout ${prResult.branch}`
-      : `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`
-    : `⚠️ **Task completed but PR automation failed**\n\nAI finished the task but could not automatically push to remote.\n\n${get().taskStates[taskId]?.prError ? `**Error:** ${get().taskStates[taskId]?.prError}\n\n` : ''}You can:\n1. Check git configuration\n2. Create branch and PR manually\n3. Or use "View Diff" to see changes\n\nTask moved to **Review** for manual handling.`;
+  let resultContent = '';
 
-  addMessage(get, set, taskId, {
+  if (!prResult) {
+    resultContent = `⚠️ **Task completed but PR automation failed**\n\nAI finished the task but could not automatically commit/push to remote.\n\nYou can:\n1. Check git configuration\n2. Create branch and PR manually\n3. Or use "View Diff" to see changes\n\nTask moved to **Review** for manual handling.`;
+  } else if (prResult.error) {
+    resultContent = `⚠️ **Task completed but remote push failed**\n\nAI finished the task and created branch \`${prResult.branch}\` locally, but could not push to remote.\n\n**Error:**\n\`\`\`\n${prResult.error}\n\`\`\`\n\nYou can:\n1. Check git branch/remote settings\n2. Push the branch manually\n\nTask moved to **Review** for manual handling.`;
+  } else if (prResult.prUrl) {
+    const isRealPR = !prResult.prUrl.includes('/compare/');
+    if (isRealPR) {
+      resultContent = `✅ **Task completed! PR auto-created.**\n\nBranch: \`${prResult.branch}\`\n\n🔗 [View Pull Request](${prResult.prUrl})`;
+    } else {
+      resultContent = `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: \`git checkout ${prResult.branch}\``;
+    }
+  } else {
+    resultContent = `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`;
+  }
+
+  const newMessage = {
     id: crypto.randomUUID(),
     taskId,
-    role: 'system',
+    role: 'system' as const,
     content: resultContent,
     timestamp: Date.now(),
-  });
+  };
+
+  addMessage(get, set, taskId, newMessage);
+
+  // Save the PR outcome system message to DB to persist logs across reloads
+  try {
+    await dbService.createChatMessage(taskId, 'system', resultContent, 'akira');
+  } catch (err) {
+    console.error('Failed to save completion message to DB:', err);
+  }
 
   if (prResult) {
     updateTaskState(get, set, taskId, {

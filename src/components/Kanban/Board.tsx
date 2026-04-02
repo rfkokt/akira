@@ -317,6 +317,7 @@ export function KanbanBoard() {
             isOpen={!!diffTask}
             onClose={() => setDiffTask(null)}
             workspacePath={activeWorkspace.folder_path}
+            taskState={taskStates[diffTask.id]}
           />
         )}
 
