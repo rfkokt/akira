@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTerminalStore } from '@/store/terminalStore'
 import { PtyTerminal } from './PtyTerminal'
-import { ChevronDown, ChevronUp, X, Terminal as TerminalIcon, GripHorizontal, Minus, Plus, Columns } from 'lucide-react'
+import { ChevronDown, ChevronUp, X, Terminal as TerminalIcon, Plus, Columns, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -33,14 +33,14 @@ export function TerminalPanel() {
   const dragStateRef = useRef({ startY: 0, startHeight: 0, rafId: null as number | null })
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isPanelMaximized) return
     e.preventDefault()
     setIsDragging(true)
     dragStateRef.current.startY = e.clientY
     dragStateRef.current.startHeight = panelHeight
     document.body.style.cursor = 'ns-resize'
     document.body.style.userSelect = 'none'
-    document.body.style.pointerEvents = 'none'
-  }, [panelHeight])
+  }, [panelHeight, isPanelMaximized])
 
   useEffect(() => {
     if (!isDragging) return
@@ -66,7 +66,6 @@ export function TerminalPanel() {
       setIsDragging(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      document.body.style.pointerEvents = ''
     }
 
     document.addEventListener('mousemove', handleMouseMove, { passive: true })
@@ -90,6 +89,7 @@ export function TerminalPanel() {
       ref={panelRef}
       className={`
         border-t border-app-border 
+        relative
         bg-app-bg
         flex flex-col
         ${isPanelMaximized ? 'flex-1' : ''}
@@ -98,17 +98,18 @@ export function TerminalPanel() {
       `}
       style={{ height: isPanelMaximized ? undefined : panelHeight }}
     >
-      {/* Resize Handle */}
-      <div 
-        className={`
-          h-1.5 flex items-center justify-center cursor-ns-resize 
-          ${isDragging ? 'bg-app-accent/30' : 'hover:bg-app-accent/20'} 
-          transition-colors duration-100
-        `}
-        onMouseDown={handleMouseDown}
-      >
-        <GripHorizontal className={`w-4 h-4 transition-colors ${isDragging ? 'text-app-accent' : 'text-neutral-600'}`} />
-      </div>
+      {/* Resize Handle - Larger hit area */}
+      {!isPanelMaximized && (
+        <div 
+          className="absolute top-0 -translate-y-1/2 inset-x-0 h-4 cursor-ns-resize z-50 flex items-center justify-center group"
+          onMouseDown={handleMouseDown}
+        >
+          <div className={`
+            h-1 w-12 rounded-full transition-colors duration-200
+            ${isDragging ? 'bg-app-accent' : 'bg-transparent group-hover:bg-app-accent/40'}
+          `} />
+        </div>
+      )}
 
       <div className="flex items-center justify-between px-3 py-1.5 bg-app-titlebar border-b border-app-border shrink-0">
         <div className="flex items-center gap-2">
@@ -170,23 +171,26 @@ export function TerminalPanel() {
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
+              <button
+                onClick={() => {
+                  if (activeSession) {
+                    removeSession(activeSession.id)
+                    invoke('pty_kill', { sessionId: activeSession.id }).catch(console.error)
+                    if (sessions.length === 1 && isPanelOpen) {
+                      togglePanel()
+                    }
+                  }
+                }}
+                className="w-5 h-5 ml-1 rounded-md hover:bg-red-400/20 text-neutral-400 hover:text-red-400 flex items-center justify-center transition-colors"
+                title="Kill Terminal"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
         </div>
         <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={togglePanel}
-              >
-                <Minus className="w-3 h-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Hide Panel</TooltipContent>
-          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger>
               <Button
@@ -209,21 +213,16 @@ export function TerminalPanel() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
+                className="h-6 w-6 hover:bg-neutral-800 transition-colors"
                 onClick={() => {
-                  // Kill all sessions to completely exit terminal context
-                  sessions.forEach(s => {
-                    removeSession(s.id)
-                    invoke('pty_kill', { sessionId: s.id }).catch(console.error)
-                  })
-                  if (isPanelOpen) togglePanel()
+                  // Only close the panel window, do NOT kill sessions
+                  useTerminalStore.getState().setPanelOpen(false)
                 }}
-                title="Kill All Terminals"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Kill All Terminals</TooltipContent>
+            <TooltipContent>Close Panel</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -271,6 +270,10 @@ export function TerminalPanel() {
           </div>
         )}
       </div>
+
+      {isDragging && (
+        <div className="fixed inset-0 z-[99999] cursor-ns-resize" />
+      )}
     </div>
   )
 }

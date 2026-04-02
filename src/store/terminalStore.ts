@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export interface TerminalSession {
   id: string
@@ -28,7 +29,9 @@ interface TerminalState {
 const MIN_PANEL_HEIGHT = 100
 const MAX_PANEL_HEIGHT = 800
 
-export const useTerminalStore = create<TerminalState>((set) => ({
+export const useTerminalStore = create<TerminalState>()(
+  persist(
+    (set) => ({
   sessions: [],
   activeSessionId: null,
   isPanelOpen: false,
@@ -87,4 +90,9 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     const clampedHeight = Math.min(MAX_PANEL_HEIGHT, Math.max(MIN_PANEL_HEIGHT, height))
     set({ panelHeight: clampedHeight })
   },
-}))
+    }),
+    {
+      name: 'akira-terminal-store',
+    }
+  )
+)
