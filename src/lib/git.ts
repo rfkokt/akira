@@ -268,3 +268,93 @@ export async function autoCreatePR(
     return null;
   }
 }
+
+// ─── Git Verification & Merge Workflow ──────────────────────────────────
+
+export async function getGitBranches(cwd: string): Promise<string[]> {
+  const result = await runGit(['branch', '--format=%(refname:short)'], cwd);
+  if (!result.success) return ['main', 'master']; // Safe fallback
+  return result.output
+    .split('\n')
+    .map(b => b.trim())
+    .filter(b => b && b.length > 0);
+}
+
+export async function getLatestAlphaTag(cwd: string): Promise<string | null> {
+  const result = await runGit(['tag', '-l', 'alpha.*'], cwd);
+  if (!result.success || !result.output.trim()) return null;
+
+  const tags = result.output
+    .split('\n')
+    .map(t => t.trim())
+    .filter(t => t.startsWith('alpha.'));
+
+  if (tags.length === 0) return null;
+
+  // Sort tags by parsed version numbers
+  tags.sort((a, b) => {
+    const partsA = a.replace('alpha.', '').split('.').map(Number);
+    const partsB = b.replace('alpha.', '').split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      const numA = isNaN(partsA[i]) ? 0 : partsA[i];
+      const numB = isNaN(partsB[i]) ? 0 : partsB[i];
+      if (numA !== numB) return numA - numB;
+    }
+    return 0;
+  });
+
+  return tags[tags.length - 1]; // Return highest
+}
+
+export interface TagParams {
+  createTag: boolean;
+  tagName: string;
+}
+
+export async function mergeTaskToBranch(cwd: string, featureBranch: string, targetBranch: string, tagParams?: TagParams): Promise<{ success: boolean; log: string }> {
+  let fullLog = '';
+
+  const exec = async (args: string[], allowFail = false) => {
+    fullLog += `> git ${args.join(' ')}\n`;
+    const res = await runGit(args, cwd);
+    if (!res.success && !allowFail) {
+      fullLog += `${res.stderr}\n[ERROR] Command failed.\n`;
+      throw new Error(fullLog);
+    }
+    fullLog += `${res.output}\n`;
+    if (res.stderr && res.success) fullLog += `[stderr payload]\n${res.stderr}\n`;
+    return res;
+  };
+
+  try {
+    // 1. Fetch remote changes to keep up to date (optional, may fail if no remote)
+    await exec(['fetch', 'origin', targetBranch], true);
+
+    // 2. Checkout target branch
+    await exec(['checkout', targetBranch]);
+
+    // 3. Pull latest (might fail if branch has no upstream, which is fine)
+    await exec(['pull', 'origin', targetBranch], true);
+
+    // 4. Merge feature branch
+    await exec(['merge', '--no-ff', featureBranch, '-m', `Merge branch '${featureBranch}' into ${targetBranch}`]);
+
+    // 5. Create tag if requested
+    if (tagParams && tagParams.createTag) {
+      await exec(['tag', '-a', tagParams.tagName, '-m', `Version ${tagParams.tagName}`]);
+    }
+
+    // 6. Push target branch
+    await exec(['push', 'origin', targetBranch]);
+
+    // 7. Push tags if applied
+    if (tagParams && tagParams.createTag) {
+      await exec(['push', 'origin', '--tags']);
+    }
+
+    return { success: true, log: fullLog };
+  } catch (error: any) {
+    return { success: false, log: error.message || String(error) };
+  }
+}
+

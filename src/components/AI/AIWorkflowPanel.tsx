@@ -3,6 +3,12 @@ import { Bot, Play, CheckCircle, GitBranch, MessageSquare, FileDiff, X } from 'l
 import type { Task } from '@/types';
 import { useEngineStore } from '@/store/engineStore';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { getGitBranches, getLatestAlphaTag, mergeTaskToBranch } from '@/lib/git';
+import { useAIChatStore } from '@/store/aiChatStore';
+import { Loader2 } from 'lucide-react';
+import { useEffect } from 'react';
 
 interface AIWorkflowPanelProps {
   task: Task;
@@ -161,119 +167,214 @@ export function AIWorkflowPanel({
 }
 
 // Git Push Flow Component
+// Git Merge & Push Flow Component
 export interface GitPushFlowProps {
   task: Task;
   onClose: () => void;
   onComplete: () => void;
+  workspacePath?: string;
 }
 
-export function GitPushFlow({ task, onClose, onComplete }: GitPushFlowProps) {
-  const [step, setStep] = useState(1);
-  const [tag, setTag] = useState('');
-  const [commitMsg, setCommitMsg] = useState(`feat: ${task.title}`);
+export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPushFlowProps) {
+  const [branches, setBranches] = useState<string[]>([]);
+  const [targetBranch, setTargetBranch] = useState('main');
+  const [createTag, setCreateTag] = useState(false);
+  const [latestTag, setLatestTag] = useState<string | null>(null);
+  const [bumpType, setBumpType] = useState<'patch' | 'minor' | 'major'>('patch');
+  const [calcNextTag, setCalcNextTag] = useState('alpha.0.0.1');
 
-  const steps = [
-    { id: 1, label: 'Stage Changes', description: 'Add modified files to staging area' },
-    { id: 2, label: 'Commit', description: 'Create commit with message' },
-    { id: 3, label: 'Tag', description: 'Add version tag' },
-    { id: 4, label: 'Push', description: 'Push to remote repository' },
-  ];
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [execLog, setExecLog] = useState('');
 
-  const handleNext = () => {
-    if (step < 4) {
-      setStep(step + 1);
+  const taskStates = useAIChatStore((state) => state.taskStates);
+  const taskState = taskStates[task.id];
+
+  useEffect(() => {
+    if (!workspacePath) return;
+
+    // Load available branches
+    getGitBranches(workspacePath).then(res => {
+      setBranches(res);
+      // Try to determine default branch
+      if (res.includes('main')) {
+        setTargetBranch('main');
+      } else if (res.includes('master')) {
+        setTargetBranch('master');
+      } else if (res.length > 0) {
+        setTargetBranch(res[0]);
+      }
+    });
+
+    // Load latest alpha tag
+    getLatestAlphaTag(workspacePath).then(tag => {
+      setLatestTag(tag);
+      if (!tag) {
+        setCalcNextTag('alpha.0.0.1');
+      }
+    });
+  }, [workspacePath, task.id]);
+
+  useEffect(() => {
+    if (!latestTag) {
+      setCalcNextTag('alpha.0.0.1');
+      return;
+    }
+    const parts = latestTag.replace('alpha.', '').split('.').map(Number);
+    let [major, minor, patch] = parts;
+    
+    if (bumpType === 'patch') patch += 1;
+    else if (bumpType === 'minor') { minor += 1; patch = 0; }
+    else if (bumpType === 'major') { major += 1; minor = 0; patch = 0; }
+    
+    setCalcNextTag(`alpha.${major}.${minor}.${patch}`);
+  }, [latestTag, bumpType]);
+
+  const handleMerge = async () => {
+    if (!workspacePath) {
+      alert("Workspace path is missing.");
+      return;
+    }
+    
+    const featureBranch = taskState?.prBranch;
+    if (!featureBranch) {
+      alert("AI feature branch PR could not be found for this task.");
+      return;
+    }
+
+    setIsExecuting(true);
+    setExecLog('Starting Git Merge Workflow...\n');
+
+    const result = await mergeTaskToBranch(workspacePath, featureBranch, targetBranch, createTag ? { createTag: true, tagName: calcNextTag } : undefined);
+
+    if (result.success) {
+      setExecLog(prev => prev + '\n' + result.log + '\n\n✅ Merge and Push completed successfully!');
+      setTimeout(() => {
+        onComplete();
+      }, 1500);
     } else {
-      onComplete();
+      setExecLog(prev => prev + '\n❌ ERROR: ' + result.log);
+      setIsExecuting(false); // allow them to cancel or copy log
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg">
-        <div className="px-4 py-3 border-b border-white/5">
-          <h3 className="text-sm font-semibold text-white font-geist">
-            Git Workflow: Complete Task
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between shrink-0">
+          <h3 className="text-sm font-semibold text-white font-geist flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-[#0e639c]" />
+            Merge Task: {task.title}
           </h3>
+          {!isExecuting && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+              <X className="w-4 h-4" />
+            </Button>
+          )}
         </div>
 
-        <div className="p-4 space-y-4">
-          {/* Progress Steps */}
-          <div className="flex items-center justify-between">
-            {steps.map((s, idx) => (
-              <div key={s.id} className="flex items-center">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-geist ${
-                  step > s.id ? 'bg-green-500 text-white' :
-                  step === s.id ? 'bg-[#0e639c] text-white' :
-                  'bg-white/10 text-neutral-500'
-                }`}>
-                  {step > s.id ? '✓' : s.id}
-                </div>
-                {idx < steps.length - 1 && (
-                  <div className={`w-8 h-px ${step > s.id ? 'bg-green-500' : 'bg-white/10'}`} />
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Current Step Content */}
-          <div className="bg-[#252526] rounded-lg p-4 border border-white/5">
-            <h4 className="text-sm font-medium text-white font-geist mb-1">
-              {steps[step - 1].label}
-            </h4>
-            <p className="text-xs text-neutral-500 font-geist mb-3">
-              {steps[step - 1].description}
+        <div className="p-4 space-y-5 overflow-y-auto max-h-[70vh]">
+          {/* Target Branch Dropdown */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-neutral-300 font-geist">Target Branch (Merge Into)</label>
+            <div className="flex bg-[#2d2d2d] border border-white/10 rounded-md">
+              <Select value={targetBranch} onValueChange={(val) => val && setTargetBranch(val)} disabled={isExecuting}>
+                <SelectTrigger className="w-full border-none h-9 bg-transparent focus:ring-0">
+                  <SelectValue placeholder="Select target branch" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#2d2d2d] border-white/10 text-white">
+                  {branches.map(b => (
+                    <SelectItem key={b} value={b} className="hover:bg-white/5">{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[11px] text-neutral-500 font-geist">
+              Source branch: <span className="text-app-accent">{taskState?.prBranch || 'Unknown'}</span>
             </p>
+          </div>
 
-            {step === 2 && (
+          {/* Version Tagging Toggle */}
+          <div className="p-3 bg-[#252526] border border-white/5 rounded-lg space-y-4">
+            <div className="flex items-center justify-between">
               <div>
-                <label className="block text-xs text-neutral-400 font-geist mb-1">Commit Message</label>
-                <textarea
-                  value={commitMsg}
-                  onChange={(e) => setCommitMsg(e.target.value)}
-                  className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist resize-none"
-                  rows={2}
-                />
+                <h4 className="text-sm font-medium text-white font-geist">Create Version Tag</h4>
+                <p className="text-[11px] text-neutral-500 font-geist mt-0.5">Generate a new alpha tag natively</p>
               </div>
-            )}
+              <Switch checked={createTag} onCheckedChange={setCreateTag} disabled={isExecuting} />
+            </div>
 
-            {step === 3 && (
-              <div>
-                <label className="block text-xs text-neutral-400 font-geist mb-1">Version Tag</label>
-                <input
-                  type="text"
-                  value={tag}
-                  onChange={(e) => setTag(e.target.value)}
-                  placeholder="v1.0.0"
-                  className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist"
-                />
-              </div>
-            )}
-
-            {step === 4 && (
-              <div className="text-xs font-geist text-neutral-400 space-y-1">
-                <p>git add .</p>
-                <p>git commit -m "{commitMsg}"</p>
-                {tag && <p>git tag {tag}</p>}
-                <p>git push origin main {tag && '--tags'}</p>
+            {createTag && (
+              <div className="pt-3 border-t border-white/5 space-y-3 animate-in fade-in slide-in-from-top-1">
+                <div className="grid grid-cols-3 gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className={`text-xs ${bumpType === 'patch' ? 'bg-[#0e639c]/20 border-[#0e639c] text-[#0e639c]' : 'bg-transparent text-neutral-400 border-white/10'}`}
+                    onClick={() => setBumpType('patch')}
+                    disabled={isExecuting}
+                  >
+                    Patch (.X)
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className={`text-xs ${bumpType === 'minor' ? 'bg-[#0e639c]/20 border-[#0e639c] text-[#0e639c]' : 'bg-transparent text-neutral-400 border-white/10'}`}
+                    onClick={() => setBumpType('minor')}
+                    disabled={isExecuting}
+                  >
+                    Minor (.X.0)
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className={`text-xs ${bumpType === 'major' ? 'bg-[#0e639c]/20 border-[#0e639c] text-[#0e639c]' : 'bg-transparent text-neutral-400 border-white/10'}`}
+                    onClick={() => setBumpType('major')}
+                    disabled={isExecuting}
+                  >
+                    Major (X.0.0)
+                  </Button>
+                </div>
+                <div className="bg-black/30 rounded p-2 text-xs font-mono text-center flex items-center justify-center gap-2">
+                  <span className="text-neutral-500">{latestTag || 'None'}</span>
+                  <span className="text-neutral-600">→</span>
+                  <span className="text-green-400 font-semibold">{calcNextTag}</span>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleNext}
-              className="bg-[#0e639c] hover:bg-[#1177bb]"
-            >
-              {step === 4 ? 'Complete' : 'Next'}
-            </Button>
-          </div>
+          {/* Terminal Logs (If executing or failed) */}
+          {(isExecuting || execLog) && (
+            <div className="space-y-1.5 animate-in fade-in">
+              <label className="text-[11px] font-medium text-neutral-400 font-geist uppercase tracking-wider">Git Output</label>
+              <div className="bg-black rounded-md p-2.5 h-32 overflow-y-auto font-mono text-[11px] text-neutral-300 leading-relaxed border border-white/5 whitespace-pre">
+                {execLog}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="p-4 border-t border-white/5 flex gap-2 justify-end shrink-0 bg-[#1e1e1e]">
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            disabled={isExecuting}
+            className="text-xs"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleMerge}
+            disabled={isExecuting || !taskState?.prBranch}
+            className="bg-[#0e639c] hover:bg-[#1177bb] text-xs font-medium min-w-[120px]"
+          >
+            {isExecuting ? (
+              <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Working...</>
+            ) : (
+              'Complete Merge'
+            )}
+          </Button>
         </div>
       </div>
     </div>

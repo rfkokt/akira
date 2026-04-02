@@ -337,11 +337,12 @@ export function KanbanBoard() {
           />
         )}
         
-        {mergeTask && (
+        {mergeTask && activeWorkspace && (
           <GitPushFlow
             task={mergeTask}
             onClose={() => setMergeTask(null)}
             onComplete={handleMergeComplete}
+            workspacePath={activeWorkspace.folder_path}
           />
         )}
       </div>
