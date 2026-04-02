@@ -6,7 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { 
   Eye, Save, Layers, Shield, Check, Copy,
-  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen
+  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
 import { useEngineStore, useWorkspaceStore } from '@/store';
@@ -35,6 +35,7 @@ const sidebarTabs = [
   { id: 'engines', label: 'CLI Engines', icon: Cpu, section: 'system' },
   { id: 'rtk', label: 'RTK Status', icon: Zap, section: 'system' },
   { id: 'router', label: 'AI Router', icon: Settings, section: 'system' },
+  { id: 'git-integration', label: 'Git Integration', icon: GitPullRequest, section: 'system' },
 ];
 
 const projectSubTabs = [
@@ -470,6 +471,54 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
               {activeTab === 'engines' && <EnginesTab />}
               {activeTab === 'rtk' && <RTKTab />}
               {activeTab === 'router' && <RouterTab />}
+              {activeTab === 'git-integration' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-base font-semibold text-white font-geist flex items-center gap-2">
+                      <GitPullRequest className="w-4 h-4 text-app-accent" />
+                      Git Integration
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-1">Configure API token to auto-create PRs when tasks complete. Stored locally only — never synced to .akira/</p>
+                  </div>
+
+                  <div className="bg-app-panel rounded-lg border border-app-border p-5 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <KeyRound className="w-4 h-4 text-app-accent mt-0.5 shrink-0" />
+                      <div className="flex-1 space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-white font-geist">Personal Access Token</label>
+                          <p className="text-[10px] text-neutral-500 mt-0.5">
+                            GitHub: Settings → Developer Settings → Personal Access Tokens (scope: <code className="text-app-accent">repo</code>)<br />
+                            GitLab: Settings → Access Tokens (scope: <code className="text-app-accent">api</code>)
+                          </p>
+                        </div>
+                        <input
+                          type="password"
+                          className="w-full bg-black/30 border border-app-border rounded-md px-3 py-2 text-sm font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-app-accent/50 transition-colors"
+                          placeholder="ghp_xxxxxxxxxxxx or glpat-xxxxxxxxxxxx"
+                          value={config?.git_token || ''}
+                          onChange={e => updateField('git_token', e.target.value)}
+                        />
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="shadow-[0_0_10px_var(--app-accent-glow)] text-xs"
+                          onClick={() => config && saveConfig({ git_token: config.git_token })}
+                          disabled={isConfigLoading}
+                        >
+                          <Save className="w-3.5 h-3.5 mr-2" /> Save Token
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 p-3 bg-black/20 rounded-md border border-white/5">
+                      <p className="text-[10px] text-neutral-500 font-geist">
+                        🔒 Token is saved in local SQLite only. It is never written to <code className="text-neutral-400">.akira/</code> or committed to git.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

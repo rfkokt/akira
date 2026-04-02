@@ -168,6 +168,13 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute("DROP TABLE project_configs_old", [])?;
     }
 
+    // Migration: Add git_token column to project_configs table
+    conn.execute(
+        "ALTER TABLE project_configs ADD COLUMN git_token TEXT",
+        [],
+    )
+    .ok(); // Ignore error if column already exists
+
     Ok(())
 }
 
@@ -248,6 +255,7 @@ fn create_tables(conn: &Connection) -> Result<()> {
             md_tech_stack   TEXT,
             md_rules        TEXT,
             md_tone         TEXT,
+            git_token       TEXT,
             created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE

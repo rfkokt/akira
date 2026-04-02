@@ -191,20 +191,40 @@ async function handleTaskCompletion(
 
   const prResult = await autoCreatePR(taskId, taskTitle, cwd);
 
-  // Capture diff snapshot
+  // Capture diff snapshot — use branch diff if we have a PR branch (isolated per task)
   try {
-    const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd });
-    if (diffResult.has_changes) {
-      await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
+    if (prResult?.branch) {
+      // Get the base branch from git (what we branched from)
+      const baseBranchResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+        command: 'git',
+        args: ['rev-parse', '--abbrev-ref', 'HEAD@{-1}'],
+        cwd,
+      }).catch(() => null);
+      const baseBranch = baseBranchResult?.stdout?.trim() || 'main';
+
+      const diffResult = await invoke<{ diff: string; has_changes: boolean }>
+        ('git_get_branch_diff', { cwd, baseBranch, headBranch: prResult.branch });
+      if (diffResult.has_changes) {
+        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
+      }
+    } else {
+      // Fallback: working directory diff
+      const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd });
+      if (diffResult.has_changes) {
+        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, new Date().toISOString());
+      }
     }
   } catch (e) {
     console.error('[AI] Failed to capture diff:', e);
   }
 
   // Add result message
+  const isRealPR = prResult?.prUrl && !prResult.prUrl.includes('/compare/');
   const resultContent = prResult
     ? prResult.prUrl
-      ? `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: git checkout ${prResult.branch}`
+      ? isRealPR
+        ? `✅ **Task completed! PR auto-created.**\n\nBranch: \`${prResult.branch}\`\n\n🔗 [View Pull Request](${prResult.prUrl})`
+        : `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: git checkout ${prResult.branch}`
       : `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`
     : `⚠️ **Task completed but PR automation failed**\n\nAI finished the task but could not automatically push to remote.\n\n${get().taskStates[taskId]?.prError ? `**Error:** ${get().taskStates[taskId]?.prError}\n\n` : ''}You can:\n1. Check git configuration\n2. Create branch and PR manually\n3. Or use "View Diff" to see changes\n\nTask moved to **Review** for manual handling.`;
 

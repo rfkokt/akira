@@ -6,6 +6,7 @@ pub mod engines;
 pub mod fs;
 pub mod git;
 pub mod import;
+pub mod pr;
 pub mod project;
 pub mod pty;
 pub mod rtk;

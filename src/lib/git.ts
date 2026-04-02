@@ -6,6 +6,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { useConfigStore } from '@/store/configStore';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -26,17 +27,25 @@ export interface PRResult {
 
 interface ShellResult {
   success: boolean;
+  stdout: string;
+  stderr: string;
+  /** Alias kept for backward compat — same as stdout */
   output: string;
 }
 
 // ─── Git Command Runner ─────────────────────────────────────────────────
 
 export async function runGit(args: string[], cwd: string): Promise<ShellResult> {
-  return invoke<ShellResult>('run_shell_command', {
-    command: 'git',
-    args,
-    cwd,
-  });
+  const raw = await invoke<{ success: boolean; stdout: string; stderr: string; exit_code: number }>(
+    'run_shell_command', { command: 'git', args, cwd }
+  );
+  return {
+    success: raw.success,
+    stdout: raw.stdout,
+    stderr: raw.stderr,
+    // 'output' was previously used throughout git.ts — mirror stdout for compat
+    output: raw.stdout,
+  };
 }
 
 // ─── Platform Detection ─────────────────────────────────────────────────
@@ -202,14 +211,42 @@ export async function autoCreatePR(
       return { branch: branchName, error: `Push failed: ${pushResult.output}` };
     }
 
-    // Build PR URL based on detected platform
+    // Build PR URL — try auto-create via API if token is configured
     let prUrl: string | undefined;
     const remoteUrlResult = await runGit(['remote', 'get-url', remoteName], cwd);
     if (remoteUrlResult.success) {
       const remoteInfo = detectGitPlatform(remoteUrlResult.output.trim());
       if (remoteInfo) {
-        prUrl = buildPRUrl(remoteInfo, currentBranchName, branchName);
-        console.log(`[git] Detected platform: ${remoteInfo.platform} → PR URL generated`);
+        const gitToken = useConfigStore.getState().config?.git_token;
+
+        if (gitToken && remoteInfo.platform !== 'unknown') {
+          // Auto-create PR via platform API
+          try {
+            const taskDescription = `Auto-generated PR by Akira AI\n\nBranch: \`${branchName}\`\n\nTask: ${taskTitle}`;
+            const created = await invoke<{ pr_url: string; pr_number: number | null }>('create_pull_request', {
+              token: gitToken,
+              platform: remoteInfo.platform,
+              baseUrl: remoteInfo.platform === 'github'
+                ? 'https://api.github.com'
+                : remoteInfo.baseUrl,
+              owner: remoteInfo.owner,
+              repo: remoteInfo.repo,
+              title: taskTitle,
+              headBranch: branchName,
+              baseBranch: currentBranchName,
+              body: taskDescription,
+            });
+            prUrl = created.pr_url;
+            console.log(`[git] PR auto-created: ${prUrl}`);
+          } catch (apiErr) {
+            console.warn('[git] Auto-create PR failed, falling back to compare URL:', apiErr);
+            prUrl = buildPRUrl(remoteInfo, currentBranchName, branchName);
+          }
+        } else {
+          // No token → generate compare URL for user to open manually
+          prUrl = buildPRUrl(remoteInfo, currentBranchName, branchName);
+          console.log(`[git] Detected platform: ${remoteInfo.platform} → compare URL generated (no API token)`);
+        }
       }
     }
 

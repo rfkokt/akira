@@ -9,6 +9,7 @@ export interface ProjectConfig {
   md_tech_stack: string;
   md_rules: string;
   md_tone: string;
+  git_token?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -23,7 +24,7 @@ interface ConfigState {
   setActiveTab: (tab: 'rules') => void;
   loadConfig: (workspaceId: string) => Promise<void>;
   saveConfig: (config: Partial<ProjectConfig>) => Promise<void>;
-  updateField: (field: keyof ProjectConfig, value: string) => void;
+  updateField: (field: keyof ProjectConfig, value: string | null | undefined) => void;
   getSystemPrompt: () => string;
 }
 

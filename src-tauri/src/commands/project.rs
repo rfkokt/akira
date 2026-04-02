@@ -11,6 +11,7 @@ pub struct ProjectConfigData {
     pub md_tech_stack: String,
     pub md_rules: String,
     pub md_tone: String,
+    pub git_token: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -30,6 +31,7 @@ pub fn get_project_config(
             md_tech_stack: c.md_tech_stack,
             md_rules: c.md_rules,
             md_tone: c.md_tone,
+            git_token: c.git_token,
             created_at: c.created_at,
             updated_at: c.updated_at,
         }))
@@ -50,6 +52,7 @@ pub fn save_project_config(
         md_tech_stack: config.md_tech_stack,
         md_rules: config.md_rules,
         md_tone: config.md_tone,
+        git_token: config.git_token,
         created_at: config.created_at,
         updated_at: config.updated_at,
     };

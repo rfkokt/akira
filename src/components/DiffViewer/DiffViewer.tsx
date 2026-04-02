@@ -43,11 +43,6 @@ interface DiffViewerProps {
   prBranch?: string | null;
 }
 
-interface PRDiffResult {
-  diff: string;
-  has_changes: boolean;
-  changed_files: string[];
-}
 
 type LoadingStep = 'initial' | 'fetching' | 'parsing' | 'complete';
 
@@ -74,14 +69,14 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
     setDiscarding(true);
     try {
       // 1. Reset tracked files and remove staged status
-      const resetResult = await invoke<{ success: boolean; output: string }>('run_shell_command', {
+      const resetResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
         command: 'git',
         args: ['reset', '--hard', 'HEAD'],
         cwd: workspacePath,
       });
 
       // 2. Remove untracked files and directories
-      const cleanResult = await invoke<{ success: boolean; output: string }>('run_shell_command', {
+      const cleanResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
         command: 'git',
         args: ['clean', '-fd'],
         cwd: workspacePath,
@@ -92,8 +87,8 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
         onClose();
       } else {
         const errorMsg = [];
-        if (!resetResult.success) errorMsg.push(`Reset: ${resetResult.output}`);
-        if (!cleanResult.success) errorMsg.push(`Clean: ${cleanResult.output}`);
+        if (!resetResult.success) errorMsg.push(`Reset: ${resetResult.stdout}`);
+        if (!cleanResult.success) errorMsg.push(`Clean: ${cleanResult.stdout}`);
         setError('Gagal membatalkan. ' + errorMsg.join(' | '));
       }
     } catch (err) {
@@ -149,25 +144,43 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
 
       try {
         if (prBranch || taskState?.prBranch) {
-          const branch = prBranch || taskState!.prBranch;
+          const branch = (prBranch || taskState!.prBranch) as string;
           setLoadingStep('fetching');
           setLoadingMessage(`Mengambil diff dari branch: ${branch}...`);
 
           try {
-            const prDiffResult = await invoke<PRDiffResult>('git_get_pr_diff', {
+            // Detect base branch (what this feature branch was created from)
+            const baseBranchResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+              command: 'git',
+              args: ['rev-parse', '--abbrev-ref', `${branch}@{upstream}^1`],
               cwd: workspacePath,
-              branch: branch
+            }).catch(() => null);
+
+            // Fallback chain: upstream parent → HEAD@{-1} → 'main'
+            let baseBranch = baseBranchResult?.stdout?.trim();
+            if (!baseBranch || baseBranch.startsWith('fatal')) {
+              const prevBranchResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+                command: 'git', args: ['rev-parse', '--abbrev-ref', 'HEAD@{-1}'], cwd: workspacePath,
+              }).catch(() => null);
+              baseBranch = prevBranchResult?.stdout?.trim() || 'main';
+            }
+
+            const branchDiff = await invoke<GitDiffResult>('git_get_branch_diff', {
+              cwd: workspacePath,
+              baseBranch,
+              headBranch: branch,
             });
 
-            if (prDiffResult.has_changes) {
+            if (branchDiff.has_changes) {
               setLoadingStep('parsing');
               setLoadingMessage('Memproses perubahan...');
-              parseDiff(prDiffResult.diff);
+              parseDiff(branchDiff.diff);
             } else {
               setParsedFiles([]);
-              setError('Tidak ada perubahan di PR ini');
+              setError(`Tidak ada perubahan di branch ${branch} dibanding ${baseBranch}`);
             }
-          } catch (prErr) {
+          } catch (branchErr) {
+            console.warn('[DiffViewer] Branch diff failed, fallback to working dir:', branchErr);
             setLoadingStep('fetching');
             setLoadingMessage('Mengambil perubahan lokal...');
             const unstagedResult = await invoke<GitDiffResult>('git_get_diff', { cwd: workspacePath });
@@ -367,11 +380,16 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
               <p className="text-xs text-neutral-500 font-geist">
                 {files} file diubah • {additions} penambahan • {deletions} penghapusan
               </p>
-              {task.diff_content && (
+              {(prBranch || taskState?.prBranch) ? (
+                <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-geist flex items-center gap-1">
+                  <GitBranch className="w-2.5 h-2.5" />
+                  {prBranch || taskState?.prBranch}
+                </span>
+              ) : task.diff_content ? (
                 <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-geist">
                   Snapshot
                 </span>
-              )}
+              ) : null}
             </div>
           ) : (
             <p className="text-xs text-neutral-500 font-geist">

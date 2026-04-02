@@ -106,6 +106,9 @@ fn main() {
             // .akira/ config sync
             commands::akira_config::export_akira_config,
             commands::akira_config::import_akira_config,
+            // PR automation & branch diff
+            commands::pr::create_pull_request,
+            commands::pr::git_get_branch_diff,
             // RTK
             commands::rtk::check_rtk_status,
             commands::rtk::install_rtk,
