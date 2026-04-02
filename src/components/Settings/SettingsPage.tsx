@@ -112,27 +112,55 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
     setIsAnalyzing(true);
     setAnalysisStatus('Scanning project structure...');
 
-    const analysisPrompt = `[System: You are a code analyzer. DO NOT modify any files. DO NOT use any tools that write to disk. ONLY read and analyze.]
+    const analysisPrompt = `[System: You are a senior software architect performing a project analysis. DO NOT modify any files. DO NOT use any tools that write to disk. ONLY read and analyze. Output ONLY the markdown document below — no preamble, no commentary.]
 
-Analyze the project at ${cwd}. Read package.json, folder structure, and key .ts/.tsx source files.
+Analyze the project at: ${cwd}
 
-Generate coding rules that enforce: clean code, reusability, and secure coding practices.
+Read these files to understand the project deeply:
+- package.json / Cargo.toml / pyproject.toml (dependencies & scripts)
+- README.md if present
+- Top-level folder structure
+- Key source files (src/, app/, lib/, components/ etc.)
+- Config files (tsconfig, vite.config, tailwind.config, etc.)
 
-Output EXACTLY in this markdown format and nothing else:
+Produce a complete project context document in this EXACT markdown format:
 
-# Rules
+# Project Overview
+
+## What This Project Does
+[2-4 sentences describing what this project is, what problem it solves, and who uses it. Be specific — name actual features, not generic descriptions.]
+
+## Tech Stack
+- **Runtime/Language**: [e.g. TypeScript, Rust, Python]
+- **Framework**: [e.g. React + Vite, Next.js, Tauri, Django]
+- **UI Library**: [e.g. Tailwind CSS + shadcn/ui, Material UI, none]
+- **Database**: [e.g. SQLite via sqlx, PostgreSQL, none]
+- **Key Dependencies**: [list 3-5 most important libs and what they do]
+- **Build/Deploy**: [e.g. npm + Tauri bundler, Docker, Vercel]
+
+## Architecture
+[3-5 sentences describing the high-level architecture: how modules are structured, how data flows, key patterns used (e.g. Zustand stores, Rust commands bridged via IPC, REST API layers, etc.)]
+
+## Key Directories
+- \`src/components/\` — [what lives here]
+- \`src/store/\` — [what lives here]
+- [list other important dirs]
+
+# Code Rules
 
 ## DO
-- [specific convention or best practice found in this project]
-- [another convention...]
-(list 8-15 rules)
+- [Project-specific best practice derived from what you found — mention actual file names, patterns, or libs when relevant]
+- [Another specific rule]
+(8-12 rules, grounded in the ACTUAL codebase)
 
 ## DON'T
-- [specific anti-pattern to avoid in this project]
-- [another anti-pattern...]
-(list 8-15 rules)
+- [Specific anti-pattern that would break this project]
+- [Another anti-pattern specific to this stack]
+(8-12 rules)
 
-Base the rules on the ACTUAL tech stack, patterns, and file structure you find. Be specific to THIS project, not generic advice.`;
+IMPORTANT: Every bullet must be specific to THIS project. No generic advice like "write clean code" or "use meaningful variable names".
+If this is a web project (Next.js, React, Vue, etc.), you MUST include mobile-responsive design rules in the DO section — e.g., use of responsive breakpoints, mobile-first CSS, touch-friendly interactions, avoiding fixed pixel widths, etc.`;
+
 
     const tempTaskId = '__analyze_project__';
     const { sendSimpleMessage, getMessages, clearMessages } = useAIChatStore.getState();
@@ -154,36 +182,55 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
         return;
       }
 
-      // Combine with existing rules
-      const existingRules = config?.md_rules || '';
-      let combinedRules: string;
+      // Strip tool call log lines and CLI footer lines from the AI response
+      const cleanResponse = (raw: string): string => {
+        // Remove lines that look like tool call traces or CLI status footers
+        const withoutToolLines = raw
+          .split('\n')
+          .filter(line => {
+            const t = line.trim();
+            if (/^\[(Tool|Action|Result|Thought|Step)\s*:/.test(t)) return false; // [Tool: Glob] ...
+            if (/^✅\s*(Completed|Done|Finished)\s+in\s+\d/i.test(t)) return false; // ✅ Completed in 34s ($0.5491)
+            if (/^\$[\d.]+\s*$/.test(t)) return false;  // standalone cost lines
+            if (/^(Cost|Tokens|Duration)\s*:/i.test(t)) return false; // Cost: $0.12
+            return true;
+          })
+          .join('\n');
 
-      if (existingRules.trim() && existingRules.trim() !== '# Rules\n\n## DO\n- \n\n## DON\'T\n- ') {
-        // Merge: extract existing DOs and DON'Ts, then combine with new ones
-        const existingDos = (existingRules.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
-        const existingDonts = (existingRules.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
-        const newDos = (aiResponse.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
-        const newDonts = (aiResponse.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim());
+        // Find the first markdown heading — everything before it is preamble, discard it
+        const firstHeadingIdx = withoutToolLines.search(/^#{1,3}\s/m);
+        const trimmed = firstHeadingIdx !== -1
+          ? withoutToolLines.slice(firstHeadingIdx)
+          : withoutToolLines;
 
-        const allDos = [...new Set([...existingDos, ...newDos])];
-        const allDonts = [...new Set([...existingDonts, ...newDonts])];
+        return trimmed.trim();
+      };
 
-        combinedRules = `# Rules\n\n## DO\n${allDos.join('\n')}\n\n## DON'T\n${allDonts.join('\n')}`;
-      } else {
-        combinedRules = aiResponse;
+      // Save the full document (overview + rules) directly into md_rules
+      // so everything is visible in the Code Rules tab
+      const fullDocument = cleanResponse(aiResponse);
+
+      if (!fullDocument) {
+        setAnalysisStatus('Analysis returned no usable content. Try again.');
+        setIsAnalyzing(false);
+        return;
       }
 
-      updateField('md_rules', combinedRules);
-      await saveConfig({ ...config!, md_rules: combinedRules });
-      setAnalysisStatus('✅ Rules generated and saved!');
+      updateField('md_rules', fullDocument);
+      await saveConfig({ ...config!, md_rules: fullDocument });
+
+      setAnalysisStatus('✅ Project analyzed — full context saved!');
+
     } catch (err) {
       console.error('Analysis failed:', err);
       setAnalysisStatus(`❌ Analysis failed: ${err}`);
     } finally {
       setIsAnalyzing(false);
-      setTimeout(() => setAnalysisStatus(null), 4000);
+      setTimeout(() => setAnalysisStatus(null), 5000);
     }
   }, [config, activeWorkspace, updateField, saveConfig]);
+
+
 
   const getCurrentValue = () => {
     if (!config) return '';

@@ -9,6 +9,7 @@ import { getGitBranches, getLatestAlphaTag, mergeTaskToBranch } from '@/lib/git'
 import { useAIChatStore } from '@/store/aiChatStore';
 import { Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
+import { emit } from '@tauri-apps/api/event';
 
 interface AIWorkflowPanelProps {
   task: Task;
@@ -260,6 +261,12 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
 
     if (result.success) {
       setExecLog(prev => prev + '\n' + result.log + '\n\n✅ Merge and Push completed successfully!');
+      // Notify GitBranchSelector to refresh — branch is now targetBranch
+      try {
+        await emit('git-branch-changed', { branch: targetBranch, cwd: workspacePath });
+      } catch (e) {
+        console.warn('[GitPushFlow] Failed to emit branch-changed event:', e);
+      }
       setTimeout(() => {
         onComplete();
       }, 1500);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { GitBranch, ChevronDown, Plus, Check, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -32,6 +33,18 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
     if (workspacePath) {
       loadBranches();
     }
+  }, [workspacePath]);
+
+  // Listen for branch changes from merge operations
+  useEffect(() => {
+    if (!workspacePath) return;
+    const unlisten = listen<{ branch: string; cwd: string }>('git-branch-changed', (event) => {
+      // Only refresh if the event is for our workspace
+      if (event.payload.cwd === workspacePath) {
+        loadBranches();
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
   }, [workspacePath]);
 
   const loadBranches = async (fetchRemote = false) => {
