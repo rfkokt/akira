@@ -161,13 +161,13 @@ export function AIWorkflowPanel({
 }
 
 // Git Push Flow Component
-interface GitPushFlowProps {
+export interface GitPushFlowProps {
   task: Task;
   onClose: () => void;
   onComplete: () => void;
 }
 
-function GitPushFlow({ task, onClose, onComplete }: GitPushFlowProps) {
+export function GitPushFlow({ task, onClose, onComplete }: GitPushFlowProps) {
   const [step, setStep] = useState(1);
   const [tag, setTag] = useState('');
   const [commitMsg, setCommitMsg] = useState(`feat: ${task.title}`);

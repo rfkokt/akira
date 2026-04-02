@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
 import { X, MessageSquare } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
 import { useTaskStore, useAIChatStore, useWorkspaceStore } from '@/store'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'
@@ -11,6 +10,7 @@ import { DescriptionWithFileTag } from '@/components/DescriptionWithFileTag'
 import { TaskCreatorChat } from './TaskCreatorChat'
 import { TaskCard } from './TaskCard'
 import { TaskDetailModal } from './TaskDetailModal'
+import { GitPushFlow } from '@/components/AI/AIWorkflowPanel'
 import { KanbanColumn } from './KanbanColumn'
 import { COLUMNS, PRIORITY_COLORS } from './constants'
 import {
@@ -143,62 +143,16 @@ export function KanbanBoard() {
     setMergeTask(task)
   }
 
-  const handleConfirmMerge = async () => {
-    if (!mergeTask) return
-    
-    setMergeLoadingTasks(prev => new Set(prev).add(mergeTask.id))
-    const taskId = mergeTask.id
-    const taskState = taskStates[taskId]
-    setMergeTask(null)
-    
-    try {
-      const activeWorkspacePath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
-      if (!activeWorkspacePath) throw new Error("No active workspace")
-
-      const branchName = taskState?.prBranch
-      
-      if (branchName) {
-        // Find current branch initially
-        const currentBranchResult = await invoke<{ success: boolean; output: string }>('run_shell_command', {
-          command: 'git',
-          args: ['branch', '--show-current'],
-          cwd: activeWorkspacePath,
-        });
-        const currentBranch = currentBranchResult.success ? currentBranchResult.output.trim() : 'main';
-        
-        // Checkout fallback (e.g. main/master) if we are currently on the branch itself
-        if (currentBranch === branchName) {
-           await invoke<{ success: boolean; output: string }>('run_shell_command', {
-            command: 'git',
-            args: ['checkout', 'main'], 
-            cwd: activeWorkspacePath,
-           });
-        }
-        
-        // Merge the branch
-        await invoke<{ success: boolean; output: string }>('run_shell_command', {
-          command: 'git',
-          args: ['merge', branchName],
-          cwd: activeWorkspacePath,
-        });
-
-        // Delete local feature branch
-        await invoke<{ success: boolean; output: string }>('run_shell_command', {
-          command: 'git',
-          args: ['branch', '-d', branchName],
-          cwd: activeWorkspacePath,
-        });
-      }
-      
-      await moveTask(taskId, 'done')
-    } catch (error) {
-      console.error('Failed to merge task:', error)
-    } finally {
+  const handleMergeComplete = async () => {
+    if (mergeTask) {
+      const taskId = mergeTask.id
+      setMergeTask(null)
       setMergeLoadingTasks(prev => {
         const next = new Set(prev)
         next.delete(taskId)
         return next
       })
+      await moveTask(taskId, 'done')
     }
   }
 
@@ -383,22 +337,11 @@ export function KanbanBoard() {
         )}
         
         {mergeTask && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-sm shadow-2xl p-5">
-              <h3 className="text-sm font-semibold text-white font-geist mb-2">Merge Task</h3>
-              <p className="text-xs text-neutral-300 font-geist mb-5">
-                Merge branch <strong className="text-app-accent">{taskStates[mergeTask.id]?.prBranch || 'feature'}</strong> ke branch saat ini dan tandai task ini sebagai selesai?
-              </p>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setMergeTask(null)} size="sm">
-                  Cancel
-                </Button>
-                <Button onClick={handleConfirmMerge} className="bg-green-600 hover:bg-green-700" size="sm">
-                  Confirm Merge
-                </Button>
-              </div>
-            </div>
-          </div>
+          <GitPushFlow
+            task={mergeTask}
+            onClose={() => setMergeTask(null)}
+            onComplete={handleMergeComplete}
+          />
         )}
       </div>
     </div>

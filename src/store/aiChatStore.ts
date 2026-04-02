@@ -814,7 +814,7 @@ Start working on this now.`;
   },
 
   sendMessage: async (taskId: string, content: string) => {
-    const { messages } = get();
+    const { messages, taskStates } = get();
     const timestamp = Date.now();
     
     // Get task info for context
@@ -827,6 +827,11 @@ Start working on this now.`;
       const titleMatch = systemMsg.content.match(/"([^"]+)"/);
       if (titleMatch) taskTitle = titleMatch[1];
     }
+
+    // Determine task status — if in review or in-progress, this is a revision request
+    const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
+    const taskStatus = task?.status || taskStates[taskId]?.status || 'unknown';
+    const isRevisionMode = taskStatus === 'review' || taskStatus === 'in-progress';
     
     const userMessage: ChatMessage = {
       id: `msg-${timestamp}`,
@@ -867,7 +872,40 @@ Start working on this now.`;
 
     let responseContent = '';
 
-    const chatPrompt = `You are helping with a task called "${taskTitle}".
+    // Build prompt based on mode
+    let chatPrompt: string;
+
+    if (isRevisionMode) {
+      // REVISION MODE: send as a coding instruction, like runAITask
+      const { getSystemPrompt } = useConfigStore.getState();
+      let systemPrompt = '';
+      try {
+        systemPrompt = getSystemPrompt();
+      } catch (e) {
+        console.log('[sendMessage] No config available, using default prompt');
+      }
+
+      // Build a summary of recent conversation for context
+      const recentMessages = existingMessages
+        .filter(m => m.role !== 'system')
+        .slice(-10) // Last 10 messages for context
+        .map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content.substring(0, 500)}`)
+        .join('\n');
+
+      chatPrompt = `${systemPrompt ? systemPrompt + '\n\n---\n\n' : ''}You are currently working on a task: "${taskTitle}"
+${task?.description ? `Task description: ${task.description}` : ''}
+
+Previous conversation context:
+${recentMessages}
+
+The user has reviewed your work and is requesting the following revision:
+
+${content}
+
+Please implement the requested changes now. Modify the code directly.`;
+    } else {
+      // CHAT MODE: simple Q&A
+      chatPrompt = `You are helping with a task called "${taskTitle}".
     
 Previous conversation:
 ${existingMessages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}
@@ -875,6 +913,7 @@ ${existingMessages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.co
 User's new question: ${content}
 
 Please respond helpfully and concisely.`;
+    }
 
     try {
       const { listen } = await import('@tauri-apps/api/event');
@@ -884,17 +923,71 @@ Please respond helpfully and concisely.`;
         complete: null,
       };
 
-      unlistenFns.output = await listen('cli-output', (event: { payload: { line: string } }) => {
+      let completionResolve: ((value: string) => void) | undefined;
+
+      // Register completion listener BEFORE cli-output to avoid race condition
+      const completionPromise = new Promise<string>((resolve) => {
+        completionResolve = resolve;
+      });
+
+      unlistenFns.complete = await listen('cli-complete', (_event: { payload: { success: boolean; exit_code?: number; error_message?: string } }) => {
+        if (completionResolve) completionResolve(responseContent);
+      });
+
+      unlistenFns.output = await listen('cli-output', (event: { payload: { line: string; is_error?: boolean } }) => {
         const { messages } = get();
         const taskMessages = messages[taskId] || [];
         const aiMsgIndex = taskMessages.findIndex((m) => m.id === aiMessageId);
-        responseContent += event.payload.line + '\n';
+        
+        let displayLine = event.payload.line;
 
-        if (aiMsgIndex >= 0) {
+        // Handle opencode JSON format
+        if (engine.alias === 'opencode') {
+          try {
+            const json = JSON.parse(event.payload.line);
+            if (json.type === 'text' && json.part?.text) {
+              displayLine = json.part.text;
+            } else if (json.type === 'step_start') {
+              displayLine = `[${json.part?.type || 'step'}] Thinking...`;
+            } else if (json.type === 'tool_use') {
+              const toolState = json.part?.state;
+              const toolName = json.part?.tool || 'unknown';
+              let toolInfo = `[Tool: ${toolName}]`;
+              if (toolState?.input?.filePath) {
+                toolInfo += ` ${toolState.input.filePath}`;
+              } else if (toolState?.input?.pattern) {
+                toolInfo += ` ${toolState.input.pattern}`;
+              }
+              if (toolState?.output) {
+                const output = typeof toolState.output === 'string' 
+                  ? toolState.output.substring(0, 200) 
+                  : JSON.stringify(toolState.output).substring(0, 200);
+                toolInfo += `\n  → ${output}`;
+              }
+              displayLine = toolInfo;
+            } else if (json.type === 'step_finish') {
+              const tokens = json.tokens?.total || 0;
+              const cost = json.cost ? ` ($${json.cost.toFixed(6)})` : '';
+              displayLine = `\n--- Step completed: ${tokens} tokens${cost} ---`;
+            } else if (json.type === 'error') {
+              displayLine = `❌ Error: ${json.message || 'Unknown error'}`;
+            } else {
+              displayLine = '';
+            }
+          } catch (e) {
+            // Not JSON, use as-is
+          }
+        }
+
+        if (displayLine) {
+          responseContent += displayLine + '\n';
+        }
+
+        if (aiMsgIndex >= 0 && displayLine) {
           const updatedMessages = [...taskMessages];
           updatedMessages[aiMsgIndex] = {
             ...updatedMessages[aiMsgIndex],
-            content: updatedMessages[aiMsgIndex].content + event.payload.line + '\n',
+            content: updatedMessages[aiMsgIndex].content + displayLine + '\n',
           };
 
           set({
@@ -906,22 +999,26 @@ Please respond helpfully and concisely.`;
         }
       });
 
-      const completionPromise = new Promise<string>((resolve) => {
-        const handleComplete = (_event: { payload: { success: boolean; exit_code?: number; error_message?: string } }) => {
-          resolve(responseContent);
-        };
-        listen('cli-complete', handleComplete).then((fn) => {
-          unlistenFns.complete = fn;
-        });
-      });
-
       const workspace = useWorkspaceStore.getState().activeWorkspace;
       const cwd = workspace?.folder_path || null;
 
+      // Build args based on engine type (same pattern as runAITask)
+      let args: string[];
+      let actualPrompt: string;
+
+      if (engine.alias === 'opencode') {
+        const workingDir = cwd || '.';
+        args = ['run', '--format', 'json', '--dir', workingDir, chatPrompt];
+        actualPrompt = '';
+      } else {
+        args = engine.args.split(' ').filter(Boolean);
+        actualPrompt = chatPrompt;
+      }
+
       await invoke('run_cli', {
         binary: engine.binary_path,
-        args: engine.args.split(' ').filter(Boolean),
-        prompt: chatPrompt,
+        args: args,
+        prompt: actualPrompt,
         cwd: cwd,
       });
 
