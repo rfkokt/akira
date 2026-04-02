@@ -22,13 +22,13 @@ export const dbService = {
     invoke<void>('update_task', { id, title, description, priority }),
   
   updateTaskPRInfo: (id: string, prBranch: string, prUrl: string | null, remote: string | null) => 
-    invoke<void>('update_task_pr_info', { id, pr_branch: prBranch, pr_url: prUrl, remote }),
+    invoke<void>('update_task_pr_info', { id, prBranch, prUrl, remote }),
 
   updateTaskMergeInfo: (id: string, isMerged: boolean, mergeSourceBranch: string | null) =>
-    invoke<void>('update_task_merge_info', { id, is_merged: isMerged, merge_source_branch: mergeSourceBranch }),
+    invoke<void>('update_task_merge_info', { id, isMerged, mergeSourceBranch }),
 
   updateTaskDiffInfo: (id: string, diffContent: string | null, diffCapturedAt: string | null) =>
-    invoke<void>('update_task_diff_info', { id, diff_content: diffContent, diff_captured_at: diffCapturedAt }),
+    invoke<void>('update_task_diff_info', { id, diffContent, diffCapturedAt }),
   
   deleteTask: (id: string) => 
     invoke<void>('delete_task', { id }),
@@ -48,13 +48,13 @@ export const dbService = {
 
   // Chat History
   createChatMessage: (taskId: string, role: string, content: string, engineAlias: string) =>
-    invoke<number>('create_chat_message', { task_id: taskId, role, content, engine_alias: engineAlias }),
+    invoke<number>('create_chat_message', { taskId, role, content, engineAlias }),
   
   getChatHistory: (taskId: string) =>
-    invoke<ChatMessage[]>('get_chat_history', { task_id: taskId }),
+    invoke<ChatMessage[]>('get_chat_history', { taskId }),
   
   clearChatHistory: (taskId: string) =>
-    invoke<void>('clear_chat_history', { task_id: taskId }),
+    invoke<void>('clear_chat_history', { taskId }),
 
   // CLI Runner
   runCli: (binary: string, args: string[], prompt: string, cwd?: string) =>
@@ -68,11 +68,11 @@ export const dbService = {
     invoke<Engine[]>('seed_default_engines'),
 
   // Task Import
-  importTasksJson: (content: string, workspace_id: string) =>
-    invoke<{ tasks: Task[] }>('import_tasks_json', { content, workspace_id }),
+  importTasksJson: (content: string, workspaceId: string) =>
+    invoke<{ tasks: Task[] }>('import_tasks_json', { content, workspaceId }),
 
-  importTasksMarkdown: (content: string, workspace_id: string) =>
-    invoke<{ tasks: Task[] }>('import_tasks_markdown', { content, workspace_id }),
+  importTasksMarkdown: (content: string, workspaceId: string) =>
+    invoke<{ tasks: Task[] }>('import_tasks_markdown', { content, workspaceId }),
 
   // RTK Commands
   checkRtkStatus: () =>

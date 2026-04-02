@@ -192,19 +192,15 @@ export function TerminalPanel() {
         <div className="flex items-center gap-1">
 
           <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={toggleMaximize}
-              >
+            <TooltipTrigger
+              className="w-5 h-5 ml-1 rounded-md hover:bg-white/10 flex items-center justify-center transition-colors text-neutral-400 hover:text-white"
+              onClick={toggleMaximize}
+            >
                 {isPanelMaximized ? (
-                  <ChevronDown className="w-3 h-3" />
+                  <ChevronDown className="w-3.5 h-3.5" />
                 ) : (
-                  <ChevronUp className="w-3 h-3" />
+                  <ChevronUp className="w-3.5 h-3.5" />
                 )}
-              </Button>
             </TooltipTrigger>
             <TooltipContent>{isPanelMaximized ? 'Minimize' : 'Maximize'}</TooltipContent>
           </Tooltip>

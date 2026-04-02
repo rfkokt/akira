@@ -246,29 +246,29 @@ const style = {
       )}
 
       {task.status === 'review' && taskStates[task.id]?.prBranch && (
-          <div className="mt-2 pt-2 border-t border-green-500/20">
-            <div className="flex items-center gap-1.5 text-xs text-green-400">
-              <GitBranch className="w-3 h-3" />
-              <span className="font-mono truncate">{taskStates[task.id].prBranch}</span>
+        <div className="mt-2 pt-2 border-t border-green-500/20">
+          {taskStates[task.id]?.prUrl ? (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={async (e) => {
+                e.stopPropagation()
+                const { open } = await import('@tauri-apps/plugin-shell')
+                await open(taskStates[task.id].prUrl!)
+              }}
+              className="h-auto p-0 flex items-center justify-start gap-1.5 text-xs text-app-accent hover:text-app-accent-hover w-full overflow-hidden"
+            >
+              <GitBranch className="w-3 h-3 shrink-0" />
+              <span className="font-mono truncate leading-normal">{taskStates[task.id].prBranch}</span>
+            </Button>
+          ) : (
+            <div className="flex items-center justify-start gap-1.5 text-xs text-green-400 w-full overflow-hidden">
+              <GitBranch className="w-3 h-3 shrink-0" />
+              <span className="font-mono truncate leading-normal">{taskStates[task.id].prBranch}</span>
             </div>
-            {taskStates[task.id]?.prUrl && (
-              <div className="mt-1">
-                <Button 
-                  variant="link"
-                  size="sm"
-                  onClick={async (e) => {
-                    e.stopPropagation()
-                    const { open } = await import('@tauri-apps/plugin-shell')
-                    await open(taskStates[task.id].prUrl!)
-                  }}
-                  className="h-auto p-0 text-xs text-app-accent hover:text-app-accent-hover truncate"
-                >
-                  View PR
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
+      )}
     </div>
   )
 }

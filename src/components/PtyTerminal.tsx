@@ -83,7 +83,17 @@ export function PtyTerminal({
     const fit = new FitAddon()
     fitAddon.current = fit
     term.loadAddon(fit)
-    term.loadAddon(new WebLinksAddon())
+    
+    // Configure WebLinksAddon to use Tauri's native open
+    term.loadAddon(new WebLinksAddon(async (e, uri) => {
+      e.preventDefault();
+      try {
+        const { open } = await import('@tauri-apps/plugin-shell');
+        await open(uri);
+      } catch (err) {
+        console.error('Failed to open terminal link:', err);
+      }
+    }));
 
     term.open(terminalRef.current)
     
