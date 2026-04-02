@@ -162,8 +162,10 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
 
   useEffect(() => {
     const setupListeners = async () => {
-      const unlistenOutput = await listen<{ line: string; is_error: boolean }>('cli-output', (event) => {
-        const { line, is_error } = event.payload
+      const unlistenOutput = await listen<{ id: string; line: string; is_error: boolean }>('cli-output', (event) => {
+        const { id, line, is_error } = event.payload
+        if (id !== taskId && id !== taskId + '_summary' && id !== '__analyze_project_creator__') return;
+
         const timestamp = Date.now()
         
         // Get fresh engine state from store
@@ -192,8 +194,10 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
         }
       })
 
-      const unlistenComplete = await listen<{ success: boolean; error_message?: string }>('cli-complete', (event) => {
-        const { success, error_message } = event.payload
+      const unlistenComplete = await listen<{ id: string; success: boolean; error_message?: string }>('cli-complete', (event) => {
+        const { id, success, error_message } = event.payload
+        if (id !== taskId && id !== taskId + '_summary' && id !== '__analyze_project_creator__') return;
+
         console.log('[TaskCreatorChat] cli-complete received, success:', success)
         setExecutionSteps(prev => [...prev, {
           type: success ? 'complete' : 'error',
@@ -203,7 +207,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
       })
 
       unlistenFns.current = [unlistenOutput, unlistenComplete]
-      console.log('[TaskCreatorChat] Listeners set up')
+      console.log('[TaskCreatorChat] Listeners set up for', taskId)
     }
 
     setupListeners()
@@ -212,7 +216,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
       unlistenFns.current.forEach(fn => fn())
       unlistenFns.current = []
     }
-  }, []) // Empty dependency - listener stays active, gets engine from store
+  }, [taskId]) // Re-run when taskId changes
 
   const loadAllHistory = useCallback(async () => {
     try {

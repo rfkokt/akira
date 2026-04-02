@@ -361,6 +361,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
 
     try {
       const result = await runCLIWithStreaming({
+        taskId,
         engineAlias: engine.alias,
         binaryPath: engine.binary_path,
         engineArgs: engine.args,
@@ -541,6 +542,7 @@ Please respond helpfully and concisely.`;
 
     try {
       const result = await runCLIWithStreaming({
+        taskId,
         engineAlias: engine.alias,
         binaryPath: engine.binary_path,
         engineArgs: engine.args,
@@ -599,6 +601,7 @@ Please respond helpfully and concisely.`;
 
     try {
       const result = await runCLIWithStreaming({
+        taskId,
         engineAlias: engine.alias,
         binaryPath: engine.binary_path,
         engineArgs: engine.args,

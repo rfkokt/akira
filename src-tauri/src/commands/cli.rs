@@ -6,12 +6,14 @@ use crate::state::AppState;
 
 #[derive(Debug, Clone, serde::Serialize)]
 struct CliOutput {
+    id: String,
     line: String,
     is_error: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 struct CliComplete {
+    id: String,
     success: bool,
     error_message: Option<String>,
 }
@@ -20,6 +22,7 @@ struct CliComplete {
 pub async fn run_cli(
     window: tauri::Window,
     _state: State<'_, AppState>,
+    id: String,
     binary: String,
     args: Vec<String>,
     prompt: String,
@@ -51,6 +54,7 @@ pub async fn run_cli(
     
     // Clone window for stdout thread
     let window_stdout = window.clone();
+    let id_stdout = id.clone();
     
     // Handle stdout
     if let Some(stdout) = stdout {
@@ -59,6 +63,7 @@ pub async fn run_cli(
             for line in reader.lines() {
                 if let Ok(line) = line {
                     let _ = window_stdout.emit("cli-output", CliOutput {
+                        id: id_stdout.clone(),
                         line,
                         is_error: false,
                     });
@@ -69,6 +74,7 @@ pub async fn run_cli(
     
     // Clone window for stderr thread
     let window_stderr = window.clone();
+    let id_stderr = id.clone();
     
     // Handle stderr
     if let Some(stderr) = stderr {
@@ -77,6 +83,7 @@ pub async fn run_cli(
             for line in reader.lines() {
                 if let Ok(line) = line {
                     let _ = window_stderr.emit("cli-output", CliOutput {
+                        id: id_stderr.clone(),
                         line,
                         is_error: true,
                     });
@@ -87,6 +94,7 @@ pub async fn run_cli(
     
     // Wait for completion in a separate thread
     let window_complete = window.clone();
+    let id_complete = id.clone();
     
     thread::spawn(move || {
         // Wait for the child process to complete
@@ -95,6 +103,7 @@ pub async fn run_cli(
         
         // Emit completion event
         let _ = window_complete.emit("cli-complete", CliComplete {
+            id: id_complete,
             success,
             error_message: None,
         });

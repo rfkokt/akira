@@ -11,6 +11,8 @@ import { getProvider } from '@/lib/providers';
 // ─── Types ──────────────────────────────────────────────────────────────
 
 export interface CLIRunParams {
+  /** Task ID or Execution ID */
+  taskId: string;
   /** Engine alias (opencode, claude, etc.) */
   engineAlias: string;
   /** Engine binary path */
@@ -46,6 +48,7 @@ export interface CLIRunResult {
  */
 export async function runCLIWithStreaming(params: CLIRunParams): Promise<CLIRunResult> {
   const {
+    taskId,
     engineAlias,
     binaryPath,
     engineArgs,
@@ -67,12 +70,15 @@ export async function runCLIWithStreaming(params: CLIRunParams): Promise<CLIRunR
       completionResolve = resolve;
     });
 
-    unlistenComplete = await listen('cli-complete', (event: { payload: { success: boolean; error_message?: string } }) => {
+    unlistenComplete = await listen('cli-complete', (event: { payload: { id: string; success: boolean; error_message?: string } }) => {
+      if (event.payload.id !== taskId) return;
       if (completionResolve) completionResolve(event.payload);
     });
 
     // Setup output listener
-    unlistenOutput = await listen('cli-output', (event: { payload: { line: string; is_error?: boolean } }) => {
+    unlistenOutput = await listen('cli-output', (event: { payload: { id: string; line: string; is_error?: boolean } }) => {
+      if (event.payload.id !== taskId) return;
+      
       const parsed = provider.parseOutputLine(event.payload.line);
       if (!parsed) return;
 
@@ -90,10 +96,11 @@ export async function runCLIWithStreaming(params: CLIRunParams): Promise<CLIRunR
       cwd: cwd || '',
     });
 
-    console.log(`[cli] Running ${engineAlias} | Args: ${args.length} | StdIn: ${stdinPrompt ? 'yes' : 'no'}`);
+    console.log(`[cli] Running ${engineAlias} | Task: ${taskId} | Args: ${args.length} | StdIn: ${stdinPrompt ? 'yes' : 'no'}`);
 
     // Start CLI
     await invoke('run_cli', {
+      id: taskId,
       binary: binaryPath,
       args,
       prompt: stdinPrompt,
