@@ -152,7 +152,8 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   }, [activeWorkspace?.folder_path, fetchFiles])
 
   useEffect(() => {
-    clearMessages(taskId)
+    // DO NOT call clearMessages(taskId) here — it wipes the current chat.
+    // loadChatHistory will handle restoring messages from DB when switching sessions.
     loadChatHistory()
     setSummarizedAtLength(-1)
   }, [taskId, activeWorkspace?.id])
