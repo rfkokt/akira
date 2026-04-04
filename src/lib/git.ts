@@ -49,6 +49,18 @@ export async function runGit(args: string[], cwd: string): Promise<ShellResult> 
   };
 }
 
+// ─── Remote Helpers ─────────────────────────────────────────────────────
+
+export async function getDefaultRemote(cwd: string): Promise<string> {
+  const res = await runGit(['remote'], cwd);
+  if (!res.success || !res.stdout.trim()) return 'origin';
+  
+  const remotes = res.stdout.trim().split('\n');
+  // Prefer 'origin', otherwise use first remote
+  if (remotes.includes('origin')) return 'origin';
+  return remotes[0] || 'origin';
+}
+
 // ─── Platform Detection ─────────────────────────────────────────────────
 
 /**
@@ -317,8 +329,12 @@ export interface MergeOptions {
   deleteBranch?: boolean;
 }
 
-export async function mergeTaskToBranch(cwd: string, featureBranch: string, targetBranch: string, options?: MergeOptions): Promise<{ success: boolean; log: string }> {
+export async function mergeTaskToBranch(cwd: string, featureBranch: string, targetBranch: string, options?: MergeOptions): Promise<{ success: boolean; log: string; mergedToBranch?: string }> {
   let fullLog = '';
+  
+  // Auto-detect remote name (origin, kaidev, etc.)
+  const remote = await getDefaultRemote(cwd);
+  fullLog += `[Using remote: ${remote}]\n`;
 
   const exec = async (args: string[], allowFail = false) => {
     fullLog += `> git ${args.join(' ')}\n`;
@@ -334,13 +350,13 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
 
   try {
     // 1. Fetch remote changes to keep up to date (optional, may fail if no remote)
-    await exec(['fetch', 'origin', targetBranch], true);
+    await exec(['fetch', remote, targetBranch], true);
 
     // 2. Checkout target branch
     await exec(['checkout', targetBranch]);
 
     // 3. Pull latest (might fail if branch has no upstream, which is fine)
-    await exec(['pull', 'origin', targetBranch], true);
+    await exec(['pull', remote, targetBranch], true);
 
     // 4. Merge feature branch
     await exec(['merge', '--no-ff', featureBranch, '-m', `Merge branch '${featureBranch}' into ${targetBranch}`]);
@@ -351,20 +367,20 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
     }
 
     // 6. Push target branch
-    await exec(['push', 'origin', targetBranch]);
+    await exec(['push', remote, targetBranch]);
 
     // 7. Push tags if applied
     if (options && options.createTag) {
-      await exec(['push', 'origin', '--tags']);
+      await exec(['push', remote, '--tags']);
     }
 
     // 8. Delete feature branch if requested
     if (options && options.deleteBranch) {
       await exec(['branch', '-d', featureBranch], true); // local
-      await exec(['push', 'origin', '--delete', featureBranch], true); // remote
+      await exec(['push', remote, '--delete', featureBranch], true); // remote
     }
 
-    return { success: true, log: fullLog };
+    return { success: true, log: fullLog, mergedToBranch: targetBranch };
   } catch (error: any) {
     return { success: false, log: error.message || String(error) };
   }

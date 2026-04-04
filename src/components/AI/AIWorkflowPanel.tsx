@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { getGitBranches, getLatestAlphaTag, mergeTaskToBranch } from '@/lib/git';
 import { useAIChatStore } from '@/store/aiChatStore';
+import { dbService } from '@/lib/db';
 import { Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
 import { emit } from '@tauri-apps/api/event';
@@ -29,9 +30,13 @@ export function AIWorkflowPanel({
   onComplete 
 }: AIWorkflowPanelProps) {
   const { activeEngine } = useEngineStore();
+  const taskStates = useAIChatStore((state) => state.taskStates);
   const [showGitFlow, setShowGitFlow] = useState(false);
 
   const getActionsByStatus = () => {
+    const taskState = taskStates[task.id];
+    const hasBranch = task.merge_source_branch || taskState?.prBranch || task.pr_branch;
+    
     switch (task.status) {
       case 'todo':
         return (
@@ -123,6 +128,85 @@ export function AIWorkflowPanel({
               <GitBranch className="w-4 h-4" />
               Complete & Push
             </Button>
+          </div>
+        );
+
+case 'done':
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-3 bg-[#1e1e1e] rounded-lg border border-white/5">
+              <CheckCircle className="w-8 h-8 text-green-500" />
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-white font-geist">Task Completed</h4>
+                <p className="text-xs text-neutral-500 font-geist">
+                  {task.is_merged 
+                    ? `Merged: ${task.merge_source_branch || 'branch'} → ${task.merged_to_branch || 'target'}`
+                    : (hasBranch ? 'Ready to merge' : 'Task finished successfully')}
+                </p>
+              </div>
+            </div>
+
+            {hasBranch && !task.is_merged && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={onViewDiff}
+                  >
+                    <FileDiff className="w-4 h-4" />
+                    View Diff
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={onOpenChat}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Chat
+                  </Button>
+                </div>
+
+                <Button
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  onClick={() => setShowGitFlow(true)}
+                >
+                  <GitBranch className="w-4 h-4" />
+                  Merge From {task.merge_source_branch || task.pr_branch}
+                </Button>
+              </>
+            )}
+
+            {task.is_merged && task.merged_to_branch && (
+              <>
+                <div className="text-xs text-neutral-400 font-geist p-2 bg-[#1a1a1a] rounded">
+                  Current branch: <span className="text-app-accent font-mono">{task.merged_to_branch}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={onViewDiff}
+                  >
+                    <FileDiff className="w-4 h-4" />
+                    View Diff
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={onOpenChat}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Chat
+                  </Button>
+                </div>
+
+                <Button
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  onClick={() => setShowGitFlow(true)}
+                >
+                  <GitBranch className="w-4 h-4" />
+                  Merge {task.merged_to_branch} → Target
+                </Button>
+              </>
+            )}
           </div>
         );
 
@@ -243,8 +327,11 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
       return;
     }
     
-    // Fallback: use task.pr_branch from DB if taskState memory is missing
-    const featureBranch = taskState?.prBranch || task.pr_branch;
+    // For tasks already merged once, use merged_to_branch as source (e.g., development)
+    // Otherwise use pr_branch or merge_source_branch from first merge attempt
+    const featureBranch = task.is_merged 
+      ? (task.merged_to_branch || task.merge_source_branch || task.pr_branch)
+      : (task.merge_source_branch || taskState?.prBranch || task.pr_branch);
     if (!featureBranch) {
       alert("AI feature branch PR could not be found for this task. The task may not have been run by AI, or the branch info was not saved.");
       return;
@@ -261,6 +348,15 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
 
     if (result.success) {
       setExecLog(prev => prev + '\n' + result.log + '\n\n✅ Merge and Push completed successfully!');
+      
+      // Save merge info to database
+      try {
+        await dbService.updateTaskMergeInfo(task.id, true, featureBranch, result.mergedToBranch || targetBranch);
+        console.log('[GitPushFlow] Saved merge info:', { featureBranch, targetBranch: result.mergedToBranch || targetBranch });
+      } catch (err) {
+        console.error('[GitPushFlow] Failed to save merge info:', err);
+      }
+      
       // Notify GitBranchSelector to refresh — branch is now targetBranch
       try {
         await emit('git-branch-changed', { branch: targetBranch, cwd: workspacePath });

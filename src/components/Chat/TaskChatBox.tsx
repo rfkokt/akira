@@ -1,20 +1,23 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { X, Send, Loader2, Copy, Check, MessageSquare } from 'lucide-react'
 import { useAIChatStore, useEngineStore } from '@/store'
 import type { Task, ChatMessage as DbChatMessage } from '@/types'
+import type { ChatMessage } from '@/store/aiChatStore'
 import { dbService } from '@/lib/db'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
+const EMPTY_ARRAY: ChatMessage[] = []
+
+const CodeBlock = memo(function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
   
-  const handleCopy = () => {
+  const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  }, [code]);
   
   return (
     <div className="my-3 rounded-xl overflow-hidden border border-app-border/40 bg-app-bg shadow-md">
@@ -53,9 +56,9 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
       </pre>
     </div>
   );
-}
+});
 
-function MarkdownContent({ content }: { content: string }) {
+const MarkdownContent = memo(function MarkdownContent({ content }: { content: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -150,7 +153,7 @@ function MarkdownContent({ content }: { content: string }) {
       {content}
     </ReactMarkdown>
   );
-}
+});
 
 interface TaskChatBoxProps {
   task: Task;
@@ -158,18 +161,127 @@ interface TaskChatBoxProps {
   onClose: () => void;
 }
 
-export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
+interface MessageItemProps {
+  msg: {
+    id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+  };
+  currentStreamingId?: string;
+}
+
+const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: MessageItemProps) {
+  return (
+    <div
+      className={`flex flex-col gap-1 ${
+        msg.role === 'user' ? 'items-end' : 'items-start'
+      }`}
+    >
+      <div className={`px-4 py-3 max-w-[90%] rounded-2xl shadow-sm border ${
+        msg.role === 'user'
+          ? 'bg-app-accent/15 border border-app-accent/20 text-blue-50 rounded-tr-sm'
+          : msg.role === 'system'
+            ? 'bg-yellow-500/10 text-yellow-200 border-yellow-500/20 rounded-bl-sm'
+            : 'bg-app-bg/50 border-app-border text-app-text rounded-tl-sm'
+      }`}>
+        {msg.role === 'assistant' ? (
+          <div className="text-[13px] leading-relaxed min-w-0 overflow-hidden">
+            <MarkdownContent content={msg.content} />
+            {currentStreamingId === msg.id && (
+              <span className="inline-flex mt-1">
+                <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-1" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-1" style={{ animationDelay: '300ms' }} />
+              </span>
+            )}
+          </div>
+        ) : (
+          <pre className="whitespace-pre-wrap break-all text-[13px] leading-relaxed font-geist">{msg.content}</pre>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const ChatInput = memo(function ChatInput({ 
+  onSend, 
+  isStreaming, 
+  hasEngine,
+  placeholder 
+}: { 
+  onSend: (msg: string) => void; 
+  isStreaming: boolean;
+  hasEngine: boolean;
+  placeholder: string;
+}) {
   const [message, setMessage] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`
+    }
+  }, [message])
+
+  const handleSend = useCallback(() => {
+    if (!message.trim()) return
+    const msg = message
+    setMessage('')
+    onSend(msg)
+  }, [message, onSend])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }, [handleSend])
+
+  return (
+    <div className="shrink-0 p-3 bg-app-sidebar/80 backdrop-blur-md border-t border-app-border/60">
+      <div className="flex items-end gap-2.5">
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={!hasEngine || isStreaming}
+          className="flex-1 px-4 py-3 rounded-xl text-sm bg-[#1e1e1e] text-white placeholder-neutral-500 border border-app-border focus:outline-none focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 resize-none transition-all shadow-inner custom-scrollbar"
+          rows={1}
+          style={{ minHeight: '44px', maxHeight: '120px' }}
+        />
+        <Button
+          size="icon"
+          onClick={handleSend}
+          disabled={!message.trim() || !hasEngine || isStreaming}
+          className="w-11 h-11 shrink-0 rounded-xl bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 shadow-[0_0_15px_var(--app-accent-glow)] transition-all disabled:shadow-none"
+        >
+          {isStreaming ? (
+            <Loader2 className="w-5 h-5 animate-spin text-white" />
+          ) : (
+            <Send className="w-4 h-4 text-white ml-0.5" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+});
+
+export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const aiChatStore = useAIChatStore()
-  const { sendMessage, getMessages, isStreaming, setMessages, streamingMessageId } = aiChatStore
+  const { sendMessage, setMessages, streamingMessageId } = useAIChatStore()
+  const taskMessages = useAIChatStore(
+    useCallback(state => state.messages[task.id] ?? EMPTY_ARRAY, [task.id])
+  )
   const { activeEngine } = useEngineStore()
   
-  const taskMessages = getMessages(task.id)
-  const isTaskStreaming = isStreaming(task.id)
   const currentStreamingId = streamingMessageId[task.id]
+  const isTaskStreaming = useAIChatStore(
+    useCallback(state => state.streamingMessageId[task.id] != null, [task.id])
+  )
 
   useEffect(() => {
     if (!task.id || historyLoaded) return
@@ -179,7 +291,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
         const history = await dbService.getChatHistory(task.id)
         console.log('[TaskChatBox] Loaded history from DB:', history.length, 'messages')
         if (history && history.length > 0) {
-          const existingMessages = getMessages(task.id)
+          const existingMessages = useAIChatStore.getState().messages[task.id] || []
           console.log('[TaskChatBox] Existing messages in store:', existingMessages.length)
           if (existingMessages.length === 0) {
             const storeMessages = history.map((msg: DbChatMessage) => ({
@@ -201,25 +313,14 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     }
     
     loadHistory()
-  }, [task.id, historyLoaded])
+  }, [task.id, historyLoaded, setMessages])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [taskMessages, isTaskStreaming])
 
-  // Auto-resize textarea based on content
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`
-    }
-  }, [message])
-
-  const handleSend = async () => {
-    if (!message.trim() || !activeEngine) return
-    
-    const msg = message
-    setMessage('')
+  const handleSend = useCallback(async (msg: string) => {
+    if (!activeEngine) return
     
     try {
       await dbService.createChatMessage(task.id, 'user', msg, activeEngine.alias)
@@ -229,14 +330,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     }
     
     await sendMessage(task.id, msg)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+  }, [task.id, activeEngine, sendMessage])
 
   if (!isOpen) return null
 
@@ -289,67 +383,18 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
           </div>
         ) : (
           taskMessages.map((msg, idx) => (
-            <div
-              key={idx}
-              className={`flex flex-col gap-1 ${
-                msg.role === 'user' ? 'items-end' : 'items-start'
-              }`}
-            >
-              <div className={`px-4 py-3 max-w-[90%] rounded-2xl shadow-sm border ${
-                msg.role === 'user'
-                  ? 'bg-app-accent/15 border border-app-accent/20 text-blue-50 rounded-tr-sm'
-                  : msg.role === 'system'
-                    ? 'bg-yellow-500/10 text-yellow-200 border-yellow-500/20 rounded-bl-sm'
-                    : 'bg-app-bg/50 border-app-border text-app-text rounded-tl-sm'
-              }`}>
-                {msg.role === 'assistant' ? (
-                  <div className="text-[13px] leading-relaxed min-w-0 overflow-hidden">
-                    <MarkdownContent content={msg.content} />
-                    {currentStreamingId === msg.id && (
-                      <span className="inline-flex mt-1">
-                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-1" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-1" style={{ animationDelay: '300ms' }} />
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <pre className="whitespace-pre-wrap break-all text-[13px] leading-relaxed font-geist">{msg.content}</pre>
-                )}
-              </div>
-            </div>
+            <MessageItem key={msg.id || idx} msg={msg} currentStreamingId={currentStreamingId ?? undefined} />
           ))
         )}
         <div ref={messagesEndRef} className="h-2" />
       </div>
 
-      <div className="shrink-0 p-3 bg-app-sidebar/80 backdrop-blur-md border-t border-app-border/60">
-        <div className="flex items-end gap-2.5">
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
-            disabled={!activeEngine || isTaskStreaming}
-            className="flex-1 px-4 py-3 rounded-xl text-sm bg-[#1e1e1e] text-white placeholder-neutral-500 border border-app-border focus:outline-none focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 resize-none transition-all shadow-inner custom-scrollbar"
-            rows={1}
-            style={{ minHeight: '44px', maxHeight: '120px' }}
-          />
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={!message.trim() || !activeEngine || isTaskStreaming}
-            className="w-11 h-11 shrink-0 rounded-xl bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 shadow-[0_0_15px_var(--app-accent-glow)] transition-all disabled:shadow-none"
-          >
-            {isTaskStreaming ? (
-              <Loader2 className="w-5 h-5 animate-spin text-white" />
-            ) : (
-              <Send className="w-4 h-4 text-white ml-0.5" />
-            )}
-          </Button>
-        </div>
-      </div>
+      <ChatInput 
+        onSend={handleSend}
+        isStreaming={isTaskStreaming}
+        hasEngine={!!activeEngine}
+        placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
+      />
     </div>
   )
 }

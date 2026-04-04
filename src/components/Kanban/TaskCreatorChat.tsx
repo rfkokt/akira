@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
 import { useConfigStore } from '@/store/configStore'
+import { useAnalyzeProject } from '@/hooks/useAnalyzeProject'
 import { dbService } from '@/lib/db'
 import { getProvider } from '@/lib/providers'
 import ReactMarkdown from 'react-markdown'
@@ -104,6 +105,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [executionSteps, setExecutionSteps] = useState<{ type: string; content: string; timestamp: number }[]>([])
   const [showProgress, setShowProgress] = useState(true)
   const [isAnalyzingProject, setIsAnalyzingProject] = useState(false)
+  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const progressEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -113,7 +115,8 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const { activeEngine, engines, setActiveEngine } = useEngineStore()
   const { createTask } = useTaskStore()
   const { activeWorkspace } = useWorkspaceStore()
-  const { config, updateField, saveConfig } = useConfigStore()
+  const { config } = useConfigStore()
+  const { analyzeProject } = useAnalyzeProject()
 
   const baseTaskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
   const taskId = chatSessionId ? `${baseTaskId}_${chatSessionId}` : baseTaskId
@@ -642,63 +645,20 @@ Rules:
 
   const handleAnalyzeInCreator = async () => {
     const cwd = activeWorkspace?.folder_path
-    if (!activeEngine || !cwd) return
+    if (!cwd || !activeEngine) return
 
     setIsAnalyzingProject(true)
-    const analysisPrompt = `[System: You are a code analyzer. DO NOT modify any files. DO NOT use any tools that write to disk. ONLY read and analyze.]
-
-Analyze the project at ${cwd}. Read package.json, folder structure, and key .ts/.tsx source files.
-
-Generate coding rules that enforce: clean code, reusability, and secure coding practices.
-
-Output EXACTLY in this markdown format and nothing else:
-
-# Rules
-
-## DO
-- [specific convention or best practice found in this project]
-- [another convention...]
-(list 8-15 rules)
-
-## DON'T
-- [specific anti-pattern to avoid in this project]
-- [another anti-pattern...]
-(list 8-15 rules)
-
-Base the rules on the ACTUAL tech stack, patterns, and file structure you find. Be specific to THIS project, not generic advice.`
-
-    const tempId = '__analyze_project_creator__'
-    try {
-      await sendSimpleMessage(tempId, analysisPrompt)
-      await new Promise(r => setTimeout(r, 1500))
-      const msgs = getMessages(tempId)
-      const aiResponse = msgs.filter(m => m.role === 'assistant').pop()?.content || ''
-      clearMessages(tempId)
-
-      if (aiResponse.trim() && config) {
-        const existingRules = config.md_rules || ''
-        let combinedRules: string
-
-        if (existingRules.trim() && existingRules.split('\n').filter(l => l.trim().startsWith('-') && l.trim().length > 2).length > 2) {
-          const existingDos = (existingRules.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
-          const existingDonts = (existingRules.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
-          const newDos = (aiResponse.match(/## DO[\s\S]*?(?=## DON'?T|$)/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
-          const newDonts = (aiResponse.match(/## DON'?T[\s\S]*/i)?.[0] || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim())
-          const allDos = [...new Set([...existingDos, ...newDos])]
-          const allDonts = [...new Set([...existingDonts, ...newDonts])]
-          combinedRules = `# Rules\n\n## DO\n${allDos.join('\n')}\n\n## DON'T\n${allDonts.join('\n')}`
-        } else {
-          combinedRules = aiResponse
-        }
-
-        updateField('md_rules', combinedRules)
-        await saveConfig({ ...config, md_rules: combinedRules })
-      }
-    } catch (err) {
-      console.error('Analysis in creator failed:', err)
-    } finally {
-      setIsAnalyzingProject(false)
+    
+    const result = await analyzeProject(cwd, (status) => {
+      setAnalysisStatus(status)
+    })
+    
+    if (!result.success) {
+      setAnalysisStatus(`❌ ${result.error}`)
     }
+
+    setIsAnalyzingProject(false)
+    setTimeout(() => setAnalysisStatus(null), 3000)
   }
 
   const currentQuery = atSymbolIndex !== -1 ? message.slice(atSymbolIndex + 1) : ''
@@ -843,7 +803,12 @@ Base the rules on the ACTUAL tech stack, patterns, and file structure you find. 
                         <><Sparkles className="w-3.5 h-3.5 mr-2" /> Analyze Project & Generate Rules</>
                       )}
                     </Button>
-                    <p className="text-[10px] text-neutral-600 text-center mt-1.5">Auto-generate DO/DON'T rules for cleaner AI output</p>
+                    {analysisStatus && (
+                      <p className="text-[10px] text-neutral-400 text-center mt-1.5 animate-in fade-in">{analysisStatus}</p>
+                    )}
+                    {!analysisStatus && (
+                      <p className="text-[10px] text-neutral-600 text-center mt-1.5">Auto-generate DO/DON'T rules for cleaner AI output</p>
+                    )}
                   </div>
                 )}
               </div>

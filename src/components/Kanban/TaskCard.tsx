@@ -140,10 +140,30 @@ const style = {
           )}
 
           {task.status === 'done' && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400 font-geist">
-              <CheckCircle className="w-3 h-3" />
-              Done
-            </div>
+            (task.pr_branch || task.merge_source_branch || taskStates[task.id]?.prBranch) ? (
+              <Button
+                size="sm"
+                className="h-8 px-2.5 text-xs bg-green-600 hover:bg-green-700"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onComplete(task)
+                }}
+                disabled={isMergeLoading}
+                title="Merge Branch"
+              >
+                {isMergeLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <GitMerge className="w-3 h-3" />
+                )}
+                {isMergeLoading ? 'Merging...' : 'Merge'}
+              </Button>
+            ) : (
+              <div className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400 font-geist">
+                <CheckCircle className="w-3 h-3" />
+                Done
+              </div>
+            )
           )}
 
           {task.status === 'failed' && (

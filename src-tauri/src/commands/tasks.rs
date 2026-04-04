@@ -88,10 +88,17 @@ pub fn update_task_merge_info(
     id: String,
     is_merged: bool,
     merge_source_branch: Option<String>,
+    merged_to_branch: Option<String>,
 ) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    queries::update_task_merge_info(&conn, &id, is_merged, merge_source_branch.as_deref())
-        .map_err(|e: rusqlite::Error| e.to_string())
+    queries::update_task_merge_info(
+        &conn,
+        &id,
+        is_merged,
+        merge_source_branch.as_deref(),
+        merged_to_branch.as_deref(),
+    )
+    .map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]

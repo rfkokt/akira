@@ -13,6 +13,7 @@ export interface Task {
   remote: string | null;
   is_merged: boolean;
   merge_source_branch: string | null;
+  merged_to_branch: string | null;
   merged_at: string | null;
   diff_content: string | null; // Snapshot diff saat task selesai
   diff_captured_at: string | null;

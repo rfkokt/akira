@@ -112,6 +112,20 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute("ALTER TABLE tasks ADD COLUMN merged_at DATETIME", [])?;
     }
 
+    // Migration: Add merged_to_branch column
+    let has_merged_to_branch: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'merged_to_branch'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !has_merged_to_branch {
+        conn.execute("ALTER TABLE tasks ADD COLUMN merged_to_branch TEXT", [])?;
+    }
+
     // Migration: Add diff columns to tasks table
     let has_diff_content: bool = conn
         .query_row(
@@ -169,11 +183,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     }
 
     // Migration: Add git_token column to project_configs table
-    conn.execute(
-        "ALTER TABLE project_configs ADD COLUMN git_token TEXT",
-        [],
-    )
-    .ok(); // Ignore error if column already exists
+    conn.execute("ALTER TABLE project_configs ADD COLUMN git_token TEXT", [])
+        .ok(); // Ignore error if column already exists
 
     Ok(())
 }
@@ -208,6 +219,7 @@ fn create_tables(conn: &Connection) -> Result<()> {
             remote              TEXT,
             is_merged           INTEGER DEFAULT 0,
             merge_source_branch TEXT,
+            merged_to_branch    TEXT,
             merged_at           DATETIME,
             diff_content        TEXT,
             diff_captured_at    DATETIME,

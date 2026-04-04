@@ -18,6 +18,7 @@ pub struct Task {
     pub remote: Option<String>,
     pub is_merged: bool,
     pub merge_source_branch: Option<String>,
+    pub merged_to_branch: Option<String>,
     pub merged_at: Option<String>,
     pub diff_content: Option<String>,
     pub diff_captured_at: Option<String>,
@@ -57,7 +58,7 @@ pub fn create_task(conn: &Connection, task: &CreateTaskRequest) -> Result<Task> 
 
 pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
          FROM tasks WHERE id = ?1"
     )?;
 
@@ -76,11 +77,12 @@ pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
             remote: row.get(10)?,
             is_merged: row.get::<_, i32>(11)? != 0,
             merge_source_branch: row.get(12)?,
-            merged_at: row.get(13)?,
-            diff_content: row.get(14)?,
-            diff_captured_at: row.get(15)?,
-            created_at: row.get(16)?,
-            updated_at: row.get(17)?,
+            merged_to_branch: row.get(13)?,
+            merged_at: row.get(14)?,
+            diff_content: row.get(15)?,
+            diff_captured_at: row.get(16)?,
+            created_at: row.get(17)?,
+            updated_at: row.get(18)?,
         })
     });
 
@@ -93,7 +95,7 @@ pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
 
 pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
          FROM tasks WHERE status = ?1 ORDER BY created_at DESC"
     )?;
 
@@ -112,11 +114,12 @@ pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>>
             remote: row.get(10)?,
             is_merged: row.get::<_, i32>(11)? != 0,
             merge_source_branch: row.get(12)?,
-            merged_at: row.get(13)?,
-            diff_content: row.get(14)?,
-            diff_captured_at: row.get(15)?,
-            created_at: row.get(16)?,
-            updated_at: row.get(17)?,
+            merged_to_branch: row.get(13)?,
+            merged_at: row.get(14)?,
+            diff_content: row.get(15)?,
+            diff_captured_at: row.get(16)?,
+            created_at: row.get(17)?,
+            updated_at: row.get(18)?,
         })
     })?;
 
@@ -125,7 +128,7 @@ pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>>
 
 pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
          FROM tasks ORDER BY created_at DESC"
     )?;
 
@@ -144,11 +147,12 @@ pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
             remote: row.get(10)?,
             is_merged: row.get::<_, i32>(11)? != 0,
             merge_source_branch: row.get(12)?,
-            merged_at: row.get(13)?,
-            diff_content: row.get(14)?,
-            diff_captured_at: row.get(15)?,
-            created_at: row.get(16)?,
-            updated_at: row.get(17)?,
+            merged_to_branch: row.get(13)?,
+            merged_at: row.get(14)?,
+            diff_content: row.get(15)?,
+            diff_captured_at: row.get(16)?,
+            created_at: row.get(17)?,
+            updated_at: row.get(18)?,
         })
     })?;
 
@@ -157,7 +161,7 @@ pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
 
 pub fn get_tasks_by_workspace(conn: &Connection, workspace_id: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
          FROM tasks WHERE workspace_id = ?1 ORDER BY created_at DESC"
     )?;
 
@@ -176,11 +180,12 @@ pub fn get_tasks_by_workspace(conn: &Connection, workspace_id: &str) -> Result<V
             remote: row.get(10)?,
             is_merged: row.get::<_, i32>(11)? != 0,
             merge_source_branch: row.get(12)?,
-            merged_at: row.get(13)?,
-            diff_content: row.get(14)?,
-            diff_captured_at: row.get(15)?,
-            created_at: row.get(16)?,
-            updated_at: row.get(17)?,
+            merged_to_branch: row.get(13)?,
+            merged_at: row.get(14)?,
+            diff_content: row.get(15)?,
+            diff_captured_at: row.get(16)?,
+            created_at: row.get(17)?,
+            updated_at: row.get(18)?,
         })
     })?;
 
@@ -214,11 +219,12 @@ pub fn update_task_merge_info(
     id: &str,
     is_merged: bool,
     merge_source_branch: Option<&str>,
+    merged_to_branch: Option<&str>,
 ) -> Result<()> {
     let is_merged_i32 = if is_merged { 1 } else { 0 };
     conn.execute(
-        "UPDATE tasks SET is_merged = ?1, merge_source_branch = ?2, merged_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
-        params![is_merged_i32, merge_source_branch, id],
+        "UPDATE tasks SET is_merged = ?1, merge_source_branch = ?2, merged_to_branch = ?3, merged_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?4",
+        params![is_merged_i32, merge_source_branch, merged_to_branch, id],
     )?;
     Ok(())
 }
