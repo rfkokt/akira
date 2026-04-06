@@ -6,7 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { 
   Eye, Save, Layers, Shield, Check, Copy,
-  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound
+  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
 import { useEngineStore, useWorkspaceStore } from '@/store';
@@ -37,6 +37,7 @@ const sidebarTabs = [
   { id: 'rtk', label: 'RTK Status', icon: Zap, section: 'system' },
   { id: 'router', label: 'AI Router', icon: Settings, section: 'system' },
   { id: 'git-integration', label: 'Git Integration', icon: GitPullRequest, section: 'system' },
+  { id: 'vision', label: 'Image Analysis', icon: Image, section: 'system' },
 ];
 
 const projectSubTabs = [
@@ -412,6 +413,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
               {activeTab === 'engines' && <EnginesTab />}
               {activeTab === 'rtk' && <RTKTab />}
               {activeTab === 'router' && <RouterTab />}
+              {activeTab === 'vision' && <VisionTab />}
               {activeTab === 'git-integration' && (
                 <div className="space-y-6">
                   <div>
@@ -778,6 +780,108 @@ function RouterTab() {
                  </div>
               ))}
            </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// VISION TAB
+// ----------------------------------------------------------------------
+function VisionTab() {
+  const { config, updateField, saveConfig, isLoading: isConfigLoading } = useConfigStore();
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | null>(null);
+
+  const handleSaveKey = async () => {
+    if (!config) return;
+    try {
+      await saveConfig({ google_api_key: config.google_api_key });
+      setSyncStatus('synced');
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus(null), 3000);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="border-b border-white/5 pb-4">
+        <h3 className="text-xl font-semibold text-white">Image Analysis</h3>
+        <p className="text-sm text-neutral-400 mt-1">Configure Gemini API for image analysis in chat</p>
+      </div>
+
+      <div className="bg-app-panel rounded-lg border border-app-border p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <Image className="w-4 h-4 text-app-accent mt-0.5 shrink-0" />
+          <div className="flex-1 space-y-3">
+            <div>
+              <label className="text-xs font-medium text-white font-geist">Gemini API Key</label>
+              <p className="text-[10px] text-neutral-500 mt-0.5">
+                Used to analyze images uploaded in task chats. Get your key from{' '}
+                <a 
+                  href="https://aistudio.google.com/app/apikey" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-app-accent hover:underline"
+                >
+                  Google AI Studio
+                </a>
+              </p>
+            </div>
+            <input
+              type="password"
+              className="w-full bg-black/30 border border-app-border rounded-md px-3 py-2 text-sm font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-app-accent/50 transition-colors"
+              placeholder="AIza..."
+              value={config?.google_api_key || ''}
+              onChange={e => updateField('google_api_key', e.target.value)}
+            />
+            <div className="flex items-center gap-3">
+              <Button
+                variant="default"
+                size="sm"
+                className="shadow-[0_0_10px_var(--app-accent-glow)] text-xs"
+                onClick={handleSaveKey}
+                disabled={isConfigLoading}
+              >
+                <Save className="w-3.5 h-3.5 mr-2" /> Save API Key
+              </Button>
+              {syncStatus === 'synced' && (
+                <div className="flex items-center gap-1.5 animate-in fade-in">
+                  <CheckCircle2 className="w-3 h-3 text-green-400" />
+                  <span className="text-[10px] text-green-400 font-geist">Saved</span>
+                </div>
+              )}
+              {syncStatus === 'error' && (
+                <span className="text-[10px] text-red-400 font-geist animate-in fade-in">Failed to save</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 bg-black/20 rounded-md border border-white/5">
+          <p className="text-[10px] text-neutral-500 font-geist">
+            🔒 API key is saved in local SQLite only. It is never written to <code className="text-neutral-400">.akira/</code> or committed to git.
+          </p>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-white/5">
+          <h4 className="text-sm font-semibold text-white mb-2">How it works</h4>
+          <ul className="text-xs text-neutral-400 space-y-2">
+            <li className="flex items-start gap-2">
+              <span className="text-app-accent">1.</span>
+              <span>Upload an image in Task Chat or Task Creator</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-app-accent">2.</span>
+              <span>Gemini analyzes the image and provides a detailed description</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-app-accent">3.</span>
+              <span>Description is passed to your main AI model along with your request</span>
+            </li>
+          </ul>
         </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ export interface ProjectConfig {
   md_rules: string;
   md_tone: string;
   git_token?: string | null;
+  google_api_key?: string | null;
   created_at?: string;
   updated_at?: string;
 }
