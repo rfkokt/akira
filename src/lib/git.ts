@@ -361,9 +361,38 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
     // 4. Merge feature branch
     await exec(['merge', '--no-ff', featureBranch, '-m', `Merge branch '${featureBranch}' into ${targetBranch}`]);
 
-    // 5. Create tag if requested
+    // 5. Create tag if requested - auto-increment if already exists
     if (options && options.createTag) {
-      await exec(['tag', '-a', options.tagName, '-m', `Version ${options.tagName}`]);
+      let tagName = options.tagName;
+      let attempts = 0;
+      const maxAttempts = 100; // Safety limit
+      
+      while (attempts < maxAttempts) {
+        const tagCheck = await exec(['tag', '-l', tagName], true);
+        const tagExists = tagCheck.success && tagCheck.output.trim() === tagName;
+        
+        if (!tagExists) {
+          await exec(['tag', '-a', tagName, '-m', `Version ${tagName}`]);
+          break;
+        }
+        
+        // Tag exists, increment patch version
+        fullLog += `[Tag ${tagName} already exists, incrementing...]\n`;
+        const match = tagName.match(/^(alpha\.\d+\.\d+\.)(\d+)$/);
+        if (match) {
+          const prefix = match[1];
+          const patch = parseInt(match[2], 10) + 1;
+          tagName = `${prefix}${patch}`;
+        } else {
+          // Fallback: append incrementing number
+          tagName = `${options.tagName}-${attempts + 2}`;
+        }
+        attempts++;
+      }
+      
+      if (attempts >= maxAttempts) {
+        fullLog += `[Warning: Could not find available tag after ${maxAttempts} attempts]\n`;
+      }
     }
 
     // 6. Push target branch

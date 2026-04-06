@@ -404,7 +404,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
               </Select>
             </div>
             <p className="text-[11px] text-neutral-500 font-geist">
-              Source branch: <span className="text-app-accent">{taskState?.prBranch || task.pr_branch || 'Unknown'}</span>
+              Source branch: <span className="text-app-accent">{task.is_merged ? (task.merged_to_branch || 'Unknown') : (taskState?.prBranch || task.pr_branch || task.merge_source_branch || 'Unknown')}</span>
             </p>
           </div>
 

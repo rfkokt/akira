@@ -186,6 +186,13 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     conn.execute("ALTER TABLE project_configs ADD COLUMN git_token TEXT", [])
         .ok(); // Ignore error if column already exists
 
+    // Migration: Add google_api_key column to project_configs table
+    conn.execute(
+        "ALTER TABLE project_configs ADD COLUMN google_api_key TEXT",
+        [],
+    )
+    .ok(); // Ignore error if column already exists
+
     Ok(())
 }
 
@@ -268,6 +275,7 @@ fn create_tables(conn: &Connection) -> Result<()> {
             md_rules        TEXT,
             md_tone         TEXT,
             git_token       TEXT,
+            google_api_key  TEXT,
             created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE

@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot } from 'lucide-react'
+import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot, Search, X, FileSearch, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface FileEntry {
@@ -22,10 +22,29 @@ interface FileTreeProps {
   selectedPath?: string
 }
 
+interface SearchResult {
+  path: string
+  name: string
+  relative_path: string
+  line_number?: number
+  line_content?: string
+  match_start?: number
+  match_end?: number
+}
+
+type SearchMode = 'filename' | 'content'
+
 export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: FileTreeProps) {
   const [treeData, setTreeData] = useState<TreeNode[]>([])
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchMode, setSearchMode] = useState<SearchMode>('filename')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const loadDirectory = useCallback(async (path: string): Promise<FileEntry[]> => {
     try {
@@ -37,7 +56,6 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     }
   }, [])
 
-  // Load root directory when rootPath changes
   useEffect(() => {
     if (!rootPath) {
       setTreeData([])
@@ -48,12 +66,71 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     const loadRoot = async () => {
       const entries = await loadDirectory(rootPath)
       setTreeData(entries.map(e => ({ ...e })))
-      // Expand root by default
       setExpandedDirs(new Set([rootPath]))
     }
 
     loadRoot()
   }, [rootPath, loadDirectory])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault()
+        setShowSearch(prev => !prev)
+        setTimeout(() => searchInputRef.current?.focus(), 100)
+      }
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false)
+        setSearchQuery('')
+        setSearchResults([])
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showSearch])
+
+  const performSearch = useCallback(async (query: string, mode: SearchMode) => {
+    if (!rootPath || !query.trim()) {
+      setSearchResults([])
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const command = mode === 'filename' ? 'search_files' : 'search_in_files'
+      const results = await invoke<SearchResult[]>(command, {
+        rootPath,
+        query: query.trim()
+      })
+      setSearchResults(results)
+    } catch (error) {
+      console.error('Search failed:', error)
+      setSearchResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [rootPath])
+
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    if (searchQuery.trim()) {
+      searchTimeoutRef.current = setTimeout(() => {
+        performSearch(searchQuery, searchMode)
+      }, 200)
+    } else {
+      setSearchResults([])
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [searchQuery, searchMode, performSearch])
 
   const toggleDir = async (node: TreeNode) => {
     if (!node.is_dir) {
@@ -64,17 +141,13 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     const newExpanded = new Set(expandedDirs)
     
     if (newExpanded.has(node.path)) {
-      // Collapse
       newExpanded.delete(node.path)
     } else {
-      // Expand - load children if not loaded
       newExpanded.add(node.path)
       
       if (!node.isLoaded && !loadingDirs.has(node.path)) {
         setLoadingDirs(prev => new Set(prev).add(node.path))
         const children = await loadDirectory(node.path)
-        
-        // Update tree data with children
         setTreeData(prev => updateNodeChildren(prev, node.path, children))
         setLoadingDirs(prev => {
           const next = new Set(prev)
@@ -113,15 +186,8 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const getFileIcon = (entry: FileEntry, isExpanded: boolean) => {
-    if (entry.is_dir) {
-      if (isExpanded) {
-        return <FolderOpenDot className="w-4 h-4 text-app-accent" />
-      }
-      return <Folder className="w-4 h-4 text-app-accent" />
-    }
-
-    const ext = entry.name.split('.').pop()?.toLowerCase()
+  const getFileIcon = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase()
     switch (ext) {
       case 'js':
       case 'ts':
@@ -144,6 +210,31 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
       default:
         return <File className="w-4 h-4 text-neutral-500" />
     }
+  }
+
+  const highlightMatch = (text: string, start?: number, end?: number) => {
+    if (start === undefined || end === undefined) {
+      return <span className="text-neutral-300">{text}</span>
+    }
+    
+    const before = text.slice(0, start)
+    const match = text.slice(start, end)
+    const after = text.slice(end)
+    
+    return (
+      <span className="text-neutral-300">
+        {before}
+        <span className="bg-app-accent/30 text-app-accent rounded px-0.5">{match}</span>
+        {after}
+      </span>
+    )
+  }
+
+  const handleResultClick = (result: SearchResult) => {
+    onFileSelect?.(result.path)
+    setShowSearch(false)
+    setSearchQuery('')
+    setSearchResults([])
   }
 
   const renderNode = (node: TreeNode, depth: number = 0) => {
@@ -172,7 +263,15 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
             </span>
           )}
           {!node.is_dir && <span className="w-3 flex-shrink-0" />}
-          {getFileIcon(node, isExpanded)}
+          {node.is_dir ? (
+            isExpanded ? (
+              <FolderOpenDot className="w-4 h-4 text-app-accent" />
+            ) : (
+              <Folder className="w-4 h-4 text-app-accent" />
+            )
+          ) : (
+            getFileIcon(node.name)
+          )}
           <span
             className={`flex-1 truncate text-xs font-geist ${
               isSelected
@@ -192,7 +291,6 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
           )}
         </Button>
         
-        {/* Render children if expanded */}
         {node.is_dir && isExpanded && node.children && (
           <div>
             {node.children.map(child => renderNode(child, depth + 1))}
@@ -211,7 +309,143 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
         <span className="text-xs font-medium text-app-text-muted font-geist uppercase tracking-widest">
           Explorer
         </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 p-0 text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+          onClick={() => {
+            setShowSearch(prev => !prev)
+            if (!showSearch) {
+              setTimeout(() => searchInputRef.current?.focus(), 100)
+            }
+          }}
+          title="Search files (Cmd/Ctrl+P)"
+        >
+          <Search className="w-3.5 h-3.5" />
+        </Button>
       </div>
+
+      {/* Search Panel */}
+      {showSearch && (
+        <div className="border-b border-app-border p-2 space-y-2">
+          {/* Mode Toggle */}
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`flex-1 h-6 text-xs justify-center ${
+                searchMode === 'filename' 
+                  ? 'bg-app-accent/20 text-app-accent' 
+                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
+              }`}
+              onClick={() => {
+                setSearchMode('filename')
+                setSearchResults([])
+                if (searchQuery.trim()) {
+                  performSearch(searchQuery, 'filename')
+                }
+              }}
+            >
+              <FileSearch className="w-3 h-3 mr-1" />
+              Filename
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`flex-1 h-6 text-xs justify-center ${
+                searchMode === 'content' 
+                  ? 'bg-app-accent/20 text-app-accent' 
+                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
+              }`}
+              onClick={() => {
+                setSearchMode('content')
+                setSearchResults([])
+                if (searchQuery.trim()) {
+                  performSearch(searchQuery, 'content')
+                }
+              }}
+            >
+              <Search className="w-3 h-3 mr-1" />
+              Content
+            </Button>
+          </div>
+          
+          {/* Search Input */}
+          <div className="relative">
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder={searchMode === 'filename' ? 'Search files...' : 'Search in files...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-7 px-2 pr-7 text-xs bg-app-bg border border-app-border rounded 
+                         text-neutral-200 placeholder-neutral-500
+                         focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent/30"
+            />
+            {isSearching && (
+              <Loader2 className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 animate-spin" />
+            )}
+            {searchQuery && !isSearching && (
+              <button
+                onClick={() => {
+                  setSearchQuery('')
+                  setSearchResults([])
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Search Results */}
+          {searchResults.length > 0 && (
+            <div className="max-h-64 overflow-auto border border-app-border rounded bg-app-bg/50">
+              {searchResults.map((result, idx) => (
+                <Button
+                  key={`${result.path}-${result.line_number || idx}`}
+                  variant="ghost"
+                  className="w-full justify-start h-auto py-1.5 px-2 rounded-none"
+                  onClick={() => handleResultClick(result)}
+                >
+                  <div className="flex flex-col items-start w-full min-w-0">
+                    <div className="flex items-center gap-1.5 w-full min-w-0">
+                      {getFileIcon(result.name)}
+                      <span className="text-xs text-neutral-300 truncate flex-1">
+                        {result.relative_path}
+                      </span>
+                    </div>
+                    {result.line_content && (
+                      <div className="w-full pl-5 mt-0.5">
+                        <div className="flex items-start gap-1">
+                          <span className="text-xs text-neutral-600 font-mono flex-shrink-0">
+                            {result.line_number}:
+                          </span>
+                          <span className="text-xs text-neutral-500 truncate font-mono">
+                            {highlightMatch(result.line_content, result.match_start, result.match_end)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {/* No Results */}
+          {searchQuery.trim() && !isSearching && searchResults.length === 0 && (
+            <div className="text-xs text-neutral-500 text-center py-2">
+              No results found
+            </div>
+          )}
+
+          {/* Shortcut hint */}
+          <div className="text-[10px] text-neutral-600 text-center">
+            Press <kbd className="px-1 py-0.5 bg-app-border rounded text-neutral-500">Esc</kbd> to close
+          </div>
+        </div>
+      )}
 
       {/* File Tree */}
       <div className="flex-1 overflow-auto py-1">

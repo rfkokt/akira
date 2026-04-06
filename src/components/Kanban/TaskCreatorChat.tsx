@@ -5,8 +5,10 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
 import { useConfigStore } from '@/store/configStore'
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject'
+import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
 import { dbService } from '@/lib/db'
 import { getProvider } from '@/lib/providers'
+import { ImageInput, processPastedImages, type ImageAttachment } from '@/components/shared/ImageInput'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -25,9 +27,10 @@ interface ConversationSummary {
 }
 
 interface FileEntry {
-  name: string
-  path: string
-  is_dir: boolean
+  name: string;
+  path: string;
+  is_dir: boolean;
+  relativePath?: string;
 }
 
 function MarkdownContent({ content }: { content: string }) {
@@ -106,6 +109,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [showProgress, setShowProgress] = useState(true)
   const [isAnalyzingProject, setIsAnalyzingProject] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
+  const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const progressEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -117,6 +121,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const { activeWorkspace } = useWorkspaceStore()
   const { config } = useConfigStore()
   const { analyzeProject } = useAnalyzeProject()
+  const { isAnalyzing: isAnalyzingImages, analyzeImages, hasApiKey } = useImageAnalysis()
 
   const baseTaskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
   const taskId = chatSessionId ? `${baseTaskId}_${chatSessionId}` : baseTaskId
@@ -133,15 +138,36 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     if (!path) return
     try {
       const entries = await invoke<FileEntry[]>('read_directory', { path })
-      const fileList = entries
-        .filter(e => !e.is_dir && !e.name.startsWith('.'))
-        .map(e => ({
-          name: e.name,
-          path: e.path,
-          is_dir: false,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name))
-      setFiles(fileList)
+      const allFiles: FileEntry[] = []
+      
+      const processEntries = async (entries: FileEntry[], relativePath: string = '') => {
+        for (const entry of entries) {
+          if (entry.is_dir) {
+            // Skip hidden directories and common non-code directories
+            if (entry.name.startsWith('.') || 
+                ['node_modules', 'dist', 'build', '.git', '.next', 'out', 'target', 'vendor'].includes(entry.name)) {
+              continue
+            }
+            try {
+              const subEntries = await invoke<FileEntry[]>('read_directory', { path: entry.path })
+              await processEntries(subEntries, relativePath ? `${relativePath}/${entry.name}` : entry.name)
+            } catch {
+              // Skip directories we can't read
+            }
+          } else if (!entry.name.startsWith('.')) {
+            allFiles.push({
+              name: entry.name,
+              path: entry.path,
+              is_dir: false,
+              relativePath: relativePath ? `${relativePath}/${entry.name}` : entry.name,
+            })
+          }
+        }
+      }
+      
+      await processEntries(entries, path)
+      allFiles.sort((a, b) => (a.relativePath || a.name).localeCompare(b.relativePath || b.name))
+      setFiles(allFiles)
     } catch (err) {
       console.error('Failed to fetch files:', err)
       setFiles([])
@@ -305,7 +331,20 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     if (!query) return files.slice(0, 10)
     const lowerQuery = query.toLowerCase()
     return files
-      .filter(f => f.name.toLowerCase().includes(lowerQuery))
+      .filter(f => {
+        const relativePath = (f.relativePath || f.name).toLowerCase()
+        return relativePath.includes(lowerQuery)
+      })
+      .sort((a, b) => {
+        const aPath = a.relativePath || a.name
+        const bPath = b.relativePath || b.name
+        // Prefer files that start with the query
+        const aStartsWith = aPath.toLowerCase().startsWith(lowerQuery)
+        const bStartsWith = bPath.toLowerCase().startsWith(lowerQuery)
+        if (aStartsWith && !bStartsWith) return -1
+        if (!aStartsWith && bStartsWith) return 1
+        return aPath.localeCompare(bPath)
+      })
       .slice(0, 10)
   }
 
@@ -386,6 +425,13 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     }
   }
 
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const handled = processPastedImages(e.nativeEvent, attachedImages, setAttachedImages, 3)
+    if (handled) {
+      e.preventDefault()
+    }
+  }, [attachedImages])
+
   const cleanDescription = (text: string): string => {
     if (!text) return ''
     
@@ -404,8 +450,30 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   }
 
   const handleSend = async () => {
-    if (!message.trim() || !activeEngine) return
+    console.log('[handleSend] message:', message.trim(), 'attachedImages:', attachedImages.length, 'activeEngine:', !!activeEngine)
     
+    if ((!message.trim() && attachedImages.length === 0) || !activeEngine) {
+      console.log('[handleSend] Early return - conditions not met')
+      return
+    }
+    
+const userMsg = message
+    const imagesToSend = [...attachedImages]
+    
+    console.log('[handleSend] hasApiKey:', hasApiKey)
+    
+    if (imagesToSend.length > 0 && !hasApiKey) {
+      console.log('[handleSend] No API key, showing error')
+      setExecutionSteps([{
+        type: 'error',
+        content: 'Gemini API key not configured. Go to Settings → Image Analysis to add your key.',
+        timestamp: Date.now()
+      }])
+      return
+    }
+    
+    setMessage('')
+    setAttachedImages([])
     setConversationSummaries([])
     setExecutionSteps([{
       type: 'step_start',
@@ -414,9 +482,38 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     }])
     setIsStreaming(true)
     
+    console.log('[handleSend] Starting send process...')
+    
     try {
-      const userMsg = message
-      setMessage('')
+      let imageAnalysis: string | null = null;
+      if (imagesToSend.length > 0) {
+        console.log('[handleSend] Analyzing', imagesToSend.length, 'images...')
+        setExecutionSteps(prev => [...prev, {
+          type: 'tool_use',
+          content: `Analyzing ${imagesToSend.length} image${imagesToSend.length > 1 ? 's' : ''}...`,
+          timestamp: Date.now()
+        }]);
+        
+        const result = await analyzeImages(imagesToSend);
+        console.log('[handleSend] Analysis result:', result)
+        
+        if (!result.analysis) {
+          const errorMsg = result.error || 'Failed to analyze image';
+          console.error('[handleSend] Analysis failed:', errorMsg)
+          setExecutionSteps(prev => [...prev, {
+            type: 'error',
+            content: errorMsg,
+            timestamp: Date.now()
+          }]);
+          setIsStreaming(false);
+          return;
+        }
+        imageAnalysis = result.analysis;
+        console.log('[handleSend] Analysis complete, length:', imageAnalysis.length)
+      }
+      
+      console.log('[handleSend] Building message...')
+      const finalMessage = buildMessageWithImageAnalysis(userMsg, imageAnalysis)
       
       const historyMsg = getMessages(taskId)
         .filter(m => m.role !== 'system')
@@ -448,13 +545,16 @@ If a user asks you to implement something directly, politely remind them:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${projectRules ? '\nProject context & conventions (for planning reference only):\n' + projectRules + '\n' : ''}
 ${historyMsg ? '\nConversation history:\n' + historyMsg + '\n' : ''}
-User: ${userMsg}
+User: ${finalMessage}
 Assistant:`
 
+      console.log('[handleSend] Sending message to AI...')
       await sendSimpleMessage(taskId, userMsg, internalPrompt)
+      console.log('[handleSend] Message sent successfully')
     } catch (err) {
-      console.error('Failed to send message:', err)
+      console.error('[handleSend] Error:', err)
     } finally {
+      console.log('[handleSend] Cleaning up...')
       setIsStreaming(false)
     }
   }
@@ -634,6 +734,7 @@ Rules:
     setExecutionSteps([])
     setShowProgress(true)
     setSummarizedAtLength(-1)
+    setAttachedImages([])
   }
 
   const suggestedPrompts = [
@@ -1001,18 +1102,15 @@ Rules:
                 Files (↑↓ navigate, Enter to insert)
               </div>
               {filteredFiles.map((file, idx) => (
-                <Button
-                  key={file.path}
-                  variant="ghost"
-                  className={`w-full justify-start h-auto py-2 rounded-none ${idx === selectedFileIndex ? 'bg-cyan-500/10' : ''}`}
-                  onClick={() => insertFileReference(file)}
-                >
-                  <FileIcon className="w-3 h-3 mr-2 text-neutral-400" />
-                  <span className="text-white">{file.name}</span>
-                  <span className="text-neutral-500 text-xs ml-2">
-                    {file.path.replace(activeWorkspace?.folder_path || '', '')}
-                  </span>
-                </Button>
+<Button
+                   key={file.path}
+                   variant="ghost"
+                   className={`w-full justify-start h-auto py-2 rounded-none ${idx === selectedFileIndex ? 'bg-cyan-500/10' : ''}`}
+                   onClick={() => insertFileReference(file)}
+                 >
+                   <FileIcon className="w-3 h-3 mr-2 text-neutral-400" />
+                   <span className="text-white">{file.relativePath || file.name}</span>
+                 </Button>
               ))}
             </div>
           )}
@@ -1023,6 +1121,7 @@ Rules:
               value={message}
               onChange={handleMessageChange}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={activeEngine ? "Describe what you want to build..." : "Select a model first"}
               disabled={!activeEngine || isStreaming}
               className="w-full px-4 pt-3 pb-2 text-sm bg-transparent text-white placeholder-neutral-600 focus:outline-none resize-none custom-scrollbar"
@@ -1031,42 +1130,51 @@ Rules:
             />
             
             <div className="flex items-center justify-between px-3 pb-3 pt-1">
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2.5 bg-white/5 hover:bg-white/10 text-neutral-300 rounded-lg text-xs font-medium transition-colors"
-                  onClick={() => setShowModelDropdown(!showModelDropdown)}
-                >
-                  {activeEngine?.alias || 'Model'}
-                  <ChevronDown className="w-3 h-3 ml-1.5 opacity-70" />
-                </Button>
+              <div className="flex items-center gap-2">
+                <ImageInput
+                  images={attachedImages}
+                  onImagesChange={setAttachedImages}
+                  maxImages={3}
+                  disabled={isStreaming || !activeEngine}
+                />
                 
-                {showModelDropdown && (
-                  <div className="absolute left-0 bottom-full mb-1 bg-app-panel rounded-lg border border-app-border shadow-xl max-h-48 overflow-y-auto min-w-[140px]">
-                    {engines.length === 0 ? (
-                      <div className="px-3 py-2 text-xs text-neutral-500">
-                        No engines
-                      </div>
-                    ) : (
-                      engines.map(engine => (
-                        <Button
-                          key={engine.id}
-                          variant="ghost"
-                          className={`w-full justify-start rounded-none ${activeEngine?.id === engine.id ? 'bg-cyan-500/10' : ''}`}
-                          onClick={() => {
-                            setActiveEngine(engine)
-                            setShowModelDropdown(false)
-                          }}
-                        >
-                          <span className={`text-xs ${activeEngine?.id === engine.id ? 'text-cyan-400' : 'text-white'}`}>
-                            {engine.alias}
-                          </span>
-                        </Button>
-                      ))
-                    )}
-                  </div>
-                )}
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2.5 bg-white/5 hover:bg-white/10 text-neutral-300 rounded-lg text-xs font-medium transition-colors"
+                    onClick={() => setShowModelDropdown(!showModelDropdown)}
+                  >
+                    {activeEngine?.alias || 'Model'}
+                    <ChevronDown className="w-3 h-3 ml-1.5 opacity-70" />
+                  </Button>
+                  
+                  {showModelDropdown && (
+                    <div className="absolute left-0 bottom-full mb-1 bg-app-panel rounded-lg border border-app-border shadow-xl max-h-48 overflow-y-auto min-w-[140px]">
+                      {engines.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-neutral-500">
+                          No engines
+                        </div>
+                      ) : (
+                        engines.map(engine => (
+                          <Button
+                            key={engine.id}
+                            variant="ghost"
+                            className={`w-full justify-start rounded-none ${activeEngine?.id === engine.id ? 'bg-cyan-500/10' : ''}`}
+                            onClick={() => {
+                              setActiveEngine(engine)
+                              setShowModelDropdown(false)
+                            }}
+                          >
+                            <span className={`text-xs ${activeEngine?.id === engine.id ? 'text-cyan-400' : 'text-white'}`}>
+                              {engine.alias}
+                            </span>
+                          </Button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               
               {isStreaming ? (
@@ -1083,9 +1191,13 @@ Rules:
                   size="icon"
                   className="h-8 w-8 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:bg-neutral-800 disabled:text-neutral-600 text-white shadow-md disabled:shadow-none transition-all"
                   onClick={handleSend}
-                  disabled={!message.trim() || !activeEngine || isStreaming}
+                  disabled={(!message.trim() && attachedImages.length === 0) || !activeEngine || isStreaming || isAnalyzingImages}
                 >
-                  <Send className="w-4 h-4 -ml-0.5" />
+                  {isAnalyzingImages ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4 -ml-0.5" />
+                  )}
                 </Button>
               )}
             </div>

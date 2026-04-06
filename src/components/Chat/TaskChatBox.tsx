@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { X, Send, Loader2, Copy, Check, MessageSquare } from 'lucide-react'
-import { useAIChatStore, useEngineStore } from '@/store'
+import { useAIChatStore, useEngineStore, useConfigStore } from '@/store'
+import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
 import type { Task, ChatMessage as DbChatMessage } from '@/types'
 import type { ChatMessage } from '@/store/aiChatStore'
 import { dbService } from '@/lib/db'
+import { ImageInput, processPastedImages, type ImageAttachment } from '@/components/shared/ImageInput'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -207,15 +209,23 @@ const ChatInput = memo(function ChatInput({
   onSend, 
   isStreaming, 
   hasEngine,
-  placeholder 
+  placeholder,
+  hasApiKey: hasApiKeyProp
 }: { 
   onSend: (msg: string) => void; 
   isStreaming: boolean;
   hasEngine: boolean;
   placeholder: string;
+  hasApiKey: boolean;
 }) {
   const [message, setMessage] = useState('')
+  const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
+  const [isUploading, setIsUploading] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { isAnalyzing, analyzeImages, hasApiKey: hasApiKeyHook } = useImageAnalysis()
+  
+  // Use prop if provided, otherwise use hook value
+  const hasApiKey = hasApiKeyProp ?? hasApiKeyHook
   
   useEffect(() => {
     if (textareaRef.current) {
@@ -224,12 +234,47 @@ const ChatInput = memo(function ChatInput({
     }
   }, [message])
 
-  const handleSend = useCallback(() => {
-    if (!message.trim()) return
-    const msg = message
+  const handleSend = useCallback(async () => {
+    const hasContent = message.trim() || attachedImages.length > 0
+    if (!hasContent || isAnalyzing || isUploading) return
+    
+    const currentImages = [...attachedImages]
+    const currentMessage = message.trim()
+    
+    // Clear immediately
     setMessage('')
-    onSend(msg)
-  }, [message, onSend])
+    setAttachedImages([])
+    
+    if (currentImages.length > 0) {
+      if (!hasApiKey) {
+        // No API key - send with error message
+        const errorMsg = `[ERROR: Cannot analyze images - Gemini API key not configured. Please add it in Settings → Image Analysis.]\n\n${currentMessage || '(image attached)'}`
+        onSend(errorMsg)
+        return
+      }
+      
+      // Analyze images
+      setIsUploading(true)
+      try {
+        const result = await analyzeImages(currentImages)
+        
+        let finalMessage: string
+        if (result.analysis) {
+          finalMessage = buildMessageWithImageAnalysis(currentMessage || 'Analyze this image', result.analysis)
+        } else {
+          const err = result.error || 'Unknown error'
+          finalMessage = `[ERROR: Image analysis failed - ${err}]\n\n${currentMessage || '(image attached)'}`
+        }
+        
+        onSend(finalMessage)
+      } finally {
+        setIsUploading(false)
+      }
+    } else {
+      // No images, just text
+      onSend(currentMessage)
+    }
+  }, [message, attachedImages, isAnalyzing, isUploading, hasApiKey, analyzeImages, onSend])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -238,32 +283,75 @@ const ChatInput = memo(function ChatInput({
     }
   }, [handleSend])
 
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const handled = processPastedImages(e.nativeEvent, attachedImages, setAttachedImages, 3)
+    if (handled) {
+      e.preventDefault()
+    }
+  }, [attachedImages])
+
+  const isDisabled = !hasEngine || isStreaming || isAnalyzing || isUploading
+
   return (
     <div className="shrink-0 p-3 bg-app-sidebar/80 backdrop-blur-md border-t border-app-border/60">
+      {(isUploading || isAnalyzing) && (
+        <div className="mb-2 flex items-center gap-2 text-xs text-app-accent">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span>Analyzing image{attachedImages.length > 1 ? 's' : ''}...</span>
+        </div>
+      )}
+      
+      {attachedImages.length > 0 && !isUploading && !isAnalyzing && (
+        <div className="mb-2">
+          <ImageInput
+            images={attachedImages}
+            onImagesChange={setAttachedImages}
+            maxImages={3}
+            disabled={isDisabled}
+          />
+          {!hasApiKey && (
+            <p className="text-[10px] text-yellow-500 mt-1">
+              ⚠️ Set Gemini API key in Settings → Image Analysis to analyze images
+            </p>
+          )}
+        </div>
+      )}
+      
       <div className="flex items-end gap-2.5">
         <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={placeholder}
-          disabled={!hasEngine || isStreaming}
+          disabled={isDisabled}
           className="flex-1 px-4 py-3 rounded-xl text-sm bg-[#1e1e1e] text-white placeholder-neutral-500 border border-app-border focus:outline-none focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 resize-none transition-all shadow-inner custom-scrollbar"
           rows={1}
           style={{ minHeight: '44px', maxHeight: '120px' }}
         />
-        <Button
-          size="icon"
-          onClick={handleSend}
-          disabled={!message.trim() || !hasEngine || isStreaming}
-          className="w-11 h-11 shrink-0 rounded-xl bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 shadow-[0_0_15px_var(--app-accent-glow)] transition-all disabled:shadow-none"
-        >
-          {isStreaming ? (
-            <Loader2 className="w-5 h-5 animate-spin text-white" />
-          ) : (
-            <Send className="w-4 h-4 text-white ml-0.5" />
+        <div className="flex items-center gap-1.5 shrink-0">
+          {attachedImages.length === 0 && !isUploading && !isAnalyzing && (
+            <ImageInput
+              images={attachedImages}
+              onImagesChange={setAttachedImages}
+              maxImages={3}
+              disabled={isDisabled}
+            />
           )}
-        </Button>
+          <Button
+            size="icon"
+            onClick={handleSend}
+            disabled={(!message.trim() && attachedImages.length === 0) || isDisabled}
+            className="w-11 h-11 shrink-0 rounded-xl bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 shadow-[0_0_15px_var(--app-accent-glow)] transition-all disabled:shadow-none"
+          >
+            {isStreaming || isAnalyzing || isUploading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-white" />
+            ) : (
+              <Send className="w-4 h-4 text-white ml-0.5" />
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -277,6 +365,8 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     useCallback(state => state.messages[task.id] ?? EMPTY_ARRAY, [task.id])
   )
   const { activeEngine } = useEngineStore()
+  const config = useConfigStore(state => state.config)
+  const hasApiKey = !!config?.google_api_key
   
   const currentStreamingId = streamingMessageId[task.id]
   const isTaskStreaming = useAIChatStore(
@@ -394,6 +484,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
         isStreaming={isTaskStreaming}
         hasEngine={!!activeEngine}
         placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
+        hasApiKey={hasApiKey}
       />
     </div>
   )

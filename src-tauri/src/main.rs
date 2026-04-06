@@ -102,6 +102,8 @@ fn main() {
             commands::fs::create_directory,
             commands::fs::delete_file,
             commands::fs::delete_directory,
+            commands::fs::search_files,
+            commands::fs::search_in_files,
             // Project Config
             commands::project::get_project_config,
             commands::project::save_project_config,
