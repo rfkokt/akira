@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Loader2, Terminal } from 'lucide-react'
 import { useAIChatStore } from '@/store'
 import type { AITaskState } from '@/store/aiChatStore'
@@ -18,21 +18,27 @@ export function AIActivityIndicator({
 }: AIActivityIndicatorProps) {
   const aiChatStore = useAIChatStore()
   const [messages, setMessages] = useState<typeof aiChatStore.messages[string]>([])
+  const messagesRef = useRef<typeof aiChatStore.messages[string]>([])
   
   useEffect(() => {
-    setMessages(aiChatStore.getMessages(taskId))
-    
-    const interval = setInterval(() => {
+    const updateMessages = () => {
       const newMessages = aiChatStore.getMessages(taskId)
-      if (newMessages.length !== messages.length || 
-          (newMessages.length > 0 && messages.length > 0 && 
-           newMessages[newMessages.length - 1].content !== messages[messages.length - 1]?.content)) {
+      const prevMessages = messagesRef.current
+      
+      if (newMessages.length !== prevMessages.length || 
+          (newMessages.length > 0 && prevMessages.length > 0 && 
+           newMessages[newMessages.length - 1].content !== prevMessages[prevMessages.length - 1]?.content)) {
+        messagesRef.current = newMessages
         setMessages(newMessages)
       }
-    }, 500)
+    }
+    
+    updateMessages()
+    
+    const interval = setInterval(updateMessages, 500)
     
     return () => clearInterval(interval)
-  }, [taskId, aiChatStore, messages])
+  }, [taskId, aiChatStore])
   
   const assistantMessages = messages.filter(m => m.role === 'assistant')
   const latestOutput = assistantMessages.length > 0 

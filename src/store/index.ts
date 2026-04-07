@@ -10,3 +10,5 @@ export { useAssessmentStore } from './assessmentStore';
 export { useZoomStore } from './zoomStore';
 export { useTerminalStore } from './terminalStore';
 export type { TerminalSession } from './terminalStore';
+export { useSkillStore } from './skillStore';
+export type { Skill } from './skillStore';

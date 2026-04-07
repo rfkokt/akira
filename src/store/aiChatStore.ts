@@ -4,6 +4,7 @@ import { useEngineStore } from './engineStore';
 import { useTaskStore } from './taskStore';
 import { useWorkspaceStore } from './workspaceStore';
 import { useConfigStore } from './configStore';
+import { useSkillStore } from './skillStore';
 import { dbService } from '@/lib/db';
 import { runCLIWithStreaming } from '@/lib/cli';
 import { autoCreatePR } from '@/lib/git';
@@ -15,6 +16,7 @@ import {
   getSavedRunningTask as getSavedTask,
   type SavedTask,
 } from '@/lib/helpers';
+import { formatSkillListing, loadSkillContent, detectSkillInvocation } from '@/lib/skills';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -51,6 +53,12 @@ interface TaskQueueItem {
   taskDescription?: string;
 }
 
+interface InvokedSkill {
+  name: string;
+  content: string;
+  location: string;
+}
+
 interface AIChatState {
   messages: Record<string, ChatMessage[]>;
   taskStates: Record<string, AITaskState>;
@@ -61,6 +69,7 @@ interface AIChatState {
   routerProvider: string | null;
   currentSessionId: string | null;
   streamingMessageId: Record<string, string | null>;
+  invokedSkills: Record<string, InvokedSkill[]>;
   stopStreaming: (taskId: string) => void;
 
   // Actions
@@ -78,6 +87,8 @@ interface AIChatState {
   isStreaming: (taskId: string) => boolean;
   setUseRouter: (useRouter: boolean) => void;
   setRouterProvider: (provider: string | null) => void;
+  addInvokedSkill: (taskId: string, skill: InvokedSkill) => void;
+  getInvokedSkills: (taskId: string) => InvokedSkill[];
 }
 
 // ─── Exports ────────────────────────────────────────────────────────────
@@ -134,18 +145,42 @@ function getWorkspaceCwd(): string | null {
   return useWorkspaceStore.getState().activeWorkspace?.folder_path || null;
 }
 
-/** Build system prompt with task context */
-function buildTaskPrompt(taskTitle: string, taskDescription?: string): string {
-  // Check if rules are already embedded in the description (auto-generated task)
+async function getSkillListing(): Promise<string> {
+  try {
+    const skills = useSkillStore.getState().installedSkills;
+    if (skills.length === 0) return '';
+    return formatSkillListing(skills);
+  } catch {
+    return '';
+  }
+}
+
+async function loadSkillForTask(skillName: string): Promise<{ name: string; content: string; location: string } | null> {
+  try {
+    const skills = useSkillStore.getState().installedSkills;
+    const skill = skills.find(s => s.name.toLowerCase() === skillName.toLowerCase() || s.id.includes(skillName.toLowerCase()));
+    if (!skill) return null;
+    
+    const skillContent = await loadSkillContent(skill.skill_path);
+    return {
+      name: skillContent.name,
+      content: skillContent.content,
+      location: skillContent.location,
+    };
+  } catch (err) {
+    console.error('[Skills] Failed to load skill:', err);
+    return null;
+  }
+}
+
+function buildTaskPrompt(taskTitle: string, taskDescription?: string, skillListing?: string, invokedSkillsContent?: string): string {
   const hasEmbeddedRules = taskDescription?.includes('<!-- auto-rules-embedded -->');
   
   let systemPrompt = '';
   if (!hasEmbeddedRules) {
-    // Manual task → inject global config
     try { systemPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* no config */ }
   }
 
-  // Clean the marker from description before sending to AI
   const cleanDescription = taskDescription?.replace('<!-- auto-rules-embedded -->', '').trim();
 
   const rtkInstruction = `
@@ -158,7 +193,10 @@ You must prefix the following CLI tools with 'rtk' to minimize token usage:
 - Search/System: 'rtk search grep', 'rtk system ps'
 Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands for these utilities.`;
 
-  return `${systemPrompt ? systemPrompt + '\n' : ''}${rtkInstruction}
+  const skillSection = skillListing ? `\n\n${skillListing}` : '';
+  const invokedSkillsSection = invokedSkillsContent ? `\n\nYou are using the following skill(s):\n${invokedSkillsContent}` : '';
+
+  return `${systemPrompt ? systemPrompt + '\n' : ''}${rtkInstruction}${skillSection}${invokedSkillsSection}
 
 ---
 
@@ -275,10 +313,25 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
   routerProvider: null,
   currentSessionId: null,
   streamingMessageId: {},
+  invokedSkills: {},
 
   stopStreaming: (taskId) => {
     set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
   },
+
+  addInvokedSkill: (taskId, skill) => {
+    const { invokedSkills } = get();
+    const existing = invokedSkills[taskId] || [];
+    if (existing.find(s => s.name === skill.name)) return;
+    set({
+      invokedSkills: {
+        ...invokedSkills,
+        [taskId]: [...existing, skill],
+      },
+    });
+  },
+
+  getInvokedSkills: (taskId) => get().invokedSkills[taskId] || [],
 
   // ── Queue Management ────────────────────────────────────────────────
 
@@ -349,13 +402,20 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     });
     updateTaskState(get, set, taskId, { status: 'running', startTime });
 
+    // Load skill listing and invoked skills
+    const skillListing = await getSkillListing();
+    const invokedSkills = get().invokedSkills[taskId] || [];
+    const invokedSkillsContent = invokedSkills.length > 0
+      ? invokedSkills.map(s => `--- ${s.name} ---\n${s.content}`).join('\n\n')
+      : undefined;
+
     // AI response placeholder
     const aiMessageId = `msg-${Date.now()}-ai`;
     addMessage(get, set, taskId, {
       id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
     });
 
-    const prompt = buildTaskPrompt(taskTitle, taskDescription);
+    const prompt = buildTaskPrompt(taskTitle, taskDescription, skillListing, invokedSkillsContent);
     const cwd = getWorkspaceCwd();
     let responseContent = '';
 
@@ -388,6 +448,102 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       const endTime = Date.now();
 
       if (result.success) {
+        // Check for skill invocation in response
+        const skills = useSkillStore.getState().installedSkills;
+        const skillInvocation = detectSkillInvocation(responseContent, skills);
+        
+        if (skillInvocation.detected && skillInvocation.skillName) {
+          // Skill invocation detected - load skill and send follow-up
+          const skill = skills.find(s => s.name === skillInvocation.skillName);
+          
+          if (skill) {
+            addMessage(get, set, taskId, {
+              id: `msg-${Date.now()}-skill`, taskId, role: 'system',
+              content: `📚 Loading skill "${skill.name}"...`,
+              timestamp: Date.now(),
+            });
+            
+            try {
+              const skillContent = await loadSkillContent(skill.skill_path);
+              get().addInvokedSkill(taskId, {
+                name: skillContent.name,
+                content: skillContent.content,
+                location: skillContent.location,
+              });
+              
+              // Send follow-up prompt with skill context
+              const followUpPrompt = buildTaskPrompt(
+                taskTitle,
+                taskDescription,
+                skillListing,
+                `${skillContent.name}\n${skillContent.content}`
+              );
+              
+              // Record cost for first response
+              const duration = (endTime - startTime) / 1000;
+              try {
+                await invoke('record_cli_cost', {
+                  providerAlias: engine.alias,
+                  inputTokens: Math.ceil(responseContent.length / 4),
+                  outputTokens: Math.ceil(responseContent.length / 4),
+                  cost: duration * 0.001,
+                });
+              } catch { /* cost recording is non-critical */ }
+              
+              // New AI response placeholder for follow-up
+              const followUpMessageId = `msg-${Date.now()}-follow`;
+              addMessage(get, set, taskId, {
+                id: followUpMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
+              });
+              
+              let followUpContent = '';
+              
+              const followUpResult = await runCLIWithStreaming({
+                taskId: `${taskId}-skill`,
+                engineAlias: engine.alias,
+                binaryPath: engine.binary_path,
+                engineArgs: engine.args,
+                prompt: followUpPrompt,
+                cwd,
+                onOutput: (text) => {
+                  followUpContent += text + '\n';
+                  appendToMessage(get, set, taskId, followUpMessageId, text + '\n');
+                },
+              });
+              
+              if (followUpResult.success) {
+                updateTaskState(get, set, taskId, {
+                  status: 'completed', endTime: Date.now(), lastResponse: followUpContent,
+                });
+                
+                // Save to DB
+                try {
+                  await dbService.createChatMessage(taskId, 'system', `🚀 Starting AI workflow for: "${taskTitle}"`, engine.alias);
+                  await dbService.createChatMessage(taskId, 'assistant', responseContent.trim(), engine.alias);
+                  await dbService.createChatMessage(taskId, 'assistant', followUpContent.trim(), engine.alias);
+                } catch { /* non-critical */ }
+                
+                setTimeout(() => handleTaskCompletion(get, set, taskId, taskTitle), 500);
+              } else {
+                appendToMessage(get, set, taskId, followUpMessageId, `\n\n❌ Error: ${followUpResult.errorMessage || 'Skill follow-up failed'}`);
+                updateTaskState(get, set, taskId, {
+                  status: 'error', endTime: Date.now(), errorMessage: followUpResult.errorMessage,
+                });
+              }
+              
+              return; // Skip normal completion flow
+            } catch (skillError) {
+              console.error('Failed to load skill:', skillError);
+              addMessage(get, set, taskId, {
+                id: `msg-${Date.now()}-error`, taskId, role: 'system',
+                content: `❌ Failed to load skill "${skillInvocation.skillName}": ${skillError}`,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+        
+        // Normal completion flow (no skill invocation or skill failed to load)
         // Record cost
         const duration = (endTime - startTime) / 1000;
         try {
@@ -446,7 +602,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     get().runAITask(taskId, taskTitle);
   },
 
-  // ── Send Message (Chat / Revision) ─────────────────────────────────
+// ── Send Message (Chat / Revision) ─────────────────────────────────
 
   sendMessage: async (taskId, content) => {
     const existingMessages = get().messages[taskId] || [];
@@ -457,6 +613,30 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     if (sysMsg) {
       const m = sysMsg.content.match(/"([^"]+)"/);
       if (m) taskTitle = m[1];
+    }
+
+    // Check for skill invocation
+    const skillInvocation = content.match(/^\/skill\s+(\S+)/i);
+    if (skillInvocation) {
+      const skillName = skillInvocation[1];
+      const skillData = await loadSkillForTask(skillName);
+      
+      if (skillData) {
+        get().addInvokedSkill(taskId, skillData);
+        addMessage(get, set, taskId, {
+          id: `msg-${Date.now()}`, taskId, role: 'system',
+          content: `✅ Skill "${skillData.name}" loaded. Its instructions will be included in the next prompt.`,
+          timestamp: Date.now(),
+        });
+        return;
+      } else {
+        addMessage(get, set, taskId, {
+          id: `msg-${Date.now()}`, taskId, role: 'system',
+          content: `❌ Skill "${skillName}" not found. Use /skill <name> to load a skill.`,
+          timestamp: Date.now(),
+        });
+        return;
+      }
     }
 
     // Detect revision mode
@@ -481,6 +661,13 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
 
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return;
+
+    // Load skill listing and invoked skills
+    const skillListing = await getSkillListing();
+    const invokedSkills = get().invokedSkills[taskId] || [];
+    const invokedSkillsContent = invokedSkills.length > 0
+      ? invokedSkills.map(s => `--- ${s.name} ---\n${s.content}`).join('\n\n')
+      : undefined;
 
     // AI response placeholder
     const aiMessageId = `msg-${Date.now()}-ai`;
@@ -517,7 +704,10 @@ You must prefix the following CLI tools with 'rtk' to minimize token usage:
 - Search/System: 'rtk search grep', 'rtk system ps'
 Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands.`;
 
-      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${rtkInstruction}
+      const skillSection = skillListing ? `\n\n${skillListing}` : '';
+      const invokedSection = invokedSkillsContent ? `\n\nYou are using the following skill(s):\n${invokedSkillsContent}` : '';
+
+      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${rtkInstruction}${skillSection}${invokedSection}
       
 ---
 
@@ -533,7 +723,11 @@ ${content}
 
 Please implement the requested changes now. Modify the code directly.`;
     } else {
-      chatPrompt = `You are helping with a task called "${taskTitle}".
+      const skillSection = skillListing ? `\n\n${skillListing}` : '';
+      const invokedSection = invokedSkillsContent ? `\n\nYou are using the following skill(s):\n${invokedSkillsContent}` : '';
+      chatPrompt = `${skillSection}${invokedSection}
+
+You are helping with a task called "${taskTitle}".
 
 Previous conversation:
 ${existingMessages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}

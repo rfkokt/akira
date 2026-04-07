@@ -6,10 +6,10 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { 
   Eye, Save, Layers, Shield, Check, Copy,
-  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image
+  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image, Puzzle, Download, ExternalLink
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
-import { useEngineStore, useWorkspaceStore } from '@/store';
+import { useEngineStore, useWorkspaceStore, useSkillStore } from '@/store';
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject';
 import type { CreateEngineRequest } from '@/types';
 import { MarkdownEditor } from './MarkdownBlockEditor';
@@ -34,6 +34,7 @@ interface SettingsPageProps {
 const sidebarTabs = [
   { id: 'project-config', label: 'Project Config', icon: Layers, section: 'project' },
   { id: 'engines', label: 'CLI Engines', icon: Cpu, section: 'system' },
+  { id: 'skills', label: 'Skills', icon: Puzzle, section: 'system' },
   { id: 'rtk', label: 'RTK Status', icon: Zap, section: 'system' },
   { id: 'router', label: 'AI Router', icon: Settings, section: 'system' },
   { id: 'git-integration', label: 'Git Integration', icon: GitPullRequest, section: 'system' },
@@ -411,6 +412,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
           <div className="h-full w-full relative animate-in fade-in duration-300 flex flex-col overflow-auto">
             <div className="px-8 py-8 max-w-4xl w-full">
               {activeTab === 'engines' && <EnginesTab />}
+              {activeTab === 'skills' && <SkillsTab />}
               {activeTab === 'rtk' && <RTKTab />}
               {activeTab === 'router' && <RouterTab />}
               {activeTab === 'vision' && <VisionTab />}
@@ -898,6 +900,218 @@ function VisionTab() {
             </li>
           </ul>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// SKILLS TAB
+// ----------------------------------------------------------------------
+function SkillsTab() {
+  const { activeWorkspace } = useWorkspaceStore();
+  const { installedSkills, isLoading, isInstalling, loadInstalledSkills, installSkill, uninstallSkill } = useSkillStore();
+  const [installUrl, setInstallUrl] = useState('');
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [installSuccess, setInstallSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeWorkspace?.id) {
+      loadInstalledSkills(activeWorkspace.id);
+    }
+  }, [activeWorkspace?.id, loadInstalledSkills]);
+
+  const parseInstallCommand = (input: string): { owner: string; repo: string; skillPath: string | undefined } | null => {
+    const trimmed = input.trim();
+    console.log('Parsing:', trimmed);
+    
+    // Try parsing "npx skills add https://github.com/owner/repo --skill skill-path"
+    // or "npx skills add owner/repo --skill skill-path"
+    const npxMatch = trimmed.match(/npx\s+skills\s+add\s+(.+?)(?:\s+--skill\s+(\S+))?$/i);
+    if (npxMatch) {
+      const repoPart = npxMatch[1].trim();
+      const skillPath = npxMatch[2];
+      
+      // Extract owner/repo from URL or short format
+      const urlMatch = repoPart.match(/github\.com\/([^\/]+)\/([^\/\s\.]+)/i);
+      if (urlMatch) {
+        console.log('URL match:', { owner: urlMatch[1], repo: urlMatch[2], skillPath });
+        return { owner: urlMatch[1], repo: urlMatch[2], skillPath };
+      }
+      
+      // Try short format owner/repo
+      const shortMatch = repoPart.match(/^([^\/]+)\/([^\s\/\.]+)(?:\.git)?$/);
+      if (shortMatch) {
+        console.log('Short match:', { owner: shortMatch[1], repo: shortMatch[2], skillPath });
+        return { owner: shortMatch[1], repo: shortMatch[2], skillPath };
+      }
+    }
+    
+    // Try GitHub URL alone
+    const urlOnlyMatch = trimmed.match(/github\.com\/([^\/\s]+)\/([^\s\/\.]+)/i);
+    if (urlOnlyMatch) {
+      console.log('URL only match:', { owner: urlOnlyMatch[1], repo: urlOnlyMatch[2] });
+      return { owner: urlOnlyMatch[1], repo: urlOnlyMatch[2], skillPath: undefined };
+    }
+    
+    // Try short format "owner/repo skill-path"
+    const shortFormatMatch = trimmed.match(/^([^\/\s]+)\/([^\s\/\.]+)(?:\s+(\S+))?$/);
+    if (shortFormatMatch) {
+      console.log('Short format match:', { owner: shortFormatMatch[1], repo: shortFormatMatch[2], skillPath: shortFormatMatch[3] });
+      return { owner: shortFormatMatch[1], repo: shortFormatMatch[2], skillPath: shortFormatMatch[3] };
+    }
+    
+    console.log('No match found');
+    return null;
+  };
+
+  const handleInstall = async () => {
+    if (!activeWorkspace || !installUrl.trim()) return;
+    
+    setInstallError(null);
+    setInstallSuccess(null);
+    
+    const parsed = parseInstallCommand(installUrl.trim());
+    if (!parsed) {
+      setInstallError('Invalid format. Use: owner/repo [skill-path] or paste the GitHub URL');
+      return;
+    }
+    
+    try {
+      await installSkill(
+        activeWorkspace.id,
+        activeWorkspace.folder_path,
+        parsed.owner,
+        parsed.repo,
+        parsed.skillPath
+      );
+      setInstallSuccess(`Installed ${parsed.skillPath || parsed.repo} from ${parsed.owner}/${parsed.repo}`);
+      setInstallUrl('');
+    } catch (err) {
+      setInstallError(String(err));
+    }
+  };
+
+  const handleUninstall = async (skillId: string) => {
+    if (confirm('Are you sure you want to uninstall this skill?')) {
+      await uninstallSkill(skillId);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-20">
+      <div className="border-b border-white/5 pb-4">
+        <h3 className="text-xl font-semibold text-white">Skills</h3>
+        <p className="text-sm text-neutral-400 mt-1">Install agent capabilities from GitHub repositories</p>
+      </div>
+
+      <div className="grid gap-4">
+        {/* Install from URL */}
+        <div className="p-5 bg-transparent border border-white/5 rounded-xl space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+              <Download className="w-4 h-4 text-purple-500" />
+            </div>
+            <div>
+              <h4 className="font-medium text-white">Install Skill</h4>
+              <p className="text-xs text-neutral-500">Paste the install command or GitHub URL</p>
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            <Input
+              placeholder="npx skills add owner/repo skill-path OR owner/repo skill-path"
+              value={installUrl}
+              onChange={e => { setInstallUrl(e.target.value); setInstallError(null); setInstallSuccess(null); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleInstall(); }}
+              className="bg-black/30 border-white/10 text-white placeholder-neutral-600"
+            />
+            <Button onClick={handleInstall} disabled={isInstalling === 'installing' || !installUrl.trim()}>
+              {isInstalling === 'installing' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Install'}
+            </Button>
+          </div>
+          
+          {installError && (
+            <p className="text-xs text-red-400">{installError}</p>
+          )}
+          {installSuccess && (
+            <p className="text-xs text-green-400">{installSuccess}</p>
+          )}
+          
+          <div className="p-3 bg-black/20 rounded-lg border border-white/5 space-y-2">
+            <p className="text-xs text-neutral-400">
+              Find skills at <a href="https://skills.sh" target="_blank" rel="noopener noreferrer" className="text-app-accent hover:underline">skills.sh</a> - copy the install command
+            </p>
+            <div className="space-y-1 mt-2">
+              <p className="text-xs text-neutral-500">Paste the command from skills.sh:</p>
+              <code className="block text-xs text-neutral-400 bg-black/30 px-2 py-1 rounded">npx skills add https://github.com/anthropics/skills --skill frontend-design</code>
+              <p className="text-xs text-neutral-500 mt-2">Or use short format:</p>
+              <code className="block text-xs text-neutral-400">anthropics/skills frontend-design</code>
+            </div>
+          </div>
+        </div>
+
+        {/* Installed Skills */}
+        <div className="p-5 bg-transparent border border-white/5 rounded-xl space-y-3">
+          <h4 className="font-medium text-white">Installed Skills</h4>
+          
+          {isLoading && installedSkills.length === 0 ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-neutral-500" />
+            </div>
+          ) : installedSkills.length === 0 ? (
+            <div className="text-center py-8 text-neutral-500">
+              <Puzzle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No skills installed</p>
+              <p className="text-xs mt-1">Paste an install command above to add skills</p>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {installedSkills.map(skill => (
+                <div key={skill.id} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-white/5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-white">{skill.name}</span>
+                      <Badge variant="outline" className="text-[10px] border-white/10 text-neutral-400">
+                        {skill.owner}/{skill.repo}
+                      </Badge>
+                    </div>
+                    {skill.description && (
+                      <p className="text-xs text-neutral-500 truncate mt-0.5">{skill.description}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => window.open(`https://github.com/${skill.owner}/${skill.repo}`, '_blank')}
+                      className="text-neutral-500 hover:text-white"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleUninstall(skill.id)}
+                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Skill Path Info */}
+        {activeWorkspace && (
+          <div className="p-3 bg-black/20 rounded-lg border border-white/5">
+            <p className="text-xs text-neutral-500">
+              Skills are stored in <code className="text-neutral-400">{activeWorkspace.folder_path}/.akira/skills/</code>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

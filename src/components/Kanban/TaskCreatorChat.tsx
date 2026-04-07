@@ -857,18 +857,16 @@ Rules:
             </h3>
             <div className="flex items-center gap-1 ml-2">
               <Tooltip>
-                <TooltipTrigger>
-                  <button
-                    onClick={handleToggleYoloMode}
-                    className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
-                      yoloMode 
-                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
-                        : 'bg-white/5 text-neutral-400 border border-transparent hover:border-white/10'
-                    }`}
-                  >
-                    <Zap className="w-3 h-3 inline mr-1" />
-                    YOLO
-                  </button>
+                <TooltipTrigger
+                  onClick={handleToggleYoloMode}
+                  className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
+                    yoloMode 
+                      ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
+                      : 'bg-white/5 text-neutral-400 border border-transparent hover:border-white/10'
+                  }`}
+                >
+                  <Zap className="w-3 h-3 inline mr-1" />
+                  YOLO
                 </TooltipTrigger>
                 <TooltipContent>
                   {yoloMode 

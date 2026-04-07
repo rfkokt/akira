@@ -119,6 +119,12 @@ fn main() {
             commands::rtk::init_rtk,
             commands::rtk::run_rtk_command,
             commands::rtk::get_rtk_gain_stats,
+            // Skills
+            commands::skills::get_installed_skills,
+            commands::skills::install_skill,
+            commands::skills::uninstall_skill,
+            commands::skills::fetch_marketplace_skills,
+            commands::skills::read_skill_content,
             // Shell
             commands::shell::run_shell_command,
             // CLI

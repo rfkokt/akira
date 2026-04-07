@@ -493,6 +493,28 @@ fn create_tables(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Skills table - stores installed skills per workspace
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS skills (
+            id              TEXT PRIMARY KEY,
+            workspace_id    TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            description     TEXT,
+            owner           TEXT NOT NULL,
+            repo            TEXT NOT NULL,
+            version         TEXT,
+            skill_path      TEXT NOT NULL,
+            installed_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_skills_workspace ON skills(workspace_id)",
+        [],
+    )?;
+
     Ok(())
 }
 

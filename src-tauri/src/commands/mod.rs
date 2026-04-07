@@ -12,5 +12,6 @@ pub mod pty;
 pub mod rtk;
 pub mod router;
 pub mod shell;
+pub mod skills;
 pub mod tasks;
 pub mod workspaces;

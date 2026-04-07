@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { useTerminalStore } from '@/store/terminalStore'
 import { PtyTerminal } from './PtyTerminal'
 import { ChevronDown, ChevronUp, X, Terminal as TerminalIcon, Plus, Columns, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
@@ -205,18 +204,13 @@ export function TerminalPanel() {
             <TooltipContent>{isPanelMaximized ? 'Minimize' : 'Maximize'}</TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 hover:bg-neutral-800 transition-colors"
-                onClick={() => {
-                  // Only close the panel window, do NOT kill sessions
-                  useTerminalStore.getState().setPanelOpen(false)
-                }}
-              >
-                <X className="w-3.5 h-3.5" />
-              </Button>
+            <TooltipTrigger
+              className="h-6 w-6 hover:bg-neutral-800 transition-colors inline-flex items-center justify-center rounded-md"
+              onClick={() => {
+                useTerminalStore.getState().setPanelOpen(false)
+              }}
+            >
+              <X className="w-3.5 h-3.5" />
             </TooltipTrigger>
             <TooltipContent>Close Panel</TooltipContent>
           </Tooltip>
