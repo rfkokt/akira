@@ -2,12 +2,6 @@ use serde::Serialize;
 use std::process::Command;
 
 #[derive(Debug, Clone, Serialize)]
-pub struct GitBranch {
-    pub name: String,
-    pub is_current: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct GitBranchesResult {
     pub current: String,
     pub local: Vec<String>,
@@ -19,11 +13,6 @@ pub struct GitDiffResult {
     pub diff: String,
     pub has_changes: bool,
     pub changed_files: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GitCommitMessage {
-    pub message: String,
 }
 
 #[tauri::command]
@@ -290,7 +279,7 @@ pub fn git_status(cwd: String) -> Result<GitStatusResult, String> {
         let y = chars.next().unwrap_or(' ');
         let _space = chars.next(); // skip space
 
-        let mut path: String = chars.collect();
+        let path: String = chars.collect();
         let path = if path.len() >= 2 && path.starts_with('"') && path.ends_with('"') {
             path[1..path.len() - 1].to_string()
         } else {
@@ -308,7 +297,11 @@ pub fn git_status(cwd: String) -> Result<GitStatusResult, String> {
         if y != ' ' {
             unstaged.push(GitFileStatus {
                 path: path.clone(),
-                status: if y == '?' { String::from("U") } else { y.to_string() },
+                status: if y == '?' {
+                    String::from("U")
+                } else {
+                    y.to_string()
+                },
                 is_staged: false,
             });
         }
@@ -376,7 +369,9 @@ pub fn git_show_head(cwd: String, path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn git_discard_changes(cwd: String, paths: Vec<String>) -> Result<(), String> {
-    if paths.is_empty() { return Ok(()); }
+    if paths.is_empty() {
+        return Ok(());
+    }
 
     let mut restore_args = vec!["restore", "--staged"];
     restore_args.extend(paths.iter().map(|s| s.as_str()));

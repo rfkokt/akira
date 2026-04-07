@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot, Search, X, FileSearch, Loader2 } from 'lucide-react'
+import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot, Search, X, FileSearch, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 interface FileEntry {
   name: string
@@ -38,14 +39,19 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
   const [treeData, setTreeData] = useState<TreeNode[]>([])
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
+  const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [showSearch, setShowSearch] = useState(false)
   const [searchMode, setSearchMode] = useState<SearchMode>('filename')
+  const [selectedIndex, setSelectedIndex] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
+  
+  // Git state
+  const [isPushing, setIsPushing] = useState(false)
+  const [currentBranch, setCurrentBranch] = useState<string>('')
+  
   const loadDirectory = useCallback(async (path: string): Promise<FileEntry[]> => {
     try {
       const result = await invoke<FileEntry[]>('read_directory', { path })
@@ -55,6 +61,63 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
       return []
     }
   }, [])
+
+  // Load current branch
+  const loadCurrentBranch = useCallback(async () => {
+    if (!rootPath) return
+    try {
+      const result = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+        command: 'git',
+        args: ['branch', '--show-current'],
+        cwd: rootPath
+      })
+      if (result.success) {
+        setCurrentBranch(result.stdout.trim())
+      }
+    } catch (error) {
+      console.error('Failed to load current branch:', error)
+    }
+  }, [rootPath])
+
+  // Git push handler
+  const handlePush = useCallback(async () => {
+    if (!rootPath || !currentBranch) return
+    
+    setIsPushing(true)
+    try {
+      // Check if branch has upstream
+      const checkUpstream = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+        command: 'git',
+        args: ['rev-parse', '--abbrev-ref', `${currentBranch}@{upstream}`],
+        cwd: rootPath
+      })
+      
+      const remote = 'origin'
+      
+      if (!checkUpstream.stdout.trim()) {
+        // No upstream, set it
+        await invoke('run_shell_command', {
+          command: 'git',
+          args: ['push', '-u', remote, currentBranch],
+          cwd: rootPath
+        })
+        toast.success(`Pushed ${currentBranch} to ${remote}`)
+      } else {
+        // Has upstream, just push
+        await invoke('run_shell_command', {
+          command: 'git',
+          args: ['push'],
+          cwd: rootPath
+        })
+        toast.success(`Pushed ${currentBranch}`)
+      }
+    } catch (error) {
+      console.error('Push failed:', error)
+      toast.error(`Push failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsPushing(false)
+    }
+  }, [rootPath, currentBranch])
 
   useEffect(() => {
     if (!rootPath) {
@@ -67,28 +130,57 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
       const entries = await loadDirectory(rootPath)
       setTreeData(entries.map(e => ({ ...e })))
       setExpandedDirs(new Set([rootPath]))
+      loadCurrentBranch()
     }
 
     loadRoot()
-  }, [rootPath, loadDirectory])
+  }, [rootPath, loadDirectory, loadCurrentBranch])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault()
-        setShowSearch(prev => !prev)
-        setTimeout(() => searchInputRef.current?.focus(), 100)
-      }
-      if (e.key === 'Escape' && showSearch) {
-        setShowSearch(false)
+        setShowSearch(true)
         setSearchQuery('')
         setSearchResults([])
+        setSelectedIndex(0)
+        setTimeout(() => searchInputRef.current?.focus(), 100)
+      }
+      
+      if (showSearch) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setShowSearch(false)
+          setSearchQuery('')
+          setSearchResults([])
+        }
+        
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setSelectedIndex(prev => Math.min(prev + 1, searchResults.length - 1))
+        }
+        
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setSelectedIndex(prev => Math.max(prev - 1, 0))
+        }
+        
+        if (e.key === 'Enter' && searchResults.length > 0) {
+          e.preventDefault()
+          const selected = searchResults[selectedIndex]
+          if (selected) {
+            onFileSelect?.(selected.path)
+            setShowSearch(false)
+            setSearchQuery('')
+            setSearchResults([])
+          }
+        }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showSearch])
+  }, [showSearch, searchResults, selectedIndex, onFileSelect])
 
   const performSearch = useCallback(async (query: string, mode: SearchMode) => {
     if (!rootPath || !query.trim()) {
@@ -104,6 +196,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
         query: query.trim()
       })
       setSearchResults(results)
+      setSelectedIndex(0)
     } catch (error) {
       console.error('Search failed:', error)
       setSearchResults([])
@@ -120,7 +213,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     if (searchQuery.trim()) {
       searchTimeoutRef.current = setTimeout(() => {
         performSearch(searchQuery, searchMode)
-      }, 200)
+      }, 150)
     } else {
       setSearchResults([])
     }
@@ -131,6 +224,10 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
       }
     }
   }, [searchQuery, searchMode, performSearch])
+
+  useEffect(() => {
+    setSelectedIndex(0)
+  }, [searchResults])
 
   const toggleDir = async (node: TreeNode) => {
     if (!node.is_dir) {
@@ -212,24 +309,6 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     }
   }
 
-  const highlightMatch = (text: string, start?: number, end?: number) => {
-    if (start === undefined || end === undefined) {
-      return <span className="text-neutral-300">{text}</span>
-    }
-    
-    const before = text.slice(0, start)
-    const match = text.slice(start, end)
-    const after = text.slice(end)
-    
-    return (
-      <span className="text-neutral-300">
-        {before}
-        <span className="bg-app-accent/30 text-app-accent rounded px-0.5">{match}</span>
-        {after}
-      </span>
-    )
-  }
-
   const handleResultClick = (result: SearchResult) => {
     onFileSelect?.(result.path)
     setShowSearch(false)
@@ -303,200 +382,253 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
   const isLoading = loadingDirs.size > 0 && treeData.length === 0
 
   return (
-    <div className="flex flex-col h-full bg-transparent border-r border-app-border">
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-app-border flex items-center justify-between">
-        <span className="text-xs font-medium text-app-text-muted font-geist uppercase tracking-widest">
-          Explorer
-        </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 p-0 text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
-          onClick={() => {
-            setShowSearch(prev => !prev)
-            if (!showSearch) {
-              setTimeout(() => searchInputRef.current?.focus(), 100)
-            }
-          }}
-          title="Search files (Cmd/Ctrl+P)"
-        >
-          <Search className="w-3.5 h-3.5" />
-        </Button>
+    <>
+      <div className="flex flex-col h-full bg-transparent border-r border-app-border">
+        {/* Header */}
+        <div className="px-3 py-2 border-b border-app-border flex items-center justify-between">
+          <span className="text-xs font-medium text-app-text-muted font-geist uppercase tracking-widest">
+            Explorer
+          </span>
+          <div className="flex items-center gap-1">
+            {/* Git Push */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 p-0 text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+              onClick={handlePush}
+              disabled={isPushing || !currentBranch}
+              title="Push to remote"
+            >
+              {isPushing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+            </Button>
+            
+            {/* Search */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 p-0 text-neutral-500 hover:text-neutral-300 hover:bg-white/5"
+              onClick={() => {
+                setShowSearch(true)
+                setSearchQuery('')
+                setSearchResults([])
+                setSelectedIndex(0)
+                setTimeout(() => searchInputRef.current?.focus(), 100)
+              }}
+              title="Search (Cmd/Ctrl+P)"
+            >
+              <Search className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* File Tree */}
+        <div className="flex-1 overflow-auto py-1">
+          {!rootPath ? (
+            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+              <p className="text-xs text-neutral-500 font-geist">
+                No workspace selected
+              </p>
+            </div>
+          ) : isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="w-4 h-4 border-2 border-app-accent border-t-transparent rounded-full animate-spin shadow-[0_0_10px_var(--app-accent)]" />
+            </div>
+          ) : (
+            <div>
+              {/* Root Folder */}
+              <Button
+                variant="ghost"
+                className="w-full justify-start h-auto py-1 px-3"
+                onClick={() => {
+                  const newExpanded = new Set(expandedDirs)
+                  if (newExpanded.has(rootPath)) {
+                    newExpanded.delete(rootPath)
+                  } else {
+                    newExpanded.add(rootPath)
+                  }
+                  setExpandedDirs(newExpanded)
+                }}
+              >
+                <span className="text-app-text-muted w-3 flex-shrink-0">
+                  {expandedDirs.has(rootPath) ? (
+                    <ChevronDown className="w-3 h-3" />
+                  ) : (
+                    <ChevronRight className="w-3 h-3" />
+                  )}
+                </span>
+                <FolderOpen className="w-4 h-4 text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]" />
+                <span className="flex-1 truncate text-xs font-medium text-app-text font-geist">
+                  {rootName || rootPath.split('/').pop() || rootPath}
+                </span>
+              </Button>
+              
+              {/* Children */}
+              {expandedDirs.has(rootPath) && (
+                <div>
+                  {treeData.map(node => renderNode(node, 0))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Search Panel */}
+      {/* Spotlight-like Search Modal */}
       {showSearch && (
-        <div className="border-b border-app-border p-2 space-y-2">
-          {/* Mode Toggle */}
-          <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`flex-1 h-6 text-xs justify-center ${
-                searchMode === 'filename' 
-                  ? 'bg-app-accent/20 text-app-accent' 
-                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
-              }`}
-              onClick={() => {
-                setSearchMode('filename')
-                setSearchResults([])
-                if (searchQuery.trim()) {
-                  performSearch(searchQuery, 'filename')
-                }
-              }}
-            >
-              <FileSearch className="w-3 h-3 mr-1" />
-              Filename
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`flex-1 h-6 text-xs justify-center ${
-                searchMode === 'content' 
-                  ? 'bg-app-accent/20 text-app-accent' 
-                  : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
-              }`}
-              onClick={() => {
-                setSearchMode('content')
-                setSearchResults([])
-                if (searchQuery.trim()) {
-                  performSearch(searchQuery, 'content')
-                }
-              }}
-            >
-              <Search className="w-3 h-3 mr-1" />
-              Content
-            </Button>
-          </div>
+        <div 
+          className="fixed inset-0 z-50 flex items-start justify-center pt-[15%]"
+          onClick={() => {
+            setShowSearch(false)
+            setSearchQuery('')
+            setSearchResults([])
+          }}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           
-          {/* Search Input */}
-          <div className="relative">
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder={searchMode === 'filename' ? 'Search files...' : 'Search in files...'}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-7 px-2 pr-7 text-xs bg-app-bg border border-app-border rounded 
-                         text-neutral-200 placeholder-neutral-500
-                         focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent/30"
-            />
-            {isSearching && (
-              <Loader2 className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 animate-spin" />
-            )}
-            {searchQuery && !isSearching && (
-              <button
-                onClick={() => {
-                  setSearchQuery('')
-                  setSearchResults([])
-                }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Search Results */}
-          {searchResults.length > 0 && (
-            <div className="max-h-64 overflow-auto border border-app-border rounded bg-app-bg/50">
-              {searchResults.map((result, idx) => (
-                <Button
-                  key={`${result.path}-${result.line_number || idx}`}
-                  variant="ghost"
-                  className="w-full justify-start h-auto py-1.5 px-2 rounded-none"
-                  onClick={() => handleResultClick(result)}
+          {/* Search Panel */}
+          <div 
+            className="relative w-full max-w-2xl bg-app-panel/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Search Input */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setSearchMode('filename')
+                    setSearchResults([])
+                    if (searchQuery.trim()) {
+                      performSearch(searchQuery, 'filename')
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    searchMode === 'filename'
+                      ? 'bg-app-accent text-white'
+                      : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/5'
+                  }`}
                 >
-                  <div className="flex flex-col items-start w-full min-w-0">
-                    <div className="flex items-center gap-1.5 w-full min-w-0">
-                      {getFileIcon(result.name)}
-                      <span className="text-xs text-neutral-300 truncate flex-1">
-                        {result.relative_path}
-                      </span>
-                    </div>
-                    {result.line_content && (
-                      <div className="w-full pl-5 mt-0.5">
-                        <div className="flex items-start gap-1">
-                          <span className="text-xs text-neutral-600 font-mono flex-shrink-0">
-                            {result.line_number}:
-                          </span>
-                          <span className="text-xs text-neutral-500 truncate font-mono">
-                            {highlightMatch(result.line_content, result.match_start, result.match_end)}
-                          </span>
+                  <FileSearch className="w-3 h-3 inline mr-1" />
+                  Files
+                </button>
+                <button
+                  onClick={() => {
+                    setSearchMode('content')
+                    setSearchResults([])
+                    if (searchQuery.trim()) {
+                      performSearch(searchQuery, 'content')
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    searchMode === 'content'
+                      ? 'bg-app-accent text-white'
+                      : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/5'
+                  }`}
+                >
+                  <Search className="w-3 h-3 inline mr-1" />
+                  Content
+                </button>
+              </div>
+              <div className="flex-1 relative">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder={searchMode === 'filename' ? 'Search files by name...' : 'Search in files...'}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-transparent text-white text-lg placeholder-neutral-500 outline-none font-geist"
+                />
+              </div>
+              {isSearching && (
+                <Loader2 className="w-5 h-5 text-neutral-400 animate-spin" />
+              )}
+              {searchQuery && !isSearching && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('')
+                    setSearchResults([])
+                  }}
+                  className="text-neutral-500 hover:text-neutral-300 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Results */}
+            <div className="max-h-[50vh] overflow-auto">
+              {searchResults.length > 0 ? (
+                <div className="py-2">
+                  {searchResults.map((result, idx) => (
+                    <div
+                      key={`${result.path}-${result.line_number || idx}`}
+                      className={`px-5 py-2.5 cursor-pointer transition-colors ${
+                        idx === selectedIndex
+                          ? 'bg-app-accent/20'
+                          : 'hover:bg-white/5'
+                      }`}
+                      onClick={() => handleResultClick(result)}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0">
+                          {getFileIcon(result.name)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-white truncate font-medium">
+                            {result.name}
+                          </div>
+                          <div className="text-xs text-neutral-500 truncate mt-0.5">
+                            {result.relative_path}
+                          </div>
+                          {result.line_content && (
+                            <div className="mt-1 text-xs font-mono truncate">
+                              <span className="text-neutral-600 mr-1">{result.line_number}:</span>
+                              <span className="text-neutral-300">
+                                {result.line_content.slice(0, 80)}
+                                {result.line_content.length > 80 && '...'}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                </Button>
-              ))}
-            </div>
-          )}
+                    </div>
+                  ))}
+                </div>
+              ) : searchQuery.trim() && !isSearching ? (
+                <div className="py-12 text-center">
+                  <div className="text-neutral-500 text-sm">No results found</div>
+                  <div className="text-neutral-600 text-xs mt-1">Try a different search term</div>
+                </div>
+              ) : null}
 
-          {/* No Results */}
-          {searchQuery.trim() && !isSearching && searchResults.length === 0 && (
-            <div className="text-xs text-neutral-500 text-center py-2">
-              No results found
+              {/* Keyboard Hints */}
+              <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between text-xs text-neutral-600">
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-1">
+                    <kbd className="px-1.5 py-0.5 bg-white/5 rounded text-neutral-500">↑↓</kbd>
+                    Navigate
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <kbd className="px-1.5 py-0.5 bg-white/5 rounded text-neutral-500">↵</kbd>
+                    Open
+                  </span>
+                </div>
+                <span className="flex items-center gap-1">
+                  <kbd className="px-1.5 py-0.5 bg-white/5 rounded text-neutral-500">Esc</kbd>
+                  Close
+                </span>
+              </div>
             </div>
-          )}
-
-          {/* Shortcut hint */}
-          <div className="text-[10px] text-neutral-600 text-center">
-            Press <kbd className="px-1 py-0.5 bg-app-border rounded text-neutral-500">Esc</kbd> to close
           </div>
         </div>
       )}
 
-      {/* File Tree */}
-      <div className="flex-1 overflow-auto py-1">
-        {!rootPath ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-            <p className="text-xs text-neutral-500 font-geist">
-              No workspace selected
-            </p>
-          </div>
-        ) : isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="w-4 h-4 border-2 border-app-accent border-t-transparent rounded-full animate-spin shadow-[0_0_10px_var(--app-accent)]" />
-          </div>
-        ) : (
-          <div>
-            {/* Root Folder */}
-            <Button
-              variant="ghost"
-              className="w-full justify-start h-auto py-1 px-3"
-              onClick={() => {
-                const newExpanded = new Set(expandedDirs)
-                if (newExpanded.has(rootPath)) {
-                  newExpanded.delete(rootPath)
-                } else {
-                  newExpanded.add(rootPath)
-                }
-                setExpandedDirs(newExpanded)
-              }}
-            >
-              <span className="text-app-text-muted w-3 flex-shrink-0">
-                {expandedDirs.has(rootPath) ? (
-                  <ChevronDown className="w-3 h-3" />
-                ) : (
-                  <ChevronRight className="w-3 h-3" />
-                )}
-              </span>
-              <FolderOpen className="w-4 h-4 text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]" />
-              <span className="flex-1 truncate text-xs font-medium text-app-text font-geist">
-                {rootName || rootPath.split('/').pop() || rootPath}
-              </span>
-            </Button>
-            
-            {/* Children */}
-            {expandedDirs.has(rootPath) && (
-              <div>
-                {treeData.map(node => renderNode(node, 0))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+      
+    </>
   )
 }

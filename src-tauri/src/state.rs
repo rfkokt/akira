@@ -7,6 +7,7 @@ use crate::cli_router_core::CliRouter;
 use crate::pty_manager::PtyManager;
 
 // Global state with database and running process
+#[allow(dead_code)]
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
     pub running_process: Mutex<Option<Arc<Mutex<Child>>>>,

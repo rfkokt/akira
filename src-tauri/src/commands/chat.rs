@@ -1,17 +1,6 @@
 use crate::db::queries;
 use crate::state::AppState;
-use serde::{Deserialize, Serialize};
 use tauri::State;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub id: i64,
-    pub task_id: String,
-    pub role: String,
-    pub content: String,
-    pub engine_alias: String,
-    pub created_at: String,
-}
 
 #[tauri::command]
 pub fn create_chat_message(

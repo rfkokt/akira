@@ -34,6 +34,14 @@ interface FileEntry {
 }
 
 function MarkdownContent({ content }: { content: string }) {
+  // Filter out tool calls and thinking blocks from display
+  const filteredContent = content
+    .replace(/\[Tool: [^\]]+\]\s*(?=\[Tool:|$)/gi, '') // Remove empty tool calls
+    .replace(/\[Tool: [^\]]+\]\s*/gi, '') // Remove tool call markers
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '') // Remove thinking blocks
+    .replace(/```thinking[\s\S]*?```/gi, '') // Remove thinking code blocks
+    .trim()
+  
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -80,7 +88,7 @@ function MarkdownContent({ content }: { content: string }) {
         },
       }}
     >
-      {content}
+      {filteredContent}
     </ReactMarkdown>
   );
 }
@@ -98,7 +106,15 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [createdSuccess, setCreatedSuccess] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
-  const [chatSessionId, setChatSessionId] = useState<string>('')
+  const [chatSessionId, setChatSessionId] = useState<string>(() => {
+    // Persist chat session ID across navigation
+    try {
+      const saved = localStorage.getItem('akira-chat-session-id')
+      return saved || ''
+    } catch {
+      return ''
+    }
+  })
   const [summarizedAtLength, setSummarizedAtLength] = useState<number>(-1)
   const [historyList, setHistoryList] = useState<{ task_id: string; created_at: string; role: string; preview: string; content: string }[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -110,6 +126,16 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [isAnalyzingProject, setIsAnalyzingProject] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
+  const [imageError, setImageError] = useState<string | null>(null)
+  const [yoloMode, setYoloMode] = useState(() => {
+    // Persist YOLO mode across navigation
+    try {
+      const saved = localStorage.getItem('akira-yolo-mode')
+      return saved === 'true'
+    } catch {
+      return false
+    }
+  })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const progressEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -298,6 +324,14 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
 
   const loadChatHistory = useCallback(async () => {
     if (!taskId) return
+    
+    // Don't reload if there are already messages in memory (user is in active chat)
+    const currentMessages = getMessages(taskId)
+    if (currentMessages.length > 0) {
+      console.log('[loadChatHistory] Skipping - messages already in memory')
+      return
+    }
+    
     try {
       const history = await dbService.getChatHistory(taskId)
       if (history.length > 0) {
@@ -309,11 +343,12 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
           timestamp: new Date(msg.created_at).getTime(),
         }))
         setMessages(taskId, loadedMessages)
+        console.log('[loadChatHistory] Loaded', loadedMessages.length, 'messages from DB')
       }
     } catch (err) {
       console.error('Failed to load chat history:', err)
     }
-  }, [taskId, setMessages])
+  }, [taskId, setMessages, getMessages])
 
   useEffect(() => {
     loadChatHistory()
@@ -352,6 +387,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     const value = e.target.value
     const cursorPosition = e.target.selectionStart
     setMessage(value)
+    setImageError(null)
     
     const textBeforeCursor = value.slice(0, cursorPosition)
     const lastAt = textBeforeCursor.lastIndexOf('@')
@@ -464,11 +500,7 @@ const userMsg = message
     
     if (imagesToSend.length > 0 && !hasApiKey) {
       console.log('[handleSend] No API key, showing error')
-      setExecutionSteps([{
-        type: 'error',
-        content: 'Gemini API key not configured. Go to Settings → Image Analysis to add your key.',
-        timestamp: Date.now()
-      }])
+      setImageError('Gemini API key belum dikonfigurasi. Buka Settings → Image Analysis untuk menambahkan API key.')
       return
     }
     
@@ -523,7 +555,25 @@ const userMsg = message
         
       const projectRules = useConfigStore.getState().getSystemPrompt()
       
-      const internalPrompt = `[SYSTEM — STRICT MODE — READ CAREFULLY]
+      let internalPrompt: string
+      
+      if (yoloMode) {
+        // YOLO Mode: Direct execution with full tool access
+        internalPrompt = `${projectRules ? projectRules + '\n\n' : ''}You are an AI coding assistant with FULL ACCESS to all tools. Execute changes DIRECTLY.
+
+User request: ${finalMessage}
+
+${historyMsg ? 'Conversation history:\n' + historyMsg + '\n\n' : ''}
+IMPORTANT INSTRUCTIONS:
+- Edit files directly using the available tools
+- Run shell commands if needed to test or verify changes
+- Follow the project conventions and rules strictly
+- Be thorough and handle edge cases
+- After making changes, verify they work correctly
+- Respond with what you changed and why`
+      } else {
+        // Planning Mode: Discussion only, no execution
+        internalPrompt = `[SYSTEM — STRICT MODE — READ CAREFULLY]
 
 You are a PLANNING ASSISTANT inside a project task manager called Akira.
 Your ONLY job is to help the user think through, discuss, and define tasks that will later be implemented by a separate AI coding agent.
@@ -547,6 +597,7 @@ ${projectRules ? '\nProject context & conventions (for planning reference only):
 ${historyMsg ? '\nConversation history:\n' + historyMsg + '\n' : ''}
 User: ${finalMessage}
 Assistant:`
+      }
 
       console.log('[handleSend] Sending message to AI...')
       await sendSimpleMessage(taskId, userMsg, internalPrompt)
@@ -727,22 +778,53 @@ Rules:
     }
   }
 
-  const handleClearChat = () => {
-    clearMessages(taskId)
-    setConversationSummaries([])
-    setCreatedSuccess(false)
+  const handleNewChat = useCallback(() => {
+    const newSessionId = Date.now().toString()
+    const newTaskId = chatSessionId ? `${baseTaskId}_${newSessionId}` : baseTaskId
+    setChatSessionId(newSessionId)
+    try {
+      localStorage.setItem('akira-chat-session-id', newSessionId)
+    } catch { /* ignore */ }
     setExecutionSteps([])
     setShowProgress(true)
-    setSummarizedAtLength(-1)
-    setAttachedImages([])
-  }
+    setConversationSummaries([])
+    clearMessages(newTaskId)
+  }, [baseTaskId, clearMessages])
 
-  const suggestedPrompts = [
-    "Create a login form component",
-    "Add dark mode toggle",
-    "Build a settings page",
-    "Implement search functionality"
-  ]
+  const handleToggleYoloMode = useCallback(() => {
+    setYoloMode(prev => {
+      const newValue = !prev
+      try {
+        localStorage.setItem('akira-yolo-mode', String(newValue))
+      } catch { /* ignore */ }
+      return newValue
+    })
+  }, [])
+
+  const handleSetChatSessionId = useCallback((sessionId: string) => {
+    setChatSessionId(sessionId)
+    try {
+      if (sessionId) {
+        localStorage.setItem('akira-chat-session-id', sessionId)
+      } else {
+        localStorage.removeItem('akira-chat-session-id')
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const suggestedPrompts = yoloMode 
+    ? [
+        "Refactor this function to be cleaner",
+        "Add error handling to the API",
+        "Create a button component",
+        "Fix the bug in login flow"
+      ]
+    : [
+        "Create a login form component",
+        "Add dark mode toggle",
+        "Build a settings page",
+        "Implement search functionality"
+      ]
 
   const handleAnalyzeInCreator = async () => {
     const cwd = activeWorkspace?.folder_path
@@ -769,18 +851,38 @@ Rules:
     <TooltipProvider>
       <div className="flex flex-col min-h-0 h-full bg-app-panel rounded-lg border border-app-border overflow-hidden">
         <div className="px-4 py-2 border-b border-app-border flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white font-geist">Task Creator</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-white font-geist">
+              {yoloMode ? 'YOLO Chat' : 'Task Creator'}
+            </h3>
+            <div className="flex items-center gap-1 ml-2">
+              <Tooltip>
+                <TooltipTrigger>
+                  <button
+                    onClick={handleToggleYoloMode}
+                    className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
+                      yoloMode 
+                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
+                        : 'bg-white/5 text-neutral-400 border border-transparent hover:border-white/10'
+                    }`}
+                  >
+                    <Zap className="w-3 h-3 inline mr-1" />
+                    YOLO
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {yoloMode 
+                    ? 'YOLO Mode ON: AI akan mengeksekusi langsung' 
+                    : 'YOLO Mode OFF: AI hanya diskusi perencanaan'}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger
                 className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-                onClick={() => {
-                  setChatSessionId(Date.now().toString());
-                  setExecutionSteps([]);
-                  setShowProgress(true);
-                  setConversationSummaries([]);
-                  clearMessages(taskId);
-                }}
+                onClick={handleNewChat}
               >
                 <div className="p-2">
                   <MessageSquarePlus className="w-4 h-4 text-neutral-400" />
@@ -839,12 +941,12 @@ Rules:
                           key={idx}
                           variant="ghost"
                           className={`w-full justify-start h-auto py-3 px-4 rounded-none border-b border-app-border ${item.task_id === taskId ? 'bg-app-accent/10 block' : 'block'}`}
-                          onClick={() => {
+onClick={() => {
                             const base = `__task_creator__:${activeWorkspace?.id || 'default'}`
                             if (item.task_id === base) {
-                              setChatSessionId('')
+                              handleSetChatSessionId('')
                             } else if (item.task_id.startsWith(`${base}_`)) {
-                              setChatSessionId(item.task_id.substring(base.length + 1))
+                              handleSetChatSessionId(item.task_id.substring(base.length + 1))
                             }
                             setShowHistoryModal(false)
                           }}
@@ -869,10 +971,12 @@ Rules:
               <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
                 <div>
                   <p className="text-sm text-neutral-300 font-geist">
-                    Chat dengan AI untuk diskusi
+                    {yoloMode ? 'Chat dengan AI untuk eksekusi langsung' : 'Chat dengan AI untuk diskusi'}
                   </p>
                   <p className="text-xs text-neutral-500 font-geist mt-1">
-                    Setelah diskusi, buat task dari percakapan
+                    {yoloMode 
+                      ? 'AI akan langsung mengeksekusi permintaan Anda'
+                      : 'Setelah diskusi, buat task dari percakapan'}
                   </p>
                   <p className="text-xs text-app-accent font-geist mt-2">
                     Type @ untuk reference files
@@ -944,70 +1048,75 @@ Rules:
               ))
             )}
             
-            {isStreaming && showProgress && (
+            {isStreaming && (
               <div className="mt-4 border border-app-border/50 rounded-lg overflow-hidden bg-app-bg/50">
                 <div className="flex items-center justify-between px-3 py-2 bg-app-sidebar/40 border-b border-app-border/40">
                   <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5 text-app-accent" />
                     <span className="text-[10px] font-semibold text-app-text-muted uppercase tracking-wider">AI Progress</span>
+                    {executionSteps.length > 0 && !showProgress && (
+                      <span className="text-[10px] text-neutral-500">({executionSteps.length} steps)</span>
+                    )}
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setShowProgress(false)}
+                    onClick={() => setShowProgress(!showProgress)}
                     className="h-5 px-1.5 text-[10px] text-app-text-muted hover:text-white"
                   >
-                    Hide
+                    {showProgress ? 'Hide' : 'Show'}
                   </Button>
                 </div>
-                <div className="max-h-32 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
-                  {executionSteps.length === 0 ? (
-                    <div className="flex items-center gap-2 text-neutral-400">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Waiting for response...</span>
-                    </div>
-                  ) : (
-                    executionSteps.map((step, idx) => (
-                      <div key={idx} className="flex items-start gap-1.5">
-                        {step.type === 'step_start' && (
-                          <>
-                            <Zap className="w-3 h-3 text-yellow-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-yellow-400">{step.content}</span>
-                          </>
-                        )}
-                        {step.type === 'tool_use' && (
-                          <>
-                            <Wrench className="w-3 h-3 text-cyan-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-cyan-300">{step.content}</span>
-                          </>
-                        )}
-                        {step.type === 'text' && (
-                          <>
-                            <FileText className="w-3 h-3 text-neutral-500 flex-shrink-0 mt-0.5" />
-                            <span className="text-neutral-400">{step.content}</span>
-                          </>
-                        )}
-                        {step.type === 'error' && (
-                          <>
-                            <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-red-400">{step.content}</span>
-                          </>
-                        )}
-                        {step.type === 'complete' && (
-                          <>
-                            <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" />
-                            <span className="text-green-400">Completed</span>
-                          </>
-                        )}
+                {showProgress && (
+                  <div className="max-h-32 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
+                    {executionSteps.length === 0 ? (
+                      <div className="flex items-center gap-2 text-neutral-400">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Waiting for response...</span>
                       </div>
-                    ))
-                  )}
-                  <div ref={progressEndRef} />
-                </div>
+                    ) : (
+                      executionSteps.map((step, idx) => (
+                        <div key={idx} className="flex items-start gap-1.5">
+                          {step.type === 'step_start' && (
+                            <>
+                              <Zap className="w-3 h-3 text-yellow-400 flex-shrink-0 mt-0.5" />
+                              <span className="text-yellow-400">{step.content}</span>
+                            </>
+                          )}
+                          {step.type === 'tool_use' && (
+                            <>
+                              <Wrench className="w-3 h-3 text-cyan-400 flex-shrink-0 mt-0.5" />
+                              <span className="text-cyan-300">{step.content}</span>
+                            </>
+                          )}
+                          {step.type === 'text' && (
+                            <>
+                              <FileText className="w-3 h-3 text-neutral-500 flex-shrink-0 mt-0.5" />
+                              <span className="text-neutral-400">{step.content}</span>
+                            </>
+                          )}
+                          {step.type === 'error' && (
+                            <>
+                              <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
+                              <span className="text-red-400">{step.content}</span>
+                            </>
+                          )}
+                          {step.type === 'complete' && (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" />
+                              <span className="text-green-400">Completed</span>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                    <div ref={progressEndRef} />
+                  </div>
+                )}
               </div>
             )}
             
-            {taskMessages.length > 0 && taskMessages.length > summarizedAtLength && conversationSummaries.length === 0 && !isSummarizing && (
+            {!yoloMode && taskMessages.length > 0 && taskMessages.length > summarizedAtLength && conversationSummaries.length === 0 && !isSummarizing && (
               <div className="flex gap-2 mt-4">
                 <Button
                   onClick={handleSummarize}
@@ -1016,13 +1125,6 @@ Rules:
                 >
                   <Check className="w-3 h-3 mr-2" />
                   Summarize & Create Task
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={handleClearChat}
-                  disabled={isStreaming}
-                >
-                  Clear
                 </Button>
               </div>
             )}
@@ -1115,6 +1217,13 @@ Rules:
             </div>
           )}
           
+          {imageError && (
+            <div className="mb-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+              <span className="text-xs text-red-300">{imageError}</span>
+            </div>
+          )}
+          
           <div className="relative flex flex-col bg-app-panel rounded-xl border border-app-border focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/20 transition-all shadow-inner">
             <textarea
               ref={textareaRef}
@@ -1122,7 +1231,11 @@ Rules:
               onChange={handleMessageChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={activeEngine ? "Describe what you want to build..." : "Select a model first"}
+              placeholder={activeEngine 
+                ? (yoloMode 
+                    ? "Tell AI what to build or fix..." 
+                    : "Describe what you want to build...")
+                : "Select a model first"}
               disabled={!activeEngine || isStreaming}
               className="w-full px-4 pt-3 pb-2 text-sm bg-transparent text-white placeholder-neutral-600 focus:outline-none resize-none custom-scrollbar"
               rows={1}
@@ -1133,7 +1246,10 @@ Rules:
               <div className="flex items-center gap-2">
                 <ImageInput
                   images={attachedImages}
-                  onImagesChange={setAttachedImages}
+                  onImagesChange={(images) => {
+                    setAttachedImages(images)
+                    setImageError(null)
+                  }}
                   maxImages={3}
                   disabled={isStreaming || !activeEngine}
                 />

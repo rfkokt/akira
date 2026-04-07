@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal, X, File } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
 import { dbService } from '@/lib/db'
@@ -28,12 +28,18 @@ import { Separator } from '@/components/ui/separator'
 
 type PageView = 'tasks' | 'files' | 'settings';
 
+interface OpenFile {
+  path: string
+  name: string
+}
+
 function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const [showRecovery, setShowRecovery] = useState(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
-  const [selectedFile, setSelectedFile] = useState<string | undefined>(undefined)
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
+  const [activeFileIndex, setActiveFileIndex] = useState<number | null>(null)
   const [selectedGitFile, setSelectedGitFile] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'normal' | 'diff'>('normal')
   const { engines, activeEngine, setActiveEngine, fetchEngines, seedDefaultEngines, isLoading } = useEngineStore()
@@ -84,6 +90,23 @@ function App() {
       setCurrentWorkspace(activeWorkspace.id)
     }
   }, [activeWorkspace, setCurrentWorkspace])
+
+  // Auto-switch or create terminal session when workspace changes
+  useEffect(() => {
+    if (!activeWorkspace) return
+    
+    const currentSessions = useTerminalStore.getState().sessions
+    const existingSession = currentSessions.find(s => s.workspaceId === activeWorkspace.id)
+    const { createSession, setActiveSession } = useTerminalStore.getState()
+    
+    if (existingSession) {
+      // Switch to existing terminal session for this workspace
+      setActiveSession(existingSession.id)
+    } else {
+      // Create new terminal session for the workspace
+      createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
+    }
+  }, [activeWorkspace?.id])
 
   // Fetch engines on mount, seed defaults if empty
   useEffect(() => {
@@ -166,6 +189,52 @@ function App() {
   }
 
   const enabledEngines = engines.filter(e => e.enabled)
+  
+  // Helper to get filename from path
+  const getFileName = (path: string) => path.split('/').pop() || path
+  
+  // Helper to get relative path for duplicate filenames
+  const getFileDisplayName = (file: OpenFile) => {
+    // Check if there are other files with the same name
+    const duplicateFiles = openFiles.filter(f => f.name === file.name)
+    if (duplicateFiles.length > 1) {
+      // Show parent folder name to differentiate
+      const pathParts = file.path.split('/')
+      const parentFolder = pathParts[pathParts.length - 2] || ''
+      return `${parentFolder}/${file.name}`
+    }
+    return file.name
+  }
+  
+  // Open file in tab
+  const handleFileOpen = (path: string) => {
+    const existingIndex = openFiles.findIndex(f => f.path === path)
+    if (existingIndex >= 0) {
+      setActiveFileIndex(existingIndex)
+    } else {
+      setOpenFiles([...openFiles, { path, name: getFileName(path) }])
+      setActiveFileIndex(openFiles.length)
+    }
+    setViewMode('normal')
+  }
+  
+  // Close file tab
+  const handleFileClose = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const newFiles = openFiles.filter((_, i) => i !== index)
+    setOpenFiles(newFiles)
+    
+    if (activeFileIndex !== null) {
+      if (index < activeFileIndex) {
+        setActiveFileIndex(activeFileIndex - 1)
+      } else if (index === activeFileIndex) {
+        setActiveFileIndex(newFiles.length > 0 ? Math.min(activeFileIndex, newFiles.length - 1) : null)
+      }
+    }
+  }
+  
+  // Get active file
+  const activeFile = activeFileIndex !== null && openFiles[activeFileIndex] ? openFiles[activeFileIndex].path : null
 
   // Render main content based on current page
   const renderMainContent = () => {
@@ -182,11 +251,8 @@ function App() {
                 <FileTree 
                   rootPath={activeWorkspace.folder_path}
                   rootName={activeWorkspace.name}
-                  selectedPath={selectedFile}
-                  onFileSelect={(path) => {
-                    setSelectedFile(path)
-                    setViewMode('normal')
-                  }}
+                  selectedPath={activeFile || undefined}
+                  onFileSelect={handleFileOpen}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
@@ -196,15 +262,48 @@ function App() {
             </div>
             {/* Middle: File Content / Diff Viewer */}
             <div className="flex-1 flex flex-col overflow-hidden bg-app-bg relative">
+              {/* File Tabs */}
+              {openFiles.length > 0 && (
+                <div className="flex items-center border-b border-app-border bg-app-sidebar/50 overflow-x-auto">
+                  {openFiles.map((file, index) => (
+                    <div
+                      key={file.path}
+                      onClick={() => setActiveFileIndex(index)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-app-border group min-w-0 ${
+                        index === activeFileIndex
+                          ? 'bg-app-bg text-white'
+                          : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/5'
+                      }`}
+                    >
+                      <File className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="text-xs truncate max-w-[150px]" title={file.path}>
+                        {getFileDisplayName(file)}
+                      </span>
+                      <button
+                        onClick={(e) => handleFileClose(index, e)}
+                        className="opacity-0 group-hover:opacity-100 hover:bg-white/10 rounded p-0.5 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Content Area */}
               {viewMode === 'diff' && selectedGitFile && activeWorkspace ? (
                 <MonacoDiffViewer filePath={selectedGitFile} workspacePath={activeWorkspace.folder_path} />
-              ) : viewMode === 'normal' && selectedFile ? (
-                <FileViewer filePath={selectedFile} />
+              ) : viewMode === 'normal' && activeFile ? (
+                <FileViewer filePath={activeFile} />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
                   <div className="text-center">
                     <FolderOpen className="w-12 h-12 text-neutral-700/50 mb-3 mx-auto" />
                     <p className="text-sm font-geist">Select a file from the explorer</p>
+                    {openFiles.length > 1 && (
+                      <p className="text-xs text-neutral-600 mt-1">
+                        {openFiles.length} files open • Click tabs to switch
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

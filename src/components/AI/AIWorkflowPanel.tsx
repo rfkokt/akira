@@ -11,6 +11,7 @@ import { dbService } from '@/lib/db';
 import { Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
 import { emit } from '@tauri-apps/api/event';
+import { toast } from 'sonner';
 
 interface AIWorkflowPanelProps {
   task: Task;
@@ -323,7 +324,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
 
   const handleMerge = async () => {
     if (!workspacePath) {
-      alert("Workspace path is missing.");
+      toast.error("Workspace path is missing");
       return;
     }
     
@@ -333,7 +334,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
       ? (task.merged_to_branch || task.merge_source_branch || task.pr_branch)
       : (task.merge_source_branch || taskState?.prBranch || task.pr_branch);
     if (!featureBranch) {
-      alert("AI feature branch PR could not be found for this task. The task may not have been run by AI, or the branch info was not saved.");
+      toast.error("AI feature branch PR could not be found for this task. The task may not have been run by AI, or the branch info was not saved.");
       return;
     }
 
@@ -348,6 +349,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
 
     if (result.success) {
       setExecLog(prev => prev + '\n' + result.log + '\n\n✅ Merge and Push completed successfully!');
+      toast.success(`Successfully merged ${featureBranch} → ${result.mergedToBranch || targetBranch}`);
       
       // Save merge info to database
       try {
@@ -368,6 +370,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
       }, 1500);
     } else {
       setExecLog(prev => prev + '\n❌ ERROR: ' + result.log);
+      toast.error(`Merge failed: ${result.log}`);
       setIsExecuting(false); // allow them to cancel or copy log
     }
   };

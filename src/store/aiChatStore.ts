@@ -468,6 +468,11 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       id: `msg-${Date.now()}`, taskId, role: 'user', content, timestamp: Date.now(),
     });
 
+    // Save user message to DB
+    try {
+      await dbService.createChatMessage(taskId, 'user', content, 'user');
+    } catch { /* non-critical */ }
+
     // Move to in-progress if revision
     if (isRevisionMode) {
       await useTaskStore.getState().moveTask(taskId, 'in-progress');
@@ -584,9 +589,15 @@ Please respond helpfully and concisely.`;
   // ── Send Simple Message ─────────────────────────────────────────────
 
   sendSimpleMessage: async (taskId, prompt, internalPrompt) => {
-    addMessage(get, set, taskId, {
-      id: `msg-${Date.now()}`, taskId, role: 'user', content: prompt, timestamp: Date.now(),
-    });
+    const userMessage = {
+      id: `msg-${Date.now()}`, taskId, role: 'user' as const, content: prompt, timestamp: Date.now(),
+    };
+    addMessage(get, set, taskId, userMessage);
+
+    // Save user message to DB
+    try {
+      await dbService.createChatMessage(taskId, 'user', prompt, 'user');
+    } catch { /* non-critical */ }
 
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return '';

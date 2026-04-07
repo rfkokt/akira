@@ -20,11 +20,11 @@ pub struct ProjectConfigData {
 #[tauri::command]
 pub fn get_project_config(
     state: State<AppState>,
-    workspaceId: String,
+    workspace_id: String,
 ) -> Result<Option<ProjectConfigData>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    queries::get_project_config(&conn, &workspaceId)
+    queries::get_project_config(&conn, &workspace_id)
         .map(|opt| {
             opt.map(|c| ProjectConfigData {
                 id: c.id,
