@@ -6,7 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { 
   Eye, Save, Layers, Shield, Check, Copy,
-  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image, Puzzle, Download, ExternalLink
+  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image, Puzzle, Download, ExternalLink, RefreshCw
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
 import { useEngineStore, useWorkspaceStore, useSkillStore } from '@/store';
@@ -910,7 +910,7 @@ function VisionTab() {
 // ----------------------------------------------------------------------
 function SkillsTab() {
   const { activeWorkspace } = useWorkspaceStore();
-  const { installedSkills, isLoading, isInstalling, loadInstalledSkills, installSkill, uninstallSkill } = useSkillStore();
+  const { installedSkills, engineSkills, isLoading, isInstalling, loadInstalledSkills, detectEngineSkills, importEngineSkill, installSkill, uninstallSkill } = useSkillStore();
   const [installUrl, setInstallUrl] = useState('');
   const [installError, setInstallError] = useState<string | null>(null);
   const [installSuccess, setInstallSuccess] = useState<string | null>(null);
@@ -920,6 +920,20 @@ function SkillsTab() {
       loadInstalledSkills(activeWorkspace.id);
     }
   }, [activeWorkspace?.id, loadInstalledSkills]);
+
+  const handleDetectEngineSkills = async () => {
+    await detectEngineSkills();
+  };
+
+  const handleImportEngineSkill = async (skillPath: string, source: string) => {
+    if (!activeWorkspace) return;
+    
+    try {
+      await importEngineSkill(activeWorkspace.id, activeWorkspace.folder_path, skillPath, source);
+    } catch (err) {
+      console.error('Failed to import skill:', err);
+    }
+  };
 
   const parseInstallCommand = (input: string): { owner: string; repo: string; skillPath: string | undefined } | null => {
     const trimmed = input.trim();
@@ -1101,6 +1115,62 @@ function SkillsTab() {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* Sync Engine Skills */}
+        <div className="p-5 bg-transparent border border-white/5 rounded-xl space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20">
+                <RefreshCw className="w-4 h-4 text-cyan-500" />
+              </div>
+              <div>
+                <h4 className="font-medium text-white">Engine Skills</h4>
+                <p className="text-xs text-neutral-500">Import skills from ~/.opencode/skills or ~/.claude/skills</p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDetectEngineSkills}
+              disabled={isLoading}
+            >
+              {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Detect'}
+            </Button>
+          </div>
+
+          {engineSkills.length > 0 && (
+            <div className="space-y-2">
+              {engineSkills.map((skill) => (
+                <div key={skill.path} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-white/5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-white">{skill.name}</span>
+                      <Badge variant="outline" className="text-[10px] border-white/10 text-neutral-400">
+                        {skill.source}
+                      </Badge>
+                    </div>
+                    {skill.description && (
+                      <p className="text-xs text-neutral-500 truncate mt-0.5">{skill.description}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleImportEngineSkill(skill.path, skill.source)}
+                  >
+                    Import
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {engineSkills.length === 0 && !isLoading && (
+            <p className="text-xs text-neutral-500 text-center py-4">
+              Click Detect to find skills from your AI engine directories
+            </p>
           )}
         </div>
 

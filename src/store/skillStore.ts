@@ -13,13 +13,23 @@ export interface Skill {
   installed_at: string;
 }
 
+export interface EngineSkill {
+  name: string;
+  path: string;
+  description: string | null;
+  source: string;
+}
+
 interface SkillState {
   installedSkills: Skill[];
+  engineSkills: EngineSkill[];
   isLoading: boolean;
   isInstalling: string | null;
   error: string | null;
   
   loadInstalledSkills: (workspaceId: string) => Promise<void>;
+  detectEngineSkills: () => Promise<EngineSkill[]>;
+  importEngineSkill: (workspaceId: string, workspacePath: string, skillPath: string, source: string) => Promise<Skill>;
   installSkill: (workspaceId: string, workspacePath: string, owner: string, repo: string, skillPath?: string) => Promise<Skill>;
   uninstallSkill: (skillId: string) => Promise<void>;
   readSkillContent: (skillPath: string) => Promise<string>;
@@ -27,6 +37,7 @@ interface SkillState {
 
 export const useSkillStore = create<SkillState>((set) => ({
   installedSkills: [],
+  engineSkills: [],
   isLoading: false,
   isInstalling: null,
   error: null,
@@ -39,6 +50,39 @@ export const useSkillStore = create<SkillState>((set) => ({
     } catch (error) {
       console.error('Failed to load skills:', error);
       set({ error: String(error), isLoading: false });
+    }
+  },
+
+  detectEngineSkills: async () => {
+    try {
+      const skills = await invoke<EngineSkill[]>('detect_engine_skills');
+      set({ engineSkills: skills });
+      return skills;
+    } catch (error) {
+      console.error('Failed to detect engine skills:', error);
+      return [];
+    }
+  },
+
+  importEngineSkill: async (workspaceId, workspacePath, skillPath, source) => {
+    set({ isInstalling: 'importing', error: null });
+    try {
+      const skill = await invoke<Skill>('import_engine_skill', {
+        workspaceId,
+        workspacePath,
+        engineSkillPath: skillPath,
+        source,
+      });
+      set((state) => ({
+        installedSkills: [skill, ...state.installedSkills.filter(s => s.id !== skill.id)],
+        engineSkills: state.engineSkills.filter(s => s.path !== skillPath),
+        isInstalling: null,
+      }));
+      return skill;
+    } catch (error) {
+      console.error('Failed to import engine skill:', error);
+      set({ error: String(error), isInstalling: null });
+      throw error;
     }
   },
 

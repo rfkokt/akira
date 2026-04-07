@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle, Sparkles, MessageSquarePlus } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore } from '@/store'
+import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore, useSkillStore } from '@/store'
 import { useConfigStore } from '@/store/configStore'
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject'
 import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
@@ -24,6 +24,7 @@ interface ConversationSummary {
   title: string
   description: string
   priority: 'high' | 'medium' | 'low'
+  recommendedSkills: string[]
 }
 
 interface FileEntry {
@@ -148,6 +149,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const { config } = useConfigStore()
   const { analyzeProject } = useAnalyzeProject()
   const { isAnalyzing: isAnalyzingImages, analyzeImages, hasApiKey } = useImageAnalysis()
+  const { installedSkills } = useSkillStore()
 
   const baseTaskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
   const taskId = chatSessionId ? `${baseTaskId}_${chatSessionId}` : baseTaskId
@@ -623,6 +625,9 @@ Assistant:`
               title: String(t.title).substring(0, 100),
               description: cleanDescription(String(t.description || '')),
               priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
+              recommendedSkills: Array.isArray(t.recommendedSkills) 
+                ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3) 
+                : [],
             }))
         }
       }
@@ -636,20 +641,30 @@ Assistant:`
         .replace(/\*\*?TASK_TITLE:\*\*?/gi, 'TASK_TITLE:')
         .replace(/\*\*?TASK_DESCRIPTION:\*\*?/gi, 'TASK_DESCRIPTION:')
         .replace(/\*\*?TASK_PRIORITY:\*\*?/gi, 'TASK_PRIORITY:')
+        .replace(/\*\*?SKILLS:\*\*?/gi, 'SKILLS:')
 
       const blocks = cleanResponse.split(/TASK_TITLE:/i).slice(1)
       const tasks: ConversationSummary[] = []
 
       for (const block of blocks) {
         const titleLine = block.split('\n')[0].replace(/[*_~`]/g, '').trim()
-        const descMatch = block.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|TASK_PRIORITY:|---|$)/i)
+        const descMatch = block.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|TASK_PRIORITY:|SKILLS:|---|$)/i)
         const priorityMatch = block.match(/TASK_PRIORITY:\s*(high|medium|low)/i)
+        const skillsMatch = block.match(/SKILLS:\s*([^\n]+)/i)
 
         if (titleLine) {
+          const skillsStr = skillsMatch?.[1] || ''
+          const skills = skillsStr
+            .split(/[,;]/)
+            .map((s: string) => s.trim().toLowerCase())
+            .filter((s: string) => s.length > 0)
+            .slice(0, 3)
+
           tasks.push({
             title: titleLine.substring(0, 100),
             description: cleanDescription(descMatch?.[1] || ''),
             priority: (priorityMatch?.[1]?.toLowerCase() as 'high' | 'medium' | 'low') || 'medium',
+            recommendedSkills: skills,
           })
         }
       }
@@ -683,6 +698,11 @@ Assistant:`
       
       const projectRules = useConfigStore.getState().getSystemPrompt()
       
+      // Build skill catalog for recommendation
+      const skillCatalog = installedSkills.length > 0
+        ? installedSkills.map(s => `- ${s.name}: ${s.description || 'No description'}`).join('\n')
+        : ''
+      
       const summaryPrompt = `You are a task extraction specialist. Analyze the conversation below and extract all actionable coding tasks discussed.
 
 You MUST output a valid JSON array. No markdown, no explanation, ONLY the JSON array.
@@ -691,8 +711,9 @@ JSON Schema:
 [
   {
     "title": "Short clear title, max 80 chars",
-    "description": "A comprehensive implementation prompt for the AI agent. Include: exact file paths mentioned, design decisions agreed upon, specific coding steps, and technical constraints from the discussion. This is the raw instruction the next AI agent will receive — be thorough and precise. Max 2000 chars.",
-    "priority": "high | medium | low"
+    "description": "A comprehensive implementation prompt for the AI agent. Include: exact file paths mentioned, design decisions agreed upon, specific coding steps, and technical constraints from the discussion. Max 2500 chars.",
+    "priority": "high | medium | low",
+    "recommendedSkills": ["skill-name-1", "skill-name-2"]
   }
 ]
 
@@ -700,13 +721,17 @@ Priority guidelines:
 - "high": Bug fixes, breaking issues, security concerns, blockers
 - "medium": New features, enhancements, refactoring
 - "low": Nice-to-have improvements, cosmetic changes, documentation
-${projectRules ? '\nThe tasks MUST follow these project rules. Embed relevant rules into each task description so the executing AI follows the conventions:\n' + projectRules : ''}
+
+Available skills (recommend MAX 2 that would help implement this task):
+${skillCatalog || 'No skills installed'}
 
 Rules:
 - Extract ONLY coding implementation tasks
 - Do NOT create tasks for: git commits, PRs, testing, deployment
 - If the conversation is unclear or has no actionable tasks, return an empty array: []
-- Output ONLY valid JSON, no surrounding text or markdown fences`
+- Only recommend skills from the "Available skills" list above
+- If no skills are relevant, use an empty array: []
+- Output ONLY valid JSON, no surrounding text or markdown fences${projectRules ? '\n\nThe tasks MUST follow these project rules. Embed relevant rules into each task description:\n' + projectRules : ''}`
 
       const summaryId = `__summarize_temp_${Date.now()}__`
       const lastResponse = await sendSimpleMessage(summaryId, `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`)
@@ -757,9 +782,17 @@ Rules:
     setIsCreating(true)
     try {
       for (const summary of conversationSummaries) {
+        // Embed recommended skills at the top of description
+        let finalDescription = summary.description || ''
+        if (summary.recommendedSkills && summary.recommendedSkills.length > 0) {
+          const skillsTag = `<!-- skills:${summary.recommendedSkills.join(',')} -->\n`
+          finalDescription = skillsTag + finalDescription
+        }
+        finalDescription += '\n<!-- auto-rules-embedded -->'
+        
         await createTask({
           title: summary.title,
-          description: (summary.description || '') + '\n<!-- auto-rules-embedded -->',
+          description: finalDescription,
           status: 'todo',
           priority: summary.priority || 'medium',
         })
@@ -1163,6 +1196,18 @@ onClick={() => {
                           <div className="bg-app-panel rounded-lg p-3 border border-app-border">
                             <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
                             <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{summary.description}</p>
+                          </div>
+                        )}
+                        {summary.recommendedSkills && summary.recommendedSkills.length > 0 && (
+                          <div className="bg-app-panel rounded-lg p-3 border border-app-border">
+                            <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Recommended Skills</label>
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {summary.recommendedSkills.map((skill, skillIdx) => (
+                                <span key={skillIdx} className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>

@@ -92,13 +92,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       await invoke('set_active_workspace', { id });
       
+      const workspace = get().workspaces.find(w => w.id === id);
+      
       set((state) => ({
         workspaces: state.workspaces.map(w => ({
           ...w,
           is_active: w.id === id
         })),
-        activeWorkspace: state.workspaces.find(w => w.id === id) || null,
+        activeWorkspace: workspace || null,
       }));
+
+      // Auto-load skills for workspace
+      if (workspace) {
+        const { loadInstalledSkills } = await import('./skillStore').then(m => m.useSkillStore.getState());
+        loadInstalledSkills(id);
+      }
     } catch (error) {
       console.error('Failed to set active workspace:', error);
     }

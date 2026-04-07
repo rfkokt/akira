@@ -405,3 +405,165 @@ pub fn read_skill_content(skill_path: String) -> Result<String, String> {
     fs::read_to_string(&skill_md)
         .map_err(|e| format!("Failed to read SKILL.md: {}", e))
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineSkill {
+    pub name: String,
+    pub path: String,
+    pub description: Option<String>,
+    pub source: String, // "opencode" or "claude"
+}
+
+#[tauri::command]
+pub fn detect_engine_skills() -> Result<Vec<EngineSkill>, String> {
+    let mut skills: Vec<EngineSkill> = Vec::new();
+    
+    // Check ~/.opencode/skills/
+    if let Some(home) = dirs::home_dir() {
+        let opencode_skills_dir = home.join(".opencode").join("skills");
+        if opencode_skills_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&opencode_skills_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() && path.join("SKILL.md").exists() {
+                        let name = path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        
+                        let description = fs::read_to_string(path.join("SKILL.md"))
+                            .ok()
+                            .and_then(|content| {
+                                content.lines()
+                                    .find(|line| line.starts_with("# "))
+                                    .map(|line| line[2..].trim().to_string())
+                            });
+                        
+                        skills.push(EngineSkill {
+                            name,
+                            path: path.to_string_lossy().to_string(),
+                            description,
+                            source: "opencode".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        
+        // Check ~/.claude/skills/
+        let claude_skills_dir = home.join(".claude").join("skills");
+        if claude_skills_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&claude_skills_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() && path.join("SKILL.md").exists() {
+                        let name = path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        
+                        let description = fs::read_to_string(path.join("SKILL.md"))
+                            .ok()
+                            .and_then(|content| {
+                                content.lines()
+                                    .find(|line| line.starts_with("# "))
+                                    .map(|line| line[2..].trim().to_string())
+                            });
+                        
+                        skills.push(EngineSkill {
+                            name,
+                            path: path.to_string_lossy().to_string(),
+                            description,
+                            source: "claude".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(skills)
+}
+
+#[tauri::command]
+pub async fn import_engine_skill(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    workspace_path: String,
+    engine_skill_path: String,
+    source: String,
+) -> Result<Skill, String> {
+    let source_path = PathBuf::from(&engine_skill_path);
+    
+    if !source_path.exists() || !source_path.join("SKILL.md").exists() {
+        return Err("Skill not found at specified path".to_string());
+    }
+    
+    let skills_dir = get_skills_dir(&workspace_path);
+    fs::create_dir_all(&skills_dir).map_err(|e| format!("Failed to create skills directory: {}", e))?;
+    
+    let skill_name = source_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("imported-skill")
+        .to_string();
+    
+    let skill_id = format!("{}-{}", source, skill_name);
+    let skill_folder = skills_dir.join(&skill_name);
+    
+    // Remove existing if exists
+    if skill_folder.exists() {
+        let _ = fs::remove_dir_all(&skill_folder);
+    }
+    
+    // Copy skill files
+    fn copy_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let ty = entry.file_type()?;
+            let dest_path = dst.join(entry.file_name());
+            if ty.is_dir() {
+                copy_dir_contents(&entry.path(), &dest_path)?;
+            } else {
+                fs::copy(entry.path(), &dest_path)?;
+            }
+        }
+        Ok(())
+    }
+    
+    copy_dir_contents(&source_path, &skill_folder)
+        .map_err(|e| format!("Failed to copy skill files: {}", e))?;
+    
+    // Read description from SKILL.md
+    let description = fs::read_to_string(skill_folder.join("SKILL.md"))
+        .ok()
+        .and_then(|content| {
+            content.lines()
+                .find(|line| line.starts_with("# "))
+                .map(|line| line[2..].trim().to_string())
+        });
+    
+    let skill_path_str = skill_folder.to_string_lossy().to_string();
+    let installed_at = chrono::Utc::now().to_rfc3339();
+    
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    conn.execute(
+        "INSERT OR REPLACE INTO skills (id, workspace_id, name, description, owner, repo, skill_path, installed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![&skill_id, &workspace_id, &skill_name, &description.clone().unwrap_or_default(), &source, &source, &skill_path_str, &installed_at],
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(Skill {
+        id: skill_id,
+        workspace_id,
+        name: skill_name,
+        description,
+        owner: source.clone(),
+        repo: source,
+        version: None,
+        skill_path: skill_path_str,
+        installed_at,
+    })
+}

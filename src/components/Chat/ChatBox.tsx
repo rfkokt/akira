@@ -521,57 +521,41 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
             {!isMinimized && (
               <>
                 <Tooltip>
-                  <TooltipTrigger>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowTerminal(!showTerminal)}
-                      className={`h-7 w-7 rounded-lg ${showTerminal ? 'text-app-accent bg-app-accent/10' : 'text-app-text-muted hover:text-white hover:bg-app-panel'}`}
-                    >
-                      {showTerminal ? <Bot className="w-3.5 h-3.5" /> : <Terminal className="w-3.5 h-3.5" />}
-                    </Button>
+                  <TooltipTrigger
+                    onClick={() => setShowTerminal(!showTerminal)}
+                    className={`inline-flex items-center justify-center rounded-lg h-7 w-7 ${showTerminal ? 'text-app-accent bg-app-accent/10' : 'text-app-text-muted hover:text-white hover:bg-app-panel'} transition-colors`}
+                  >
+                    {showTerminal ? <Bot className="w-3.5 h-3.5" /> : <Terminal className="w-3.5 h-3.5" />}
                   </TooltipTrigger>
                   <TooltipContent>{showTerminal ? 'Show Chat' : 'Show Terminal'}</TooltipContent>
                 </Tooltip>
                 <div className="w-px h-4 bg-app-border mx-1.5" />
                 <Tooltip>
-                  <TooltipTrigger>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setIsExpanded(!isExpanded)}
-                      className="h-7 w-7 rounded-lg text-app-text-muted hover:text-white hover:bg-app-panel"
-                    >
-                      {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                    </Button>
+                  <TooltipTrigger
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="inline-flex items-center justify-center rounded-lg h-7 w-7 text-app-text-muted hover:text-white hover:bg-app-panel transition-colors"
+                  >
+                    {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                   </TooltipTrigger>
                   <TooltipContent>{isExpanded ? 'Minimize' : 'Maximize'}</TooltipContent>
                 </Tooltip>
               </>
             )}
                 <Tooltip>
-                  <TooltipTrigger>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setIsMinimized(!isMinimized)}
-                      className="h-7 w-7 rounded-lg text-app-text-muted hover:text-white hover:bg-app-panel"
-                    >
-                      {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
-                    </Button>
+                  <TooltipTrigger
+                    onClick={() => setIsMinimized(!isMinimized)}
+                    className="inline-flex items-center justify-center rounded-lg h-7 w-7 text-app-text-muted hover:text-white hover:bg-app-panel transition-colors"
+                  >
+                    {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
                   </TooltipTrigger>
                   <TooltipContent>{isMinimized ? "Show" : "Hide"}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
-                  <TooltipTrigger>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setIsOpen(false)}
-                      className="h-7 w-7 rounded-lg text-app-text-muted hover:text-red-400 hover:bg-red-400/10 ml-0.5"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
+                  <TooltipTrigger
+                    onClick={() => setIsOpen(false)}
+                    className="inline-flex items-center justify-center rounded-lg h-7 w-7 text-app-text-muted hover:text-red-400 hover:bg-red-400/10 ml-0.5 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
                   </TooltipTrigger>
                   <TooltipContent>Close</TooltipContent>
                 </Tooltip>
@@ -754,28 +738,20 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                     </div>
                     <div className="flex items-center gap-1">
                     <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={copyTerminal}
-                          className="h-6 w-6 rounded-md"
-                        >
-                          {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-app-text-muted" />}
-                        </Button>
+                      <TooltipTrigger
+                        onClick={copyTerminal}
+                        className="inline-flex items-center justify-center rounded-md h-6 w-6 text-app-text-muted hover:text-white hover:bg-app-panel transition-colors"
+                      >
+                        {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3 text-app-text-muted" />}
                       </TooltipTrigger>
                       <TooltipContent>Copy Logs</TooltipContent>
                     </Tooltip>
                     <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={clearTerminal}
-                          className="h-6 w-6 rounded-md text-app-text-muted hover:text-red-400 hover:bg-red-400/10"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                      <TooltipTrigger
+                        onClick={clearTerminal}
+                        className="inline-flex items-center justify-center rounded-md h-6 w-6 text-app-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
                       </TooltipTrigger>
                       <TooltipContent>Clear</TooltipContent>
                     </Tooltip>

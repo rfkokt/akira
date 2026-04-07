@@ -394,12 +394,49 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
 
     const startTime = Date.now();
 
+    // Extract recommended skills from task description
+    const skillsMatch = taskDescription?.match(/<!--\s*skills:([^>]+)-->/);
+    const recommendedSkillNames = skillsMatch?.[1]?.split(',').map(s => s.trim().toLowerCase()).filter(s => s) || [];
+
+    // Clean description by removing the skills tag
+    const cleanTaskDescription = taskDescription?.replace(/<!--\s*skills:[^>]+-->\n?/, '');
+
+    // Preload recommended skills
+    if (recommendedSkillNames.length > 0) {
+      const installedSkills = useSkillStore.getState().installedSkills;
+      for (const skillName of recommendedSkillNames) {
+        const skill = installedSkills.find(s => s.name.toLowerCase() === skillName);
+        if (skill) {
+          try {
+            const skillContent = await loadSkillContent(skill.skill_path);
+            get().addInvokedSkill(taskId, {
+              name: skillContent.name,
+              content: skillContent.content,
+              location: skillContent.location,
+            });
+            console.log(`[Skills] Preloaded recommended skill: ${skill.name}`);
+          } catch (err) {
+            console.warn(`[Skills] Failed to preload skill ${skillName}:`, err);
+          }
+        }
+      }
+    }
+
     // System message
     addMessage(get, set, taskId, {
       id: `msg-${startTime}-system`, taskId, role: 'system',
       content: `🚀 Starting AI workflow for: "${taskTitle}"`,
       timestamp: startTime,
     });
+    
+    if (recommendedSkillNames.length > 0) {
+      addMessage(get, set, taskId, {
+        id: `msg-${Date.now()}-skills`, taskId, role: 'system',
+        content: `📚 Preloaded skills: ${recommendedSkillNames.join(', ')}`,
+        timestamp: Date.now(),
+      });
+    }
+    
     updateTaskState(get, set, taskId, { status: 'running', startTime });
 
     // Load skill listing and invoked skills
@@ -415,7 +452,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
     });
 
-    const prompt = buildTaskPrompt(taskTitle, taskDescription, skillListing, invokedSkillsContent);
+    const prompt = buildTaskPrompt(taskTitle, cleanTaskDescription, skillListing, invokedSkillsContent);
     const cwd = getWorkspaceCwd();
     let responseContent = '';
 
@@ -474,7 +511,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
               // Send follow-up prompt with skill context
               const followUpPrompt = buildTaskPrompt(
                 taskTitle,
-                taskDescription,
+                cleanTaskDescription,
                 skillListing,
                 `${skillContent.name}\n${skillContent.content}`
               );

@@ -446,23 +446,19 @@ function App() {
           {/* Terminal */}
           {activeWorkspace && (
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={`h-7 w-7 ${isPanelOpen ? 'text-app-accent' : ''}`}
-                  onClick={() => {
-                    const existingSession = sessions.find(s => s.workspaceId === activeWorkspace.id)
-                    if (existingSession) {
-                      setActiveSession(existingSession.id)
-                      setPanelOpen(!isPanelOpen)
-                    } else {
-                      createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
-                    }
-                  }}
-                >
-                  <Terminal className="size-4" />
-                </Button>
+              <TooltipTrigger
+                className={`inline-flex items-center justify-center rounded-md h-7 w-7 ${isPanelOpen ? 'text-app-accent' : 'text-neutral-400 hover:text-white'} transition-colors hover:bg-white/10`}
+                onClick={() => {
+                  const existingSession = sessions.find(s => s.workspaceId === activeWorkspace.id)
+                  if (existingSession) {
+                    setActiveSession(existingSession.id)
+                    setPanelOpen(!isPanelOpen)
+                  } else {
+                    createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
+                  }
+                }}
+              >
+                <Terminal className="size-4" />
               </TooltipTrigger>
               <TooltipContent>Open Terminal</TooltipContent>
             </Tooltip>

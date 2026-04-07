@@ -125,6 +125,8 @@ fn main() {
             commands::skills::uninstall_skill,
             commands::skills::fetch_marketplace_skills,
             commands::skills::read_skill_content,
+            commands::skills::detect_engine_skills,
+            commands::skills::import_engine_skill,
             // Shell
             commands::shell::run_shell_command,
             // CLI

@@ -6,7 +6,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Minus, Maximize2, X, Terminal as TerminalIcon } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
-import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
@@ -237,32 +236,24 @@ export function PtyTerminal({
             </div>
             <div className="flex items-center gap-1">
               <Tooltip>
-                <TooltipTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={onMaximize}
-                    className="h-7 w-7"
-                  >
-                    {isMaximized ? (
-                      <Minus className="w-3 h-3" />
-                    ) : (
-                      <Maximize2 className="w-3 h-3" />
-                    )}
-                  </Button>
+                <TooltipTrigger
+                  onClick={onMaximize}
+                  className="inline-flex items-center justify-center rounded-md h-7 w-7 text-app-text-muted hover:text-white hover:bg-app-panel transition-colors"
+                >
+                  {isMaximized ? (
+                    <Minus className="w-3 h-3" />
+                  ) : (
+                    <Maximize2 className="w-3 h-3" />
+                  )}
                 </TooltipTrigger>
                 <TooltipContent>{isMaximized ? 'Minimize' : 'Maximize'}</TooltipContent>
               </Tooltip>
               <Tooltip>
-                <TooltipTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={onClose}
-                    className="h-7 w-7 hover:bg-red-400/10"
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
+                <TooltipTrigger
+                  onClick={onClose}
+                  className="inline-flex items-center justify-center rounded-md h-7 w-7 text-app-text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                >
+                  <X className="w-3 h-3" />
                 </TooltipTrigger>
                 <TooltipContent>Close</TooltipContent>
               </Tooltip>
