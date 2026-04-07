@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DiffEditor } from '@monaco-editor/react';
 import { invoke } from '@tauri-apps/api/core';
+import type * as Monaco from 'monaco-editor';
 
 interface MonacoDiffViewerProps {
   filePath: string;
@@ -12,6 +13,7 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
   const [modifiedContent, setModifiedContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -46,7 +48,7 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
     return () => { isMounted = false; };
   }, [filePath, workspacePath]);
 
-  const handleBeforeMount = useCallback((monaco: any) => {
+  const handleBeforeMount = useCallback((monaco: typeof Monaco) => {
     monaco.editor.defineTheme('akira-dark', {
       base: 'vs-dark',
       inherit: true,
@@ -57,6 +59,32 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
       }
     });
   }, []);
+
+  const handleMount = useCallback((editor: Monaco.editor.IStandaloneDiffEditor) => {
+    editorRef.current = editor;
+  }, []);
+
+  // Cleanup editor on unmount
+  useEffect(() => {
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.dispose();
+        editorRef.current = null;
+      }
+    };
+  }, []);
+
+  // Reset editor when file changes
+  useEffect(() => {
+    return () => {
+      if (editorRef.current) {
+        const originalModel = editorRef.current.getOriginalEditor().getModel();
+        const modifiedModel = editorRef.current.getModifiedEditor().getModel();
+        if (originalModel) originalModel.dispose();
+        if (modifiedModel) modifiedModel.dispose();
+      }
+    };
+  }, [filePath]);
 
   const getLanguage = (path: string) => {
     const ext = path.split('.').pop()?.toLowerCase();
@@ -99,6 +127,7 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
           modified={modifiedContent}
           theme="akira-dark"
           beforeMount={handleBeforeMount}
+          onMount={handleMount}
           options={{
             fontSize: 13,
             fontFamily: 'JetBrains Mono, monospace',

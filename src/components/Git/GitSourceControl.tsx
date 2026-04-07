@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Minus, ChevronDown, ChevronRight, RefreshCw, RotateCcw, GitBranch, Merge, X, Loader2 } from 'lucide-react';
+import { Plus, Minus, ChevronDown, ChevronRight, RefreshCw, RotateCcw, GitBranch, Merge, X, Loader2, AlertCircle, Archive, Inbox, Trash2 } from 'lucide-react';
 import { useWorkspaceStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { getGitBranches, getLatestAlphaTag, mergeTaskToBranch, getDefaultRemote } from '@/lib/git';
 
 interface GitFileStatus {
   path: string;
@@ -14,6 +16,12 @@ interface GitFileStatus {
 interface GitStatusResult {
   staged: GitFileStatus[];
   unstaged: GitFileStatus[];
+}
+
+interface StashEntry {
+  id: string;
+  message: string;
+  branch: string;
 }
 
 interface GitSourceControlProps {
@@ -34,9 +42,51 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
   const [isMerging, setIsMerging] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<string>('');
   const [branches, setBranches] = useState<string[]>([]);
-  const [targetBranch, setTargetBranch] = useState<string>('main');
+  const [targetBranch, setTargetBranch] = useState<string>('');
   const [createTag, setCreateTag] = useState(false);
   const [deleteBranch, setDeleteBranch] = useState(true);
+  const [bumpType, setBumpType] = useState<'patch' | 'minor' | 'major'>('patch');
+  const [latestTag, setLatestTag] = useState<string | null>(null);
+  const [calcNextTag, setCalcNextTag] = useState<string>('');
+  const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
+  const [commitMessage, setCommitMessage] = useState('');
+  const [mergeStep, setMergeStep] = useState<'check' | 'commit' | 'merge'>('check');
+
+  // Git stash state
+  const [showStashModal, setShowStashModal] = useState(false);
+  const [stashes, setStashes] = useState<StashEntry[]>([]);
+  const [stashMessage, setStashMessage] = useState('');
+  const [isStashing, setIsStashing] = useState(false);
+
+  // Calculate next tag when createTag or bumpType changes
+  useEffect(() => {
+    if (!createTag || !latestTag) {
+      setCalcNextTag('');
+      return;
+    }
+    
+    const match = latestTag.match(/alpha\.(\d+)\.(\d+)\.(\d+)/);
+    if (!match) {
+      setCalcNextTag(`alpha.0.0.1`);
+      return;
+    }
+    
+    let [, major, minor, patch] = match;
+    let m = parseInt(major), n = parseInt(minor), p = parseInt(patch);
+    
+    if (bumpType === 'patch') { p += 1; }
+    else if (bumpType === 'minor') { n += 1; p = 0; }
+    else if (bumpType === 'major') { m += 1; n = 0; p = 0; }
+    
+    setCalcNextTag(`alpha.${m}.${n}.${p}`);
+  }, [createTag, bumpType, latestTag]);
+
+  // Fetch latest tag when merge modal opens
+  useEffect(() => {
+    if (showMergeModal && activeWorkspace?.folder_path) {
+      getLatestAlphaTag(activeWorkspace.folder_path, targetBranch).then(setLatestTag).catch(() => setLatestTag(null));
+    }
+  }, [showMergeModal, activeWorkspace?.folder_path, targetBranch]);
 
   const fetchStatus = useCallback(async () => {
     if (!activeWorkspace?.folder_path) return;
@@ -70,47 +120,92 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
   const loadBranches = useCallback(async () => {
     if (!activeWorkspace?.folder_path) return;
     try {
-      const result = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
-        command: 'git',
-        args: ['branch', '-a'],
-        cwd: activeWorkspace.folder_path
-      });
-      if (result.success) {
-        const allBranches = result.stdout
-          .split('\n')
-          .map(b => b.replace(/^\*/, '').trim())
-          .filter(b => b && !b.startsWith('remotes/'));
-        setBranches(allBranches);
-        if (!targetBranch && allBranches.includes('main')) {
-          setTargetBranch('main');
-        } else if (!targetBranch && allBranches.includes('master')) {
-          setTargetBranch('master');
-        }
+      const fetchedBranches = await getGitBranches(activeWorkspace.folder_path);
+      setBranches(fetchedBranches);
+      
+      // Auto-select target branch: prefer main > master > first available
+      if (fetchedBranches.includes('main')) {
+        setTargetBranch(prev => prev || 'main');
+      } else if (fetchedBranches.includes('master')) {
+        setTargetBranch(prev => prev || 'master');
+      } else if (fetchedBranches.length > 0) {
+        setTargetBranch(prev => prev || fetchedBranches[0]);
       }
     } catch (error) {
       console.error('Failed to load branches:', error);
     }
-  }, [activeWorkspace, targetBranch]);
+  }, [activeWorkspace]);
 
   const handleMerge = useCallback(async () => {
     if (!activeWorkspace?.folder_path || !currentBranch || !targetBranch) return;
     
+    // Check for uncommitted changes
+    const hasStaged = status.staged.length > 0;
+    const hasUnstaged = status.unstaged.length > 0;
+    
+    if (hasStaged || hasUnstaged) {
+      setHasUncommittedChanges(true);
+      setMergeStep('commit');
+      const changedFiles = [...status.staged, ...status.unstaged].map(f => f.path);
+      setCommitMessage(`Changes: ${changedFiles.slice(0, 3).join(', ')}${changedFiles.length > 3 ? '...' : ''}`);
+      return;
+    }
+    
+    setMergeStep('merge');
+    await performMerge();
+  }, [activeWorkspace, currentBranch, targetBranch, status]);
+  
+  const handleCommitAndMerge = useCallback(async () => {
+    if (!activeWorkspace?.folder_path || !commitMessage.trim()) return;
+    
     setIsMerging(true);
     try {
-      const result = await invoke<{ success: boolean; error?: string }>('merge_task_to_branch', {
-        cwd: activeWorkspace.folder_path,
+      // Stage all changes
+      const allFiles = [...status.staged, ...status.unstaged].map(f => f.path);
+      await invoke('git_stage', { cwd: activeWorkspace.folder_path, paths: allFiles });
+      
+      // Commit
+      await invoke('git_commit', { cwd: activeWorkspace.folder_path, message: commitMessage });
+      
+      // Push current branch
+      const remote = await getDefaultRemote(activeWorkspace.folder_path);
+      await invoke('git_push', { cwd: activeWorkspace.folder_path, remote, branch: currentBranch });
+      
+      toast.success(`Committed and pushed ${allFiles.length} file(s)`);
+      
+      // Now proceed with merge
+      setMergeStep('merge');
+      await performMerge();
+    } catch (error) {
+      console.error('Commit failed:', error);
+      toast.error(`Commit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsMerging(false);
+    }
+  }, [activeWorkspace, commitMessage, status, currentBranch]);
+  
+  const performMerge = useCallback(async () => {
+    if (!activeWorkspace?.folder_path || !currentBranch || !targetBranch) return;
+    
+    setIsMerging(true);
+    try {
+      const result = await mergeTaskToBranch(
+        activeWorkspace.folder_path,
+        currentBranch,
         targetBranch,
-        createTag,
-        deleteBranch
-      });
+        { createTag, tagName: createTag ? calcNextTag : '', deleteBranch }
+      );
       
       if (result.success) {
         toast.success(`Merged ${currentBranch} into ${targetBranch}`);
         setShowMergeModal(false);
+        setMergeStep('check');
+        setHasUncommittedChanges(false);
+        setCommitMessage('');
         loadCurrentBranch();
         fetchStatus();
       } else {
-        toast.error(result.error || 'Merge failed');
+        toast.error(result.log || 'Merge failed');
       }
     } catch (error) {
       console.error('Merge failed:', error);
@@ -118,7 +213,16 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
     } finally {
       setIsMerging(false);
     }
-  }, [activeWorkspace, currentBranch, targetBranch, createTag, deleteBranch, loadCurrentBranch, fetchStatus]);
+  }, [activeWorkspace, currentBranch, targetBranch, createTag, calcNextTag, deleteBranch, loadCurrentBranch, fetchStatus]);
+  
+  // Reset merge step when modal closes
+  useEffect(() => {
+    if (!showMergeModal) {
+      setMergeStep('check');
+      setHasUncommittedChanges(false);
+      setCommitMessage('');
+    }
+  }, [showMergeModal]);
 
   useEffect(() => {
     fetchStatus();
@@ -188,6 +292,142 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
     }
   }
 
+  // Stash operations
+  const loadStashes = useCallback(async () => {
+    if (!activeWorkspace?.folder_path) return;
+    try {
+      const result = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+        command: 'git',
+        args: ['stash', 'list'],
+        cwd: activeWorkspace.folder_path
+      });
+      if (result.success && result.stdout.trim()) {
+        const lines = result.stdout.trim().split('\n');
+        const parsed = lines.map(line => {
+          const match = line.match(/^stash@\{(\d+)\}:\s*(?:WIP on\s+)?(?:\S+\s+)?(?:\(.*?\)\s*)?(.*)$/);
+          if (match) {
+            return {
+              id: `stash@{${match[1]}}`,
+              message: match[2] || 'WIP',
+              branch: line.includes('on') ? line.split('on')[1]?.split(':')[0]?.trim() : ''
+            };
+          }
+          return { id: line.split(':')[0], message: line, branch: '' };
+        });
+        setStashes(parsed);
+      } else {
+        setStashes([]);
+      }
+    } catch (error) {
+      console.error('Failed to load stashes:', error);
+      setStashes([]);
+    }
+  }, [activeWorkspace]);
+
+  const handleStash = useCallback(async () => {
+    if (!activeWorkspace?.folder_path) return;
+    if (status.staged.length === 0 && status.unstaged.length === 0) {
+      toast.error('No changes to stash');
+      return;
+    }
+    
+    setIsStashing(true);
+    try {
+      const args = ['stash', 'push'];
+      if (stashMessage.trim()) {
+        args.push('-m', stashMessage.trim());
+      }
+      
+      const result = await invoke<{ success: boolean; stdout: string; stderr: string }>('run_shell_command', {
+        command: 'git',
+        args,
+        cwd: activeWorkspace.folder_path
+      });
+      
+      if (result.success) {
+        toast.success('Changes stashed');
+        setStashMessage('');
+        setShowStashModal(false);
+        fetchStatus();
+        loadStashes();
+        loadCurrentBranch();
+      } else {
+        toast.error(result.stderr || 'Failed to stash');
+      }
+    } catch (error) {
+      console.error('Stash failed:', error);
+      toast.error(`Stash failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsStashing(false);
+    }
+  }, [activeWorkspace, stashMessage, status, fetchStatus, loadStashes, loadCurrentBranch]);
+
+  const handleStashApply = useCallback(async (stashId: string) => {
+    if (!activeWorkspace?.folder_path) return;
+    try {
+      const result = await invoke<{ success: boolean; stderr: string }>('run_shell_command', {
+        command: 'git',
+        args: ['stash', 'apply', stashId],
+        cwd: activeWorkspace.folder_path
+      });
+      
+      if (result.success) {
+        toast.success(`Applied ${stashId}`);
+        fetchStatus();
+      } else {
+        toast.error(result.stderr || 'Failed to apply stash');
+      }
+    } catch (error) {
+      console.error('Apply stash failed:', error);
+      toast.error(`Apply failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [activeWorkspace, fetchStatus]);
+
+  const handleStashPop = useCallback(async (stashId: string) => {
+    if (!activeWorkspace?.folder_path) return;
+    try {
+      const result = await invoke<{ success: boolean; stderr: string }>('run_shell_command', {
+        command: 'git',
+        args: ['stash', 'pop', stashId],
+        cwd: activeWorkspace.folder_path
+      });
+      
+      if (result.success) {
+        toast.success(`Applied and removed ${stashId}`);
+        fetchStatus();
+        loadStashes();
+      } else {
+        toast.error(result.stderr || 'Failed to pop stash');
+      }
+    } catch (error) {
+      console.error('Pop stash failed:', error);
+      toast.error(`Pop failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [activeWorkspace, fetchStatus, loadStashes]);
+
+  const handleStashDrop = useCallback(async (stashId: string) => {
+    if (!activeWorkspace?.folder_path) return;
+    if (!confirm(`Delete ${stashId}? This cannot be undone.`)) return;
+    
+    try {
+      const result = await invoke<{ success: boolean; stderr: string }>('run_shell_command', {
+        command: 'git',
+        args: ['stash', 'drop', stashId],
+        cwd: activeWorkspace.folder_path
+      });
+      
+      if (result.success) {
+        toast.success(`Removed ${stashId}`);
+        loadStashes();
+      } else {
+        toast.error(result.stderr || 'Failed to drop stash');
+      }
+    } catch (error) {
+      console.error('Drop stash failed:', error);
+      toast.error(`Drop failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [activeWorkspace, loadStashes]);
+
   const getBadgeColor = (type: string) => {
     switch(type.trim()) {
       case 'M': return 'text-yellow-400';
@@ -210,6 +450,18 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
           Source Control
         </span>
         <div className="flex items-center gap-1">
+          <button 
+            onClick={() => { loadStashes(); setShowStashModal(true); }} 
+            className="text-neutral-500 hover:text-white transition-colors relative"
+            title="Stashes"
+          >
+            <Inbox className="w-3.5 h-3.5" />
+            {stashes.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-app-accent rounded-full text-[8px] flex items-center justify-center">
+                {stashes.length}
+              </span>
+            )}
+          </button>
           <button 
             onClick={() => setShowMergeModal(true)} 
             className="text-neutral-500 hover:text-white transition-colors"
@@ -292,6 +544,13 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
               <button 
+                onClick={(e) => { e.stopPropagation(); setStashMessage(''); setShowStashModal(true); }} 
+                className="text-neutral-500 hover:text-app-accent transition-colors" title="Stash Changes"
+                disabled={status.unstaged.length === 0}
+              >
+                <Archive className="w-3.5 h-3.5" />
+              </button>
+              <button 
                 onClick={(e) => { e.stopPropagation(); handleStageAll(); }} 
                 className="text-neutral-500 hover:text-white transition-colors" title="Stage All Changes"
                 disabled={status.unstaged.length === 0}
@@ -356,8 +615,61 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
             </div>
             
             <div className="p-4 space-y-4">
+              {/* Uncommitted Changes Warning */}
+              {mergeStep === 'commit' && hasUncommittedChanges && (
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-yellow-200 font-medium font-geist">Uncommitted Changes Detected</p>
+                      <p className="text-[10px] text-yellow-400/80 mt-1">
+                        {status.staged.length} staged, {status.unstaged.length} unstaged files
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-neutral-400 font-geist">Commit Message</label>
+                    <input
+                      type="text"
+                      value={commitMessage}
+                      onChange={(e) => setCommitMessage(e.target.value)}
+                      placeholder="Enter commit message..."
+                      className="w-full px-3 py-2 bg-app-bg border border-app-border rounded text-sm text-white font-mono focus:outline-none focus:border-app-accent"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleCommitAndMerge}
+                      disabled={!commitMessage.trim() || isMerging}
+                      className="bg-yellow-600 hover:bg-yellow-700 flex-1"
+                    >
+                      {isMerging ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                          Committing...
+                        </>
+                      ) : (
+                        'Commit & Merge'
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setMergeStep('merge');
+                        setHasUncommittedChanges(false);
+                      }}
+                      disabled={isMerging}
+                    >
+                      Skip & Merge
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1.5">
-                <label className="text-xs text-neutral-400 font-geist">Current Branch</label>
+                <label className="text-xs text-neutral-400 font-geist">Current Branch (Source)</label>
                 <div className="px-3 py-2 bg-app-bg rounded border border-app-border text-sm text-white font-mono">
                   {currentBranch || '...'}
                 </div>
@@ -378,28 +690,59 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
 
               <div className="flex items-center justify-between p-3 bg-app-bg rounded border border-app-border">
                 <div>
-                  <p className="text-xs text-white font-medium">Create Version Tag</p>
-                  <p className="text-[10px] text-neutral-500">Auto-generate alpha tag</p>
+                  <p className="text-xs text-white font-medium font-geist">Create Version Tag</p>
+                  <p className="text-[10px] text-neutral-500 font-geist">Auto-generate alpha tag</p>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={createTag}
-                  onChange={(e) => setCreateTag(e.target.checked)}
-                  className="w-4 h-4 rounded border-app-border bg-app-bg accent-app-accent"
-                />
+                <Switch checked={createTag} onCheckedChange={setCreateTag} disabled={isMerging} />
               </div>
+              
+              {createTag && (
+                <div className="p-3 bg-app-bg rounded border border-app-border space-y-3 animate-in fade-in slide-in-from-top-1">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className={`text-xs ${bumpType === 'patch' ? 'bg-app-accent/20 border-app-accent text-app-accent' : 'bg-transparent text-neutral-400 border-app-border'}`}
+                      onClick={() => setBumpType('patch')}
+                      disabled={isMerging}
+                    >
+                      Patch (.X)
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className={`text-xs ${bumpType === 'minor' ? 'bg-app-accent/20 border-app-accent text-app-accent' : 'bg-transparent text-neutral-400 border-app-border'}`}
+                      onClick={() => setBumpType('minor')}
+                      disabled={isMerging}
+                    >
+                      Minor (.X.0)
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className={`text-xs ${bumpType === 'major' ? 'bg-app-accent/20 border-app-accent text-app-accent' : 'bg-transparent text-neutral-400 border-app-border'}`}
+                      onClick={() => setBumpType('major')}
+                      disabled={isMerging}
+                    >
+                      Major (X.0.0)
+                    </Button>
+                  </div>
+                  {latestTag && calcNextTag && (
+                    <div className="bg-black/30 rounded p-2 text-xs font-mono text-center flex items-center justify-center gap-2">
+                      <span className="text-neutral-500">{latestTag}</span>
+                      <span className="text-neutral-600">→</span>
+                      <span className="text-green-400 font-semibold">{calcNextTag}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between p-3 bg-app-bg rounded border border-app-border">
                 <div>
-                  <p className="text-xs text-white font-medium">Delete Feature Branch</p>
-                  <p className="text-[10px] text-neutral-500">Clean up after merge</p>
+                  <p className="text-xs text-white font-medium font-geist">Delete Feature Branch</p>
+                  <p className="text-[10px] text-neutral-500 font-geist">Clean up after merge</p>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={deleteBranch}
-                  onChange={(e) => setDeleteBranch(e.target.checked)}
-                  className="w-4 h-4 rounded border-app-border bg-app-bg accent-app-accent"
-                />
+                <Switch checked={deleteBranch} onCheckedChange={setDeleteBranch} disabled={isMerging} />
               </div>
             </div>
             
@@ -429,6 +772,115 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
                   </>
                 )}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stash Modal */}
+      {showStashModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowStashModal(false)}
+        >
+          <div 
+            className="bg-app-panel rounded-lg border border-app-border w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-app-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Inbox className="w-4 h-4 text-app-accent" />
+                <h3 className="text-sm font-medium text-white font-geist">Stash</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setShowStashModal(false)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Stash Form */}
+              {(status.staged.length > 0 || status.unstaged.length > 0) && (
+                <div className="space-y-2">
+                  <label className="text-xs text-neutral-400 font-geist">Stash Message (optional)</label>
+                  <input
+                    type="text"
+                    value={stashMessage}
+                    onChange={(e) => setStashMessage(e.target.value)}
+                    placeholder="Describe your changes..."
+                    className="w-full px-3 py-2 bg-app-bg border border-app-border rounded text-sm text-white font-geist focus:outline-none focus:border-app-accent"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleStash}
+                    disabled={isStashing}
+                    className="w-full bg-app-accent hover:bg-app-accent/80"
+                  >
+                    {isStashing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                        Stashing...
+                      </>
+                    ) : (
+                      <>
+                        <Archive className="w-3.5 h-3.5 mr-2" />
+                        Stash Changes ({status.staged.length + status.unstaged.length} files)
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Stash List */}
+              <div className="space-y-2">
+                <label className="text-xs text-neutral-400 font-geist">Stashed Changes</label>
+                {stashes.length === 0 ? (
+                  <div className="text-xs text-neutral-500 text-center py-4 bg-app-bg rounded border border-app-border">
+                    No stashed changes
+                  </div>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {stashes.map((stash) => (
+                      <div 
+                        key={stash.id}
+                        className="flex items-center justify-between px-3 py-2 bg-app-bg rounded border border-app-border group"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-white font-medium truncate">{stash.message}</p>
+                          <p className="text-[10px] text-neutral-500">{stash.id}</p>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handleStashApply(stash.id)}
+                            className="p-1 text-neutral-500 hover:text-app-accent transition-colors"
+                            title="Apply (keep stash)"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleStashPop(stash.id)}
+                            className="p-1 text-neutral-500 hover:text-green-400 transition-colors"
+                            title="Pop (apply & remove)"
+                          >
+                            <Inbox className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleStashDrop(stash.id)}
+                            className="p-1 text-neutral-500 hover:text-red-400 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
