@@ -27,6 +27,11 @@ tar = "0.4"
 zip = "2"
 dirs = "5"
 chrono = { version = "0.4.44", features = ["serde"] }
+rand = "0.8"
+hex = "0.4"
+async-trait = "0.1"
+thiserror = "1"
+log = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 portable-pty = "0.8"

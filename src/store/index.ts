@@ -12,3 +12,5 @@ export { useTerminalStore } from './terminalStore';
 export type { TerminalSession } from './terminalStore';
 export { useSkillStore } from './skillStore';
 export type { Skill } from './skillStore';
+export { useMcpStore } from './mcpStore';
+export type { McpServerDto, McpTool } from '@/lib/mcp/types';

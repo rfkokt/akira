@@ -35,6 +35,17 @@ export interface ChatMessage {
 
 export type AITaskStatus = 'idle' | 'queued' | 'running' | 'completed' | 'error';
 
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  arguments?: Record<string, unknown>;
+  status: 'pending' | 'running' | 'success' | 'error';
+  result?: unknown;
+  error?: string;
+  durationMs?: number;
+  timestamp: number;
+}
+
 export interface AITaskState {
   status: AITaskStatus;
   startTime: number | null;
@@ -51,6 +62,7 @@ export interface AITaskState {
   mergeSourceBranch?: string;
   prError?: string;
   creatingPR?: boolean;
+  toolCalls: ToolCallRecord[];
 }
 
 interface TaskQueueItem {
@@ -114,6 +126,7 @@ const defaultTaskState = (): AITaskState => ({
   queuePosition: null,
   currentFile: null,
   filesModified: [],
+  toolCalls: [],
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────

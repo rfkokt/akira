@@ -13,6 +13,7 @@ mod pty_manager;
 mod commands;
 mod models;
 mod state;
+mod mcp;
 
 use cli_router_core::CliRouter;
 use pty_manager::PtyManager;
@@ -148,6 +149,19 @@ fn main() {
             commands::pty::pty_write,
             commands::pty::pty_resize,
             commands::pty::pty_kill,
+            // MCP (Model Context Protocol)
+            mcp::commands::mcp_add_server,
+            mcp::commands::mcp_list_servers,
+            mcp::commands::mcp_get_server,
+            mcp::commands::mcp_update_server,
+            mcp::commands::mcp_delete_server,
+            mcp::commands::mcp_connect_server,
+            mcp::commands::mcp_disconnect_server,
+            mcp::commands::mcp_test_connection,
+            mcp::commands::mcp_call_tool,
+            mcp::commands::mcp_read_resource,
+            mcp::commands::mcp_get_tool_calls,
+            mcp::commands::mcp_clear_all_runtime,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

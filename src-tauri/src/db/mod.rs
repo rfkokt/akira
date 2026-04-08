@@ -1,6 +1,7 @@
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
 
+pub mod mcp_queries;
 pub mod queries;
 
 /// Initialize database with all required tables
@@ -200,6 +201,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     )
     .ok(); // Ignore error if column already exists
 
+    // Migration: Upgrade project_mcps table for full MCP support
+    upgrade_mcps_table(conn)?;
+
     Ok(())
 }
 
@@ -306,19 +310,54 @@ fn create_tables(conn: &Connection) -> Result<()> {
         [],
     )?;
 
-    // Project MCPs table
+    // MCP Servers table (per workspace/project)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS project_mcps (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id      TEXT NOT NULL,
-            alias           TEXT NOT NULL,
-            transport       TEXT NOT NULL,
-            command         TEXT,
-            url             TEXT,
-            env_vars        TEXT,
+        "CREATE TABLE IF NOT EXISTS mcp_servers (
+            id              TEXT PRIMARY KEY,
+            workspace_id    TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            description     TEXT,
             enabled         INTEGER DEFAULT 1,
-            added_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(project_id, alias)
+            transport_type  TEXT NOT NULL, -- 'stdio', 'sse', 'http', 'websocket'
+            config_json     TEXT NOT NULL, -- serialized transport config
+            auth_type       TEXT,          -- 'oauth', 'api_key', 'bearer', 'none'
+            auth_config     TEXT,          -- encrypted auth data (optional)
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            UNIQUE(workspace_id, name)
+        )",
+        [],
+    )?;
+
+    // MCP Runtime state (volatile, in-memory can be cleared)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS mcp_runtime (
+            server_id       TEXT PRIMARY KEY,
+            status          TEXT NOT NULL, -- 'connected', 'failed', 'needs_auth', 'disabled', 'connecting'
+            tools_json      TEXT,          -- cached tools from server
+            resources_json  TEXT,          -- cached resources (if any)
+            last_error      TEXT,
+            connected_at    DATETIME,
+            disconnected_at DATETIME,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // MCP Tool execution history (for debugging/auditing)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS mcp_tool_calls (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id       TEXT NOT NULL,
+            tool_name       TEXT NOT NULL,
+            arguments_json  TEXT,
+            result_json     TEXT,
+            error_message   TEXT,
+            duration_ms     INTEGER,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
         )",
         [],
     )?;
@@ -360,7 +399,22 @@ fn create_tables(conn: &Connection) -> Result<()> {
     )?;
 
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_mcps_project ON project_mcps(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_mcps_workspace ON mcp_servers(workspace_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mcps_enabled ON mcp_servers(enabled)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mcp_tool_calls_server ON mcp_tool_calls(server_id)",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mcp_tool_calls_time ON mcp_tool_calls(created_at)",
         [],
     )?;
 
@@ -521,6 +575,134 @@ fn create_tables(conn: &Connection) -> Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_skills_workspace ON skills(workspace_id)",
         [],
     )?;
+
+    Ok(())
+}
+
+/// Upgrade project_mcps table to new mcp_servers schema
+fn upgrade_mcps_table(conn: &Connection) -> Result<()> {
+    // Check if old project_mcps table exists
+    let old_table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='project_mcps'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if old_table_exists {
+        // Check if new mcp_servers table already exists
+        let new_table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='mcp_servers'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0)
+            > 0;
+
+        if !new_table_exists {
+            // Create new tables first
+            conn.execute(
+                "CREATE TABLE mcp_servers (
+                    id              TEXT PRIMARY KEY,
+                    workspace_id    TEXT NOT NULL,
+                    name            TEXT NOT NULL,
+                    description     TEXT,
+                    enabled         INTEGER DEFAULT 1,
+                    transport_type  TEXT NOT NULL,
+                    config_json     TEXT NOT NULL,
+                    auth_type       TEXT,
+                    auth_config     TEXT,
+                    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                    UNIQUE(workspace_id, name)
+                )",
+                [],
+            )?;
+
+            conn.execute(
+                "CREATE TABLE mcp_runtime (
+                    server_id       TEXT PRIMARY KEY,
+                    status          TEXT NOT NULL,
+                    tools_json      TEXT,
+                    resources_json  TEXT,
+                    last_error      TEXT,
+                    connected_at    DATETIME,
+                    disconnected_at DATETIME,
+                    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+                )",
+                [],
+            )?;
+
+            conn.execute(
+                "CREATE TABLE mcp_tool_calls (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    server_id       TEXT NOT NULL,
+                    tool_name       TEXT NOT NULL,
+                    arguments_json  TEXT,
+                    result_json     TEXT,
+                    error_message   TEXT,
+                    duration_ms     INTEGER,
+                    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+                )",
+                [],
+            )?;
+
+            // Migrate data from old table
+            conn.execute(
+                "INSERT INTO mcp_servers (id, workspace_id, name, enabled, transport_type, config_json, created_at, updated_at)
+                 SELECT 
+                    lower(hex(randomblob(16))),
+                    project_id,
+                    alias,
+                    enabled,
+                    transport,
+                    json_object(
+                        CASE 
+                            WHEN transport = 'stdio' THEN 'command'
+                            ELSE 'url'
+                        END,
+                        CASE 
+                            WHEN transport = 'stdio' THEN command
+                            ELSE url
+                        END,
+                        'args', '[]',
+                        'env', env_vars
+                    ),
+                    added_at,
+                    added_at
+                 FROM project_mcps",
+                [],
+            ).ok();
+
+            // Create indexes
+            conn.execute(
+                "CREATE INDEX idx_mcps_workspace ON mcp_servers(workspace_id)",
+                [],
+            )
+            .ok();
+            conn.execute("CREATE INDEX idx_mcps_enabled ON mcp_servers(enabled)", [])
+                .ok();
+            conn.execute(
+                "CREATE INDEX idx_mcp_tool_calls_server ON mcp_tool_calls(server_id)",
+                [],
+            )
+            .ok();
+            conn.execute(
+                "CREATE INDEX idx_mcp_tool_calls_time ON mcp_tool_calls(created_at)",
+                [],
+            )
+            .ok();
+
+            // Drop old table
+            conn.execute("DROP TABLE project_mcps", []).ok();
+        }
+    }
 
     Ok(())
 }
