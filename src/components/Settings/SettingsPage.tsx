@@ -39,6 +39,7 @@ const sidebarTabs = [
   { id: 'router', label: 'AI Router', icon: Settings, section: 'system' },
   { id: 'git-integration', label: 'Git Integration', icon: GitPullRequest, section: 'system' },
   { id: 'vision', label: 'Image Analysis', icon: Image, section: 'system' },
+  { id: 'chat-api', label: 'Chat API (Groq)', icon: KeyRound, section: 'system' },
 ];
 
 const projectSubTabs = [
@@ -416,6 +417,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
               {activeTab === 'rtk' && <RTKTab />}
               {activeTab === 'router' && <RouterTab />}
               {activeTab === 'vision' && <VisionTab />}
+              {activeTab === 'chat-api' && <GroqTab />}
               {activeTab === 'git-integration' && (
                 <div className="space-y-6">
                   <div>
@@ -1182,6 +1184,137 @@ function SkillsTab() {
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// GROQ TAB - Chat API for Token Optimization
+// ----------------------------------------------------------------------
+function GroqTab() {
+  const { config, updateField, saveConfig, isLoading: isConfigLoading } = useConfigStore();
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | null>(null);
+
+  const handleSaveKey = async () => {
+    if (!config) return;
+    try {
+      await saveConfig({ groq_api_key: config.groq_api_key });
+      setSyncStatus('synced');
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus(null), 3000);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="border-b border-white/5 pb-4">
+        <h3 className="text-xl font-semibold text-white">Chat API (Groq)</h3>
+        <p className="text-sm text-neutral-400 mt-1">
+          Configure Groq API for free small talk and chat. Save up to <span className="text-green-400 font-semibold">98% tokens</span> on casual conversations!
+        </p>
+      </div>
+
+      {/* Benefits */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="p-4 bg-green-500/5 rounded-lg border border-green-500/20 text-center">
+          <div className="text-2xl font-bold text-green-400">FREE</div>
+          <div className="text-xs text-neutral-500 mt-1">20 requests/min</div>
+          <div className="text-[10px] text-neutral-600">1M tokens/day</div>
+        </div>
+        <div className="p-4 bg-app-accent/5 rounded-lg border border-app-accent/20 text-center">
+          <div className="text-2xl font-bold text-app-accent">98%</div>
+          <div className="text-xs text-neutral-500 mt-1">Token savings</div>
+          <div className="text-[10px] text-neutral-600">vs CLI for small talk</div>
+        </div>
+        <div className="p-4 bg-purple-500/5 rounded-lg border border-purple-500/20 text-center">
+          <div className="text-2xl font-bold text-purple-400">FAST</div>
+          <div className="text-xs text-neutral-500 mt-1">~0.5s response</div>
+          <div className="text-[10px] text-neutral-600">No file scanning</div>
+        </div>
+      </div>
+
+      <div className="bg-app-panel rounded-lg border border-app-border p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <KeyRound className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
+          <div className="flex-1 space-y-3">
+            <div>
+              <label className="text-xs font-medium text-white font-geist">Groq API Key</label>
+              <p className="text-[10px] text-neutral-500 mt-0.5">
+                Get your free API key from{' '}
+                <a 
+                  href="https://console.groq.com/keys" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-green-400 hover:underline"
+                >
+                  Groq Console
+                </a>
+                {' '}→ Sign up with Google/GitHub (no credit card required)
+              </p>
+            </div>
+            <input
+              type="password"
+              className="w-full bg-black/30 border border-app-border rounded-md px-3 py-2 text-sm font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-green-400/50 transition-colors"
+              placeholder="gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={config?.groq_api_key || ''}
+              onChange={e => updateField('groq_api_key', e.target.value)}
+            />
+            <div className="flex items-center gap-3">
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-green-500 text-black hover:bg-green-400 font-semibold shadow-[0_0_10px_rgba(34,197,94,0.3)] text-xs"
+                onClick={handleSaveKey}
+                disabled={isConfigLoading}
+              >
+                <Save className="w-3.5 h-3.5 mr-2" /> Save API Key
+              </Button>
+              {syncStatus === 'synced' && (
+                <div className="flex items-center gap-1.5 animate-in fade-in">
+                  <CheckCircle2 className="w-3 h-3 text-green-400" />
+                  <span className="text-[10px] text-green-400 font-geist">Saved</span>
+                </div>
+              )}
+              {syncStatus === 'error' && (
+                <span className="text-[10px] text-red-400 font-geist animate-in fade-in">Failed to save</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 bg-black/20 rounded-md border border-white/5">
+          <p className="text-[10px] text-neutral-500 font-geist">
+            🔒 API key is saved in local SQLite only. It is never written to <code className="text-neutral-400">.akira/</code> or committed to git.
+          </p>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-white/5">
+          <h4 className="text-sm font-semibold text-white mb-2">How it works</h4>
+          <ul className="text-xs text-neutral-400 space-y-2">
+            <li className="flex items-start gap-2">
+              <span className="text-green-400">1.</span>
+              <span><strong>Small talk</strong> ("halo", "1+1 berapa?") → Groq API (FREE, ~200 tokens)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green-400">2.</span>
+              <span><strong>Task summary</strong> → Groq API (FREE, ~500 tokens)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-app-accent">3.</span>
+              <span><strong>Task execution</strong> → CLI (Claude/Gemini/Opencode) - powerful & context-aware</span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="mt-4 p-3 bg-yellow-500/5 rounded-md border border-yellow-500/20">
+          <p className="text-[10px] text-yellow-400/80 font-geist">
+            💡 <strong>Pro tip:</strong> Without Groq API key, small talk still works but uses CLI (~11k tokens). 
+            With Groq, you save <strong>$0.10-0.15 per small talk</strong>!
+          </p>
+        </div>
       </div>
     </div>
   );

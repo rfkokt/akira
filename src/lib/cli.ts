@@ -27,6 +27,8 @@ export interface CLIRunParams {
   timeoutMs?: number;
   /** Called on each parsed output line */
   onOutput?: (displayText: string) => void;
+  /** Context mode for token optimization */
+  mode?: 'minimal' | 'standard' | 'full';
 }
 
 export interface CLIRunResult {
@@ -56,6 +58,7 @@ export async function runCLIWithStreaming(params: CLIRunParams): Promise<CLIRunR
     cwd,
     timeoutMs = 5 * 60 * 1000,
     onOutput,
+    mode = 'standard',
   } = params;
 
   const provider = getProvider(engineAlias);
@@ -94,9 +97,10 @@ export async function runCLIWithStreaming(params: CLIRunParams): Promise<CLIRunR
       engineArgs,
       prompt,
       cwd: cwd || '',
+      mode,
     });
 
-    console.log(`[cli] Running ${engineAlias} | Task: ${taskId} | Args: ${args.length} | StdIn: ${stdinPrompt ? 'yes' : 'no'}`);
+    console.log(`[cli] Running ${engineAlias} | Task: ${taskId} | Args: ${JSON.stringify(args)} | StdIn: ${stdinPrompt ? 'yes' : 'no'}`);
 
     // Start CLI
     await invoke('run_cli', {

@@ -14,9 +14,12 @@ import {
   saveRunningTask,
   clearRunningTask,
   getSavedRunningTask as getSavedTask,
+  isSmallTalk,
+  GLOBAL_RTK_INSTRUCTION,
   type SavedTask,
 } from '@/lib/helpers';
 import { formatSkillListing, loadSkillContent, detectSkillInvocation } from '@/lib/skills';
+import { sendGroqSmallTalk } from '@/lib/groq';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -45,6 +48,7 @@ export interface AITaskState {
   isMerged?: boolean;
   mergeSourceBranch?: string;
   prError?: string;
+  creatingPR?: boolean;
 }
 
 interface TaskQueueItem {
@@ -79,6 +83,7 @@ interface AIChatState {
   retryTask: (taskId: string) => Promise<void>;
   sendMessage: (taskId: string, content: string) => Promise<void>;
   sendSimpleMessage: (taskId: string, prompt: string, internalPrompt?: string) => Promise<string>;
+  sendDirectAPI: (prompt: string) => Promise<string>;
   stopMessage: (taskId: string) => Promise<void>;
   clearMessages: (taskId: string) => void;
   getMessages: (taskId: string) => ChatMessage[];
@@ -183,34 +188,17 @@ function buildTaskPrompt(taskTitle: string, taskDescription?: string, skillListi
 
   const cleanDescription = taskDescription?.replace('<!-- auto-rules-embedded -->', '').trim();
 
-  const rtkInstruction = `
-[IMPORTANT COMMAND GUIDELINE]
-You must prefix the following CLI tools with 'rtk' to minimize token usage:
-- Git: 'rtk git <args>'
-- Lint: 'rtk lint eslint', 'rtk lint rustc', etc.
-- Test: 'rtk test npm', 'rtk test cargo', etc.
-- Build/Package: 'rtk build npm', 'rtk package pip', 'rtk container docker'
-- Search/System: 'rtk search grep', 'rtk system ps'
-Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands for these utilities.`;
+  const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
+  const invokedSkillsSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
 
-  const skillSection = skillListing ? `\n\n${skillListing}` : '';
-  const invokedSkillsSection = invokedSkillsContent ? `\n\nYou are using the following skill(s):\n${invokedSkillsContent}` : '';
-
-  return `${systemPrompt ? systemPrompt + '\n' : ''}${rtkInstruction}${skillSection}${invokedSkillsSection}
+  return `${systemPrompt ? systemPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSkillsSection}
 
 ---
 
-I need you to implement this task:
+TASK: ${taskTitle}
+${cleanDescription ? `CONTEXT: ${cleanDescription}` : ''}
 
-Title: ${taskTitle}
-${cleanDescription ? `Description: ${cleanDescription}` : ''}
-
-Please:
-1. Analyze what needs to be done
-2. Implement the necessary code changes
-3. Explain what you did
-
-Start working on this now.`;
+Please analyze and implement this task. Be concise and always use 'rtk' for terminal commands to save tokens.`;
 }
 
 /** Post-task completion: capture diff, create PR, move to review */
@@ -220,8 +208,12 @@ async function handleTaskCompletion(
   taskId: string,
   taskTitle: string,
 ) {
+  // Mark that we're creating PR
+  updateTaskState(get, set, taskId, { creatingPR: true });
+
   const cwd = getWorkspaceCwd();
   if (!cwd) {
+    updateTaskState(get, set, taskId, { creatingPR: false });
     await useTaskStore.getState().moveTask(taskId, 'review');
     await notify('Task Ready for Review ✅', `"${taskTitle}" has been completed and is ready for review.`);
     return;
@@ -294,6 +286,13 @@ async function handleTaskCompletion(
       prBranch: prResult.branch,
       prUrl: prResult.prUrl,
       prCreatedAt: Date.now(),
+      creatingPR: false,
+    });
+  } else {
+    // PR creation failed completely
+    updateTaskState(get, set, taskId, {
+      creatingPR: false,
+      prError: 'PR automation failed',
     });
   }
 
@@ -464,6 +463,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
         engineArgs: engine.args,
         prompt,
         cwd,
+        mode: 'standard',  // Task execution always needs full context
         onOutput: (text) => {
           responseContent += text + '\n';
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
@@ -542,6 +542,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
                 engineArgs: engine.args,
                 prompt: followUpPrompt,
                 cwd,
+                mode: 'standard',  // Skill follow-up needs full context
                 onOutput: (text) => {
                   followUpContent += text + '\n';
                   appendToMessage(get, set, taskId, followUpMessageId, text + '\n');
@@ -700,9 +701,27 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     if (!engine) return;
 
     // Load skill listing and invoked skills
-    const skillListing = await getSkillListing();
+    const smallTalk = isSmallTalk(content);
+
+    // DIRECT API FALLBACK for small talk
+    if (smallTalk && !isRevisionMode) {
+      const directResponse = await get().sendDirectAPI(content);
+      if (directResponse) {
+        addMessage(get, set, taskId, {
+          id: `msg-${Date.now()}-ai`, taskId, role: 'assistant', content: directResponse, timestamp: Date.now(),
+        });
+        set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+        
+        try {
+          await dbService.createChatMessage(taskId, 'assistant', directResponse, 'direct-api');
+        } catch { /* non-critical */ }
+        return;
+      }
+    }
+
+    const skillListing = !smallTalk ? await getSkillListing() : '';
     const invokedSkills = get().invokedSkills[taskId] || [];
-    const invokedSkillsContent = invokedSkills.length > 0
+    const invokedSkillsContent = !smallTalk && invokedSkills.length > 0
       ? invokedSkills.map(s => `--- ${s.name} ---\n${s.content}`).join('\n\n')
       : undefined;
 
@@ -715,7 +734,13 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
 
     // Build prompt
     let chatPrompt: string;
-    if (isRevisionMode) {
+    const workspaceName = useWorkspaceStore.getState().activeWorkspace?.name || 'this project';
+    const miniIdentity = `[IDENTITY] Assistant for Akira. Project: ${workspaceName}.`;
+
+    if (smallTalk) {
+      // COMPACT PATH: Still knows who/where it is, but skips heavy rules
+      chatPrompt = `${miniIdentity} Briefly answer: ${content}`;
+    } else if (isRevisionMode) {
       // Check if rules are already embedded (auto-generated task)
       const hasEmbeddedRules = task?.description?.includes('<!-- auto-rules-embedded -->');
       
@@ -724,54 +749,50 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
         try { sysPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* */ }
       }
 
-      const recent = existingMessages
-        .filter(m => m.role !== 'system').slice(-10)
-        .map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content.substring(0, 500)}`)
-        .join('\n');
-
       const cleanDesc = task?.description?.replace('<!-- auto-rules-embedded -->', '').trim();
 
-      const rtkInstruction = `
-[IMPORTANT COMMAND GUIDELINE]
-You must prefix the following CLI tools with 'rtk' to minimize token usage:
-- Git: 'rtk git <args>'
-- Lint: 'rtk lint eslint', 'rtk lint rustc', etc.
-- Test: 'rtk test npm', 'rtk test cargo', etc.
-- Build/Package: 'rtk build npm', 'rtk package pip', 'rtk container docker'
-- Search/System: 'rtk search grep', 'rtk system ps'
-Always use 'rtk <tool>' instead of just '<tool>' when executing bash commands.`;
+      const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
+      const invokedSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
 
-      const skillSection = skillListing ? `\n\n${skillListing}` : '';
-      const invokedSection = invokedSkillsContent ? `\n\nYou are using the following skill(s):\n${invokedSkillsContent}` : '';
-
-      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${rtkInstruction}${skillSection}${invokedSection}
+      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}
       
 ---
 
-You are currently working on a task: "${taskTitle}"
-${cleanDesc ? `Task description: ${cleanDesc}` : ''}
+REVISION FOR TASK: "${taskTitle}"
+${cleanDesc ? `CONTEXT: ${cleanDesc}` : ''}
 
-Previous conversation context:
-${recent}
-
-The user has reviewed your work and is requesting the following revision:
-
+USER FEEDBACK:
 ${content}
 
-Please implement the requested changes now. Modify the code directly.`;
+Please implement the requested changes. Be concise and use 'rtk' for all terminal commands.`;
     } else {
-      const skillSection = skillListing ? `\n\n${skillListing}` : '';
-      const invokedSection = invokedSkillsContent ? `\n\nYou are using the following skill(s):\n${invokedSkillsContent}` : '';
-      chatPrompt = `${skillSection}${invokedSection}
+      const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
+      const invokedSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
+      
+      let sysPrompt = '';
+      try { sysPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* */ }
 
-You are helping with a task called "${taskTitle}".
+      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}
 
-Previous conversation:
-${existingMessages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')}
+---
 
-User's new question: ${content}
+TASK: "${taskTitle}"
 
-Please respond helpfully and concisely.`;
+PREVIOUS CHAT:
+${existingMessages.filter(m => m.role !== 'system').slice(-5).map(m => {
+  let content = m.content;
+  const analysisMatch = content.match(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/);
+  if (analysisMatch) {
+    content = content.replace(analysisMatch[0], '[Image attached]\n');
+  }
+  const displayContent = content.substring(0, 500) + (content.length > 500 ? '...[truncated]' : '');
+  return `${m.role === 'user' ? 'User' : 'Assistant'}: ${displayContent}`;
+}).join('\n')}
+
+USER QUESTION:
+${content}
+
+Please respond concisely. Use 'rtk' for any commands.`;
     }
 
     const cwd = getWorkspaceCwd();
@@ -784,6 +805,7 @@ Please respond helpfully and concisely.`;
         engineArgs: engine.args,
         prompt: chatPrompt,
         cwd,
+        mode: smallTalk ? 'minimal' : 'standard',  // Use minimal context for small talk
         onOutput: (text) => {
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
         },
@@ -833,6 +855,98 @@ Please respond helpfully and concisely.`;
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return '';
 
+    const smallTalk = isSmallTalk(prompt);
+    
+    // Use getGroqApiKey to ensure we get the latest value
+    const groqApiKey = useConfigStore.getState().getGroqApiKey();
+    
+    console.log('[sendSimpleMessage] Checking Groq:', { 
+      smallTalk, 
+      hasGroqKey: !!groqApiKey,
+      keyPreview: groqApiKey ? `${groqApiKey.substring(0, 10)}...` : 'none'
+    });
+
+    // Show info if small talk but no Groq API key
+    if (smallTalk && !groqApiKey) {
+      const infoMsg = {
+        id: `info-${Date.now()}`,
+        taskId,
+        role: 'system' as const,
+        content: '💡 Hemat token dengan Groq! Buka Settings → Chat API (Groq) untuk mengatur API key (gratis 1M tokens/hari).',
+        timestamp: Date.now(),
+      };
+      addMessage(get, set, taskId, infoMsg);
+    }
+
+    // TOKEN SAVER: Use Groq API for small talk (FREE!)
+    if (smallTalk && groqApiKey) {
+      console.log('[sendSimpleMessage] Small talk detected - using Groq API (FREE)');
+
+      const aiMessageId = `msg-${Date.now()}-ai`;
+      addMessage(get, set, taskId, {
+        id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
+      });
+      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId } });
+
+      try {
+        const groqResult = await sendGroqSmallTalk(groqApiKey, prompt);
+
+        if (groqResult) {
+          const { content, usage, model } = groqResult;
+          
+          // Log token usage
+          console.log(
+            `[Groq] ✅ Response: ${usage?.total_tokens || '?'} tokens ` +
+            `(prompt: ${usage?.prompt_tokens || '?'}, completion: ${usage?.completion_tokens || '?'}) ` +
+            `[Model: ${model}]`
+          );
+
+          // Build content with token info for display and storage
+          const tokenInfo = usage 
+            ? ` [${usage.total_tokens} tokens | ${model}]`
+            : ` [${model}]`;
+          const contentWithTokenInfo = content + tokenInfo;
+
+          // Update message with Groq response (with token info)
+          const state = get();
+          const taskMessages = state.messages[taskId] || [];
+          const updatedMessages = taskMessages.map(m =>
+            m.id === aiMessageId ? { ...m, content: contentWithTokenInfo } : m
+          );
+          set({
+            messages: { ...state.messages, [taskId]: updatedMessages },
+            streamingMessageId: { ...state.streamingMessageId, [taskId]: null }
+          });
+
+          // Save to DB with token metadata
+          try {
+            await dbService.createChatMessage(
+              taskId, 
+              'assistant', 
+              contentWithTokenInfo, 
+              'groq'
+            );
+          } catch { /* non-critical */ }
+
+          return content;
+        }
+      } catch (error) {
+        console.error('[sendSimpleMessage] Groq failed:', error);
+        // Fallback to CLI below
+      }
+
+      // Groq failed, remove placeholder
+      const state = get();
+      const taskMessages = state.messages[taskId] || [];
+      set({
+        messages: {
+          ...state.messages,
+          [taskId]: taskMessages.filter(m => m.id !== aiMessageId)
+        }
+      });
+    }
+
+    // Fallback to CLI for non-small talk or if Groq failed
     const aiMessageId = `msg-${Date.now()}-ai`;
     addMessage(get, set, taskId, {
       id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
@@ -849,6 +963,7 @@ Please respond helpfully and concisely.`;
         engineArgs: engine.args,
         prompt: internalPrompt || prompt,
         cwd,
+        mode: smallTalk ? 'minimal' : 'standard',
         onOutput: (text) => {
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
         },
@@ -867,6 +982,57 @@ Please respond helpfully and concisely.`;
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
       return '';
     }
+  },
+
+  // ── Send Direct API (Small Talk Bypass) ──────────────────────────
+
+  sendDirectAPI: async (prompt) => {
+    const config = useConfigStore.getState().config;
+    const apiKey = config?.google_api_key;
+    if (!apiKey) {
+      console.log('[DirectAPI] No API key available');
+      return '';
+    }
+
+    // Try multiple models in order of preference
+    const models = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    
+    for (const model of models) {
+      try {
+        console.log(`[DirectAPI] Trying model: ${model}`);
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Answer very briefly (max 1 sentence): ${prompt}` }] }],
+            generationConfig: { 
+              maxOutputTokens: 100,
+              temperature: 0.1
+            }
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn(`[DirectAPI] ${model} failed:`, response.status, errorData.error?.message);
+          continue; // Try next model
+        }
+        
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (text) {
+          console.log(`[DirectAPI] Success with ${model}`);
+          return text.trim();
+        }
+      } catch (err) {
+        console.warn(`[DirectAPI] ${model} error:`, err);
+        continue; // Try next model
+      }
+    }
+    
+    console.error('[DirectAPI] All models failed');
+    return '';
   },
 
   // ── Message Management ──────────────────────────────────────────────

@@ -11,46 +11,37 @@ Read these files to understand the project deeply:
 - package.json / Cargo.toml / pyproject.toml (dependencies & scripts)
 - README.md if present
 - Top-level folder structure
-- Key source files (src/, app/, lib/, components/ etc.)
 - Config files (tsconfig, vite.config, tailwind.config, etc.)
 
-Produce a complete project context document in this EXACT markdown format:
+Produce a complete project context document in this EXACT markdown format. Be EXTREMELY concise (under 400 words total).
 
 # Project Overview
 
 ## What This Project Does
-[2-4 sentences describing what this project is, what problem it solves, and who uses it. Be specific — name actual features, not generic descriptions.]
+[1-2 sentences]
 
 ## Tech Stack
-- **Runtime/Language**: [e.g. TypeScript, Rust, Python]
-- **Framework**: [e.g. React + Vite, Next.js, Tauri, Django]
-- **UI Library**: [e.g. Tailwind CSS + shadcn/ui, Material UI, none]
-- **Database**: [e.g. SQLite via sqlx, PostgreSQL, none]
-- **Key Dependencies**: [list 3-5 most important libs and what they do]
-- **Build/Deploy**: [e.g. npm + Tauri bundler, Docker, Vercel]
+- **Runtime/Language**: []
+- **Framework**: []
+- **UI Library**: []
+- **Database**: []
+- **Key Dependencies**: []
+- **Build/Deploy**: []
 
 ## Architecture
-[3-5 sentences describing the high-level architecture: how modules are structured, how data flows, key patterns used (e.g. Zustand stores, Rust commands bridged via IPC, REST API layers, etc.)]
-
-## Key Directories
-- \`src/components/\` — [what lives here]
-- \`src/store/\` — [what lives here]
-- [list other important dirs]
+[1-2 sentences on high-level architecture]
 
 # Code Rules
 
 ## DO
-- [Project-specific best practice derived from what you found — mention actual file names, patterns, or libs when relevant]
-- [Another specific rule]
-(8-12 rules, grounded in the ACTUAL codebase)
+- [Project-specific best practice]
+(Max 5 specific rules)
 
 ## DON'T
-- [Specific anti-pattern that would break this project]
-- [Another anti-pattern specific to this stack]
-(8-12 rules)
+- [Specific anti-pattern]
+(Max 5 specific rules)
 
-IMPORTANT: Every bullet must be specific to THIS project. No generic advice like "write clean code" or "use meaningful variable names".
-If this is a web project (Next.js, React, Vue, etc.), you MUST include mobile-responsive design rules in the DO section — e.g., use of responsive breakpoints, mobile-first CSS, touch-friendly interactions, avoiding fixed pixel widths, etc.`
+IMPORTANT: Every bullet must be specific to THIS project. No generic advice. Keep it short to save tokens.`
 
 const cleanResponse = (raw: string): string => {
   const withoutToolLines = raw

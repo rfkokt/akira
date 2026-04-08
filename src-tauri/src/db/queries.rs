@@ -543,13 +543,14 @@ pub struct ProjectConfig {
     pub md_tone: String,
     pub git_token: Option<String>,
     pub google_api_key: Option<String>,
+    pub groq_api_key: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
 
 pub fn get_project_config(conn: &Connection, workspace_id: &str) -> Result<Option<ProjectConfig>> {
     let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, md_persona, md_tech_stack, md_rules, md_tone, git_token, google_api_key, created_at, updated_at 
+        "SELECT id, workspace_id, md_persona, md_tech_stack, md_rules, md_tone, git_token, google_api_key, groq_api_key, created_at, updated_at 
          FROM project_configs 
          WHERE workspace_id = ?1"
     )?;
@@ -564,8 +565,9 @@ pub fn get_project_config(conn: &Connection, workspace_id: &str) -> Result<Optio
             md_tone: row.get(5)?,
             git_token: row.get(6)?,
             google_api_key: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
+            groq_api_key: row.get(8)?,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
         })
     });
 
@@ -578,8 +580,8 @@ pub fn get_project_config(conn: &Connection, workspace_id: &str) -> Result<Optio
 
 pub fn save_project_config(conn: &Connection, config: &ProjectConfig) -> Result<()> {
     conn.execute(
-        "INSERT INTO project_configs (workspace_id, md_persona, md_tech_stack, md_rules, md_tone, git_token, google_api_key, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP)
+        "INSERT INTO project_configs (workspace_id, md_persona, md_tech_stack, md_rules, md_tone, git_token, google_api_key, groq_api_key, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, CURRENT_TIMESTAMP)
          ON CONFLICT(workspace_id) DO UPDATE SET
              md_persona = excluded.md_persona,
              md_tech_stack = excluded.md_tech_stack,
@@ -587,6 +589,7 @@ pub fn save_project_config(conn: &Connection, config: &ProjectConfig) -> Result<
              md_tone = excluded.md_tone,
              git_token = excluded.git_token,
              google_api_key = excluded.google_api_key,
+             groq_api_key = excluded.groq_api_key,
              updated_at = CURRENT_TIMESTAMP",
         params![
             &config.workspace_id,
@@ -596,6 +599,7 @@ pub fn save_project_config(conn: &Connection, config: &ProjectConfig) -> Result<
             &config.md_tone,
             config.git_token.as_deref(),
             config.google_api_key.as_deref(),
+            config.groq_api_key.as_deref(),
         ],
     )?;
 

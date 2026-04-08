@@ -23,6 +23,7 @@ export interface AITaskState {
   isMerged?: boolean
   mergeSourceBranch?: string
   prError?: string
+  creatingPR?: boolean
 }
 
 export interface TaskQueueItem {
@@ -49,5 +50,6 @@ export function createDefaultTaskState(): AITaskState {
     queuePosition: null,
     currentFile: null,
     filesModified: [],
+    creatingPR: false,
   }
 }

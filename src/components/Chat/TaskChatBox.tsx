@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
-import { X, Send, Loader2, Copy, Check, MessageSquare } from 'lucide-react'
-import { useAIChatStore, useEngineStore, useConfigStore } from '@/store'
+import { X, Send, Loader2, Copy, Check, MessageSquare, FileIcon, Zap } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
+import { useAIChatStore, useEngineStore, useConfigStore, useWorkspaceStore } from '@/store'
 import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
 import type { Task, ChatMessage as DbChatMessage } from '@/types'
 import type { ChatMessage } from '@/store/aiChatStore'
@@ -11,6 +12,13 @@ import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 
 const EMPTY_ARRAY: ChatMessage[] = []
+
+interface FileEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  relativePath?: string;
+}
 
 const CodeBlock = memo(function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
@@ -173,6 +181,13 @@ interface MessageItemProps {
 }
 
 const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: MessageItemProps) {
+  // Check if message is from Groq (has Groq model info in content)
+  const isGroqMessage = msg.role === 'assistant' && 
+    (msg.content?.includes('[Model: llama') || msg.content?.includes('[Model: mixtral') || msg.content?.includes('[Model: gemma'));
+  
+  // Clean content for display (remove token metadata)
+  const displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content;
+  
   return (
     <div
       className={`flex flex-col gap-1 ${
@@ -184,11 +199,19 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
           ? 'bg-app-accent/15 border border-app-accent/20 text-blue-50 rounded-tr-sm'
           : msg.role === 'system'
             ? 'bg-yellow-500/10 text-yellow-200 border-yellow-500/20 rounded-bl-sm'
-            : 'bg-app-bg/50 border-app-border text-app-text rounded-tl-sm'
+            : isGroqMessage
+              ? 'bg-green-500/5 border-green-500/20 text-app-text rounded-tl-sm'
+              : 'bg-app-bg/50 border-app-border text-app-text rounded-tl-sm'
       }`}>
+        {msg.role === 'assistant' && isGroqMessage && (
+          <div className="flex items-center gap-1 mb-1.5">
+            <Zap className="w-3 h-3 text-green-400" />
+            <span className="text-[9px] text-green-400 font-medium">Groq (Free)</span>
+          </div>
+        )}
         {msg.role === 'assistant' ? (
           <div className="text-[13px] leading-relaxed min-w-0 overflow-hidden">
-            <MarkdownContent content={msg.content} />
+            <MarkdownContent content={displayContent} />
             {currentStreamingId === msg.id && (
               <span className="inline-flex mt-1">
                 <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -210,21 +233,28 @@ const ChatInput = memo(function ChatInput({
   isStreaming, 
   hasEngine,
   placeholder,
-  hasApiKey: hasApiKeyProp
+  hasApiKey: hasApiKeyProp,
+  files,
+  onFetchFiles,
 }: { 
   onSend: (msg: string) => void; 
   isStreaming: boolean;
   hasEngine: boolean;
   placeholder: string;
   hasApiKey: boolean;
+  files: FileEntry[];
+  onFetchFiles: () => void;
 }) {
   const [message, setMessage] = useState('')
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [showFileSuggestions, setShowFileSuggestions] = useState(false)
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0)
+  const [atSymbolIndex, setAtSymbolIndex] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileSuggestionsRef = useRef<HTMLDivElement>(null)
   const { isAnalyzing, analyzeImages, hasApiKey: hasApiKeyHook } = useImageAnalysis()
   
-  // Use prop if provided, otherwise use hook value
   const hasApiKey = hasApiKeyProp ?? hasApiKeyHook
   
   useEffect(() => {
@@ -234,26 +264,95 @@ const ChatInput = memo(function ChatInput({
     }
   }, [message])
 
-  const handleSend = useCallback(async () => {
+  useEffect(() => {
+    onFetchFiles()
+  }, [onFetchFiles])
+
+  const filterFiles = useCallback((query: string): FileEntry[] => {
+    if (!query) return files.slice(0, 10)
+    const lowerQuery = query.toLowerCase()
+    return files
+      .filter(f => {
+        const relativePath = (f.relativePath || f.name).toLowerCase()
+        return relativePath.includes(lowerQuery)
+      })
+      .sort((a, b) => {
+        const aPath = a.relativePath || a.name
+        const bPath = b.relativePath || b.name
+        const aStartsWith = aPath.toLowerCase().startsWith(lowerQuery)
+        const bStartsWith = bPath.toLowerCase().startsWith(lowerQuery)
+        if (aStartsWith && !bStartsWith) return -1
+        if (!aStartsWith && bStartsWith) return 1
+        return aPath.localeCompare(bPath)
+      })
+      .slice(0, 10)
+  }, [files])
+
+  const handleMessageChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    const cursorPosition = e.target.selectionStart
+    setMessage(value)
+    
+    const textBeforeCursor = value.slice(0, cursorPosition)
+    const lastAt = textBeforeCursor.lastIndexOf('@')
+    
+    if (lastAt !== -1) {
+      const textAfterAt = textBeforeCursor.slice(lastAt + 1)
+      const hasSpace = textAfterAt.includes(' ') || textAfterAt.includes('\n')
+      
+      if (!hasSpace && textAfterAt.length <= 50) {
+        setAtSymbolIndex(lastAt)
+        const filtered = filterFiles(textAfterAt)
+        setShowFileSuggestions(filtered.length > 0)
+        setSelectedFileIndex(0)
+        return
+      }
+    }
+    
+    setShowFileSuggestions(false)
+    setAtSymbolIndex(-1)
+  }, [filterFiles])
+
+  const insertFileReference = useCallback((file: FileEntry) => {
+    if (atSymbolIndex === -1) return
+    
+    const beforeAt = message.slice(0, atSymbolIndex)
+    const cursorPos = textareaRef.current?.selectionStart || message.length
+    const afterCursor = message.slice(cursorPos)
+    
+    const newMessage = beforeAt + '@' + file.name + ' ' + afterCursor
+    setMessage(newMessage)
+    setShowFileSuggestions(false)
+    setAtSymbolIndex(-1)
+    
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newPos = atSymbolIndex + file.name.length + 2
+        textareaRef.current.focus()
+        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = newPos
+      }
+    }, 0)
+  }, [message, atSymbolIndex])
+
+  const handleSendCb = useCallback(async () => {
     const hasContent = message.trim() || attachedImages.length > 0
     if (!hasContent || isAnalyzing || isUploading) return
     
     const currentImages = [...attachedImages]
     const currentMessage = message.trim()
     
-    // Clear immediately
     setMessage('')
     setAttachedImages([])
+    setShowFileSuggestions(false)
+    setAtSymbolIndex(-1)
     
     if (currentImages.length > 0) {
       if (!hasApiKey) {
-        // No API key - send with error message
         const errorMsg = `[ERROR: Cannot analyze images - Gemini API key not configured. Please add it in Settings → Image Analysis.]\n\n${currentMessage || '(image attached)'}`
         onSend(errorMsg)
         return
       }
       
-      // Analyze images
       setIsUploading(true)
       try {
         const result = await analyzeImages(currentImages)
@@ -271,17 +370,41 @@ const ChatInput = memo(function ChatInput({
         setIsUploading(false)
       }
     } else {
-      // No images, just text
       onSend(currentMessage)
     }
   }, [message, attachedImages, isAnalyzing, isUploading, hasApiKey, analyzeImages, onSend])
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const currentQuery = atSymbolIndex !== -1 ? message.slice(atSymbolIndex + 1) : ''
+    const filteredFiles = filterFiles(currentQuery)
+    
+    if (showFileSuggestions && filteredFiles.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedFileIndex(prev => (prev + 1) % filteredFiles.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedFileIndex(prev => (prev - 1 + filteredFiles.length) % filteredFiles.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        insertFileReference(filteredFiles[selectedFileIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        setShowFileSuggestions(false)
+        return
+      }
+    }
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      handleSendCb()
     }
-  }, [handleSend])
+  }, [showFileSuggestions, atSymbolIndex, message, selectedFileIndex, filterFiles, insertFileReference, handleSendCb])
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const handled = processPastedImages(e.nativeEvent, attachedImages, setAttachedImages, 3)
@@ -291,9 +414,11 @@ const ChatInput = memo(function ChatInput({
   }, [attachedImages])
 
   const isDisabled = !hasEngine || isStreaming || isAnalyzing || isUploading
+  const currentQuery = atSymbolIndex !== -1 ? message.slice(atSymbolIndex + 1) : ''
+  const filteredFiles = filterFiles(currentQuery)
 
   return (
-    <div className="shrink-0 p-3 bg-app-sidebar/80 backdrop-blur-md border-t border-app-border/60">
+    <div className="shrink-0 p-3 bg-app-sidebar/80 backdrop-blur-md border-t border-app-border/60 relative">
       {(isUploading || isAnalyzing) && (
         <div className="mb-2 flex items-center gap-2 text-xs text-app-accent">
           <Loader2 className="w-3 h-3 animate-spin" />
@@ -317,11 +442,43 @@ const ChatInput = memo(function ChatInput({
         </div>
       )}
       
+      {/* File suggestions dropdown */}
+      {showFileSuggestions && filteredFiles.length > 0 && (
+        <div 
+          ref={fileSuggestionsRef}
+          className="absolute bottom-full left-3 right-3 mb-1 bg-app-panel border border-app-border rounded-lg shadow-xl max-h-48 overflow-y-auto z-50"
+        >
+          {filteredFiles.map((file, idx) => {
+            const filename = file.name
+            const relativePath = file.relativePath || file.name
+            const isLongPath = relativePath.length > 40
+            const displayPath = isLongPath 
+              ? `.../${filename}` 
+              : relativePath
+            
+            return (
+              <div
+                key={file.path}
+                className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-xs ${
+                  idx === selectedFileIndex 
+                    ? 'bg-app-accent/20 text-app-accent' 
+                    : 'text-neutral-300 hover:bg-white/5'
+                }`}
+                onClick={() => insertFileReference(file)}
+              >
+                <FileIcon className="w-3.5 h-3.5 flex-shrink-0 text-neutral-500" />
+                <span className="truncate font-mono">{displayPath}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      
       <div className="flex items-end gap-2.5">
         <textarea
           ref={textareaRef}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={handleMessageChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={placeholder}
@@ -341,7 +498,7 @@ const ChatInput = memo(function ChatInput({
           )}
           <Button
             size="icon"
-            onClick={handleSend}
+            onClick={handleSendCb}
             disabled={(!message.trim() && attachedImages.length === 0) || isDisabled}
             className="w-11 h-11 shrink-0 rounded-xl bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 shadow-[0_0_15px_var(--app-accent-glow)] transition-all disabled:shadow-none"
           >
@@ -359,12 +516,14 @@ const ChatInput = memo(function ChatInput({
 
 export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [files, setFiles] = useState<FileEntry[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { sendMessage, setMessages, streamingMessageId } = useAIChatStore()
   const taskMessages = useAIChatStore(
     useCallback(state => state.messages[task.id] ?? EMPTY_ARRAY, [task.id])
   )
   const { activeEngine } = useEngineStore()
+  const { activeWorkspace } = useWorkspaceStore()
   const config = useConfigStore(state => state.config)
   const hasApiKey = !!config?.google_api_key
   
@@ -372,6 +531,47 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   const isTaskStreaming = useAIChatStore(
     useCallback(state => state.streamingMessageId[task.id] != null, [task.id])
   )
+
+  const fetchFiles = useCallback(async () => {
+    const path = activeWorkspace?.folder_path
+    if (!path) return
+    
+    try {
+      const entries = await invoke<FileEntry[]>('read_directory', { path })
+      const allFiles: FileEntry[] = []
+      
+      const processEntries = async (entries: FileEntry[], relativePath: string = '') => {
+        for (const entry of entries) {
+          if (entry.is_dir) {
+            if (entry.name.startsWith('.') || 
+                ['node_modules', 'dist', 'build', '.git', '.next', 'out', 'target', 'vendor'].includes(entry.name)) {
+              continue
+            }
+            try {
+              const subEntries = await invoke<FileEntry[]>('read_directory', { path: entry.path })
+              await processEntries(subEntries, relativePath ? `${relativePath}/${entry.name}` : entry.name)
+            } catch {
+              // Skip directories we can't read
+            }
+          } else if (!entry.name.startsWith('.')) {
+            allFiles.push({
+              name: entry.name,
+              path: entry.path,
+              is_dir: false,
+              relativePath: relativePath ? `${relativePath}/${entry.name}` : entry.name,
+            })
+          }
+        }
+      }
+      
+      await processEntries(entries, path)
+      allFiles.sort((a, b) => (a.relativePath || a.name).localeCompare(b.relativePath || b.name))
+      setFiles(allFiles)
+    } catch (err) {
+      console.error('Failed to fetch files:', err)
+      setFiles([])
+    }
+  }, [activeWorkspace?.folder_path])
 
   useEffect(() => {
     if (!task.id || historyLoaded) return
@@ -470,6 +670,9 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
                 ? 'Tell the AI what to change — it will directly modify the code'
                 : `AI is ready to help you implement "${task.title}"`}
             </p>
+            <p className="text-xs text-app-accent/70 font-geist mt-2">
+              Type @ to reference files
+            </p>
           </div>
         ) : (
           taskMessages.map((msg, idx) => (
@@ -485,6 +688,8 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
         hasEngine={!!activeEngine}
         placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
         hasApiKey={hasApiKey}
+        files={files}
+        onFetchFiles={fetchFiles}
       />
     </div>
   )

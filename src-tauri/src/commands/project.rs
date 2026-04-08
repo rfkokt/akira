@@ -13,6 +13,7 @@ pub struct ProjectConfigData {
     pub md_tone: String,
     pub git_token: Option<String>,
     pub google_api_key: Option<String>,
+    pub groq_api_key: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -35,6 +36,7 @@ pub fn get_project_config(
                 md_tone: c.md_tone,
                 git_token: c.git_token,
                 google_api_key: c.google_api_key,
+                groq_api_key: c.groq_api_key,
                 created_at: c.created_at,
                 updated_at: c.updated_at,
             })
@@ -58,6 +60,7 @@ pub fn save_project_config(
         md_tone: config.md_tone,
         git_token: config.git_token,
         google_api_key: config.google_api_key,
+        groq_api_key: config.groq_api_key,
         created_at: config.created_at,
         updated_at: config.updated_at,
     };

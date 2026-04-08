@@ -102,10 +102,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         activeWorkspace: workspace || null,
       }));
 
-      // Auto-load skills for workspace
+      // Auto-load skills and config for workspace
       if (workspace) {
         const { loadInstalledSkills } = await import('./skillStore').then(m => m.useSkillStore.getState());
         loadInstalledSkills(id);
+        
+        const { loadConfig } = await import('./configStore').then(m => m.useConfigStore.getState());
+        loadConfig(id);
       }
     } catch (error) {
       console.error('Failed to set active workspace:', error);

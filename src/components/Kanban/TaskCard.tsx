@@ -217,30 +217,46 @@ const style = {
 
       {task.status === 'in-progress' && taskStates[task.id]?.status === 'completed' && (
         <div className="mt-2 pt-2 border-t border-orange-500/20">
-          <div className="flex items-center gap-1.5 text-xs text-orange-400">
-            <AlertCircle className="w-3 h-3" />
-            <span>AI completed but PR failed</span>
-          </div>
-          {taskStates[task.id]?.prError && (
-            <div className="mt-1 p-1.5 bg-red-500/10 rounded text-[10px] text-red-400 font-mono">
-              {taskStates[task.id].prError}
+          {taskStates[task.id]?.creatingPR ? (
+            <div className="flex items-center gap-1.5 text-xs text-blue-400">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>Creating PR...</span>
+            </div>
+          ) : taskStates[task.id]?.prError ? (
+            <>
+              <div className="flex items-center gap-1.5 text-xs text-orange-400">
+                <AlertCircle className="w-3 h-3" />
+                <span>AI completed but PR failed</span>
+              </div>
+              <div className="mt-1 p-1.5 bg-red-500/10 rounded text-[10px] text-red-400 font-mono">
+                {taskStates[task.id].prError}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-green-400">
+              <CheckCircle className="w-3 h-3" />
+              <span>AI completed, finalizing...</span>
             </div>
           )}
-          <p className="text-[10px] text-neutral-500 mt-1">
-            Check chat for details. Manual PR required.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2 w-full text-xs"
-            onClick={(e) => {
-              e.stopPropagation()
-              onViewDiff(task)
-            }}
-          >
-            <FileDiff className="w-3 h-3 mr-1" />
-            View Changes
-          </Button>
+          {!taskStates[task.id]?.creatingPR && (
+            <>
+              <p className="text-[10px] text-neutral-500 mt-1">
+                Check chat for details. Manual PR required.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full text-xs"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onViewDiff(task)
+                }}
+              >
+                <FileDiff className="w-3 h-3 mr-1" />
+                View Changes
+              </Button>
+            </>
+          )}
         </div>
       )}
 

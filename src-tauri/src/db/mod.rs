@@ -193,6 +193,13 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     )
     .ok(); // Ignore error if column already exists
 
+    // Migration: Add groq_api_key column to project_configs table
+    conn.execute(
+        "ALTER TABLE project_configs ADD COLUMN groq_api_key TEXT",
+        [],
+    )
+    .ok(); // Ignore error if column already exists
+
     Ok(())
 }
 
@@ -536,6 +543,7 @@ pub fn seed_default_engines(conn: &Connection) -> Result<()> {
             "--format json run",
             1,
         ),
+        ("gemini", "gemini", "gemini-2.5-pro", "--yolo", 1),
     ];
 
     for (alias, binary, model, args, enabled) in defaults {

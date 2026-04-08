@@ -49,6 +49,82 @@ export function getSavedRunningTask(): SavedTask | null {
   return null;
 }
 
+// ─── Token Optimization Helpers ──────────────────────────────────────────
+
+/**
+ * Detects if a message is "small talk" (short, non-technical, no files/images).
+ * Used to skip loading heavy project rules and save tokens.
+ * 
+ * Supports both English and Indonesian languages.
+ */
+export function isSmallTalk(message: string, hasAttachments: boolean = false): boolean {
+  if (hasAttachments || message.includes('@')) return false;
+  
+  const msg = message.toLowerCase().trim();
+  if (msg.length > 100) return false;
+  
+  // ✅ ADD: Indonesian math patterns
+  // "2+2 berapa?", "berapa 5x5?", "hitung 10/2", "2+2=?"
+  const indonesianMathPattern = /^(?:berapa|hitung)\s*[\d\s\+\-\*\/x×÷\(\)]+|[\d\s\+\-\*\/x×÷\(\)]+\s*(?:berapa|\?|=?)$/;
+  if (indonesianMathPattern.test(msg)) return true;
+  
+  // Mathematical expressions like "2+2", "10/2" are definitely small talk
+  const isMath = /^[\d\s\+\-\*\/\(\)\=\?]+$/.test(msg);
+  if (isMath) return true;
+  
+  // ✅ ADD: Indonesian small talk patterns
+  const idSmallTalkPatterns = [
+    /^(halo|hi|hey|hello)/i,
+    /^(terima\s*kasih|thanks|makasih|thx|ty)/i,
+    /^(oke|ok|baik|sip|mantap|siap|yoi)/i,
+    /^(apa\s+kabar|how\s+are\s+you|how\s+are\s+ya)/i,
+    /^(siapa\s+kamu|who\s+are\s+you)/i,
+    /^(selamat\s*(pagi|siang|sore|malam))/i,
+    /^(sampai\s*jumpa|bye|goodbye|dadah|see\s+you)/i,
+    /^(bagus|nice|good|great|awesome)/i,
+    /^(iya|yes|yep|yup|no|tidak|nope)/i,
+    /^(nggak|ga|gak|tidak|no)/i,
+    /^(ya|yes|yoi|okeh)/i,
+    /^(test|testing|coba|cek|check)$/i,  // Test chat messages
+    /^(ping|pong)$/i,  // Simple ping
+    /^(help|bantu|tolong)$/i,  // Help requests
+  ];
+  
+  if (idSmallTalkPatterns.some(pattern => pattern.test(msg))) return true;
+  
+  // Technical keywords that should always trigger project rules
+  const technicalKeywords = [
+    'code', 'build', 'fix', 'add', 'create', 'implement', 'error', 'bug', 
+    'file', 'refactor', 'function', 'component', 'style', 'route',
+    'api', 'db', 'database', 'git', 'commit', 'branch', 'pr', 'merge',
+    'setup', 'config', 'run', 'install', 'npm', 'cargo', 'rust', 'react',
+    'component', 'hook', 'state', 'props', 'interface', 'type', 'const',
+    'let', 'var', 'import', 'export', 'from', 'return', 'async', 'await',
+    'unit test', 'integration test', 'e2e test', 'test file', 'testing'  // Contextual test keywords only
+  ];
+  
+  const hasTechnicalKeyword = technicalKeywords.some(kw => msg.includes(kw));
+  if (hasTechnicalKeyword) return false;
+  
+  // If it's short and has no technical keywords, it's likely small talk
+  return true;
+}
+
+/**
+ * Global RTK (Rust Token Killer) instructions for AI providers.
+ * Consistent across all chat interfaces and tasks.
+ */
+export const GLOBAL_RTK_INSTRUCTION = `
+[TOKEN SAVING]
+Prefix heavy terminal commands with 'rtk' to save 60-90% tokens:
+- Git: 'rtk git <args>'
+- Lint: 'rtk lint <linter>'
+- Test: 'rtk test <runner>'
+- Build: 'rtk build <tool>'
+- Search: 'rtk search <tool>' (grep/rg)
+- System: 'rtk system <command>' (ps/top)
+This ensures output is compressed without losing important details.`;
+
 // ─── File Extraction ────────────────────────────────────────────────────
 
 /**

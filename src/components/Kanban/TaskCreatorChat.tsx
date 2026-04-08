@@ -8,6 +8,8 @@ import { useAnalyzeProject } from '@/hooks/useAnalyzeProject'
 import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
 import { dbService } from '@/lib/db'
 import { getProvider } from '@/lib/providers'
+import { isSmallTalk } from '@/lib/helpers'
+import { sendGroqSummary } from '@/lib/groq'
 import { ImageInput, processPastedImages, type ImageAttachment } from '@/components/shared/ImageInput'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -32,6 +34,46 @@ interface FileEntry {
   path: string;
   is_dir: boolean;
   relativePath?: string;
+}
+
+function FileReference({ path }: { path: string }) {
+  const filename = path.split('/').pop() || path
+  const isLongPath = path.length > 30
+  const displayPath = isLongPath 
+    ? `.../${filename}` 
+    : path
+  
+  if (!isLongPath) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-[10px]">
+        <FileIcon className="w-2.5 h-2.5 flex-shrink-0" />
+        {displayPath}
+      </span>
+    )
+  }
+  
+  return (
+    <Tooltip>
+      <TooltipTrigger className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-[10px] max-w-[200px] cursor-default">
+        <FileIcon className="w-2.5 h-2.5 flex-shrink-0" />
+        <span className="truncate">{displayPath}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[400px]">
+        <code className="text-[10px] break-all">{path}</code>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function renderContentWithFileRefs(content: string) {
+  const parts = content.split(/(@[\w./\-]+)/g)
+  return parts.map((part, idx) => {
+    if (part.startsWith('@') && part.length > 1) {
+      const path = part.slice(1)
+      return <FileReference key={idx} path={path} />
+    }
+    return <span key={idx}>{part}</span>
+  })
 }
 
 function MarkdownContent({ content }: { content: string }) {
@@ -207,6 +249,13 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
       fetchFiles(activeWorkspace.folder_path)
     }
   }, [activeWorkspace?.folder_path, fetchFiles])
+
+  // Load config when workspace changes to ensure Groq API key is available
+  useEffect(() => {
+    if (activeWorkspace?.id) {
+      useConfigStore.getState().loadConfig(activeWorkspace.id)
+    }
+  }, [activeWorkspace?.id])
 
   useEffect(() => {
     // DO NOT call clearMessages(taskId) here — it wipes the current chat.
@@ -552,53 +601,52 @@ const userMsg = message
       const historyMsg = getMessages(taskId)
         .filter(m => m.role !== 'system')
         .slice(-6)
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+        .map(m => {
+          let content = m.content;
+          // Strip [IMAGE ANALYSIS] block to avoid filling history with massive text
+          const analysisMatch = content.match(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/);
+          if (analysisMatch) {
+            content = content.replace(analysisMatch[0], '[Image attached]\n');
+          }
+          const displayContent = content.substring(0, 500) + (content.length > 500 ? '...[truncated]' : '');
+          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${displayContent}`;
+        })
         .join('\n\n')
-        
-      const projectRules = useConfigStore.getState().getSystemPrompt()
+      
+      // ✅ LAZY LOAD: Check small talk FIRST before loading project rules
+      const isSmallTalkLocal = isSmallTalk(userMsg, attachedImages.length > 0);
+
+      // ✅ LAZY LOAD: Only load projectRules if NOT small talk
+      const projectRules = !isSmallTalkLocal 
+        ? useConfigStore.getState().getSystemPrompt()
+        : '';
       
       let internalPrompt: string
       
-      if (yoloMode) {
+      if (isSmallTalkLocal) {
+        // ✅ MINIMAL: Ultra-light prompt without project rules
+        internalPrompt = `Answer briefly and directly: ${finalMessage}`;
+      } else if (yoloMode) {
         // YOLO Mode: Direct execution with full tool access
-        internalPrompt = `${projectRules ? projectRules + '\n\n' : ''}You are an AI coding assistant with FULL ACCESS to all tools. Execute changes DIRECTLY.
+        const rtkInstruction = `
+[TOKEN SAVING] Prefix heavy commands with 'rtk' (git, lint, test, build, search, system).`;
+
+        internalPrompt = `${projectRules ? projectRules + '\n\n' : ''}You are an AI coding assistant. Execute changes DIRECTLY.
+
+${rtkInstruction}
 
 User request: ${finalMessage}
 
-${historyMsg ? 'Conversation history:\n' + historyMsg + '\n\n' : ''}
-IMPORTANT INSTRUCTIONS:
-- Edit files directly using the available tools
-- Run shell commands if needed to test or verify changes
-- Follow the project conventions and rules strictly
-- Be thorough and handle edge cases
-- After making changes, verify they work correctly
-- Respond with what you changed and why`
+${historyMsg ? 'History:\n' + historyMsg + '\n\n' : ''}
+IMPORTANT: Use rtk for all terminal commands. Be concise.`;
       } else {
-        // Planning Mode: Discussion only, no execution
-        internalPrompt = `[SYSTEM — STRICT MODE — READ CAREFULLY]
+        // Planning Mode
+        internalPrompt = `[PLANNING ASSISTANT] Discuss and define tasks for Akira. NO execution.
 
-You are a PLANNING ASSISTANT inside a project task manager called Akira.
-Your ONLY job is to help the user think through, discuss, and define tasks that will later be implemented by a separate AI coding agent.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ABSOLUTE HARD RULES — NEVER VIOLATE THESE:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. ❌ DO NOT use any file editing tools (edit_file, write_file, str_replace, etc.)
-2. ❌ DO NOT execute shell commands, run bash, run terminal commands of any kind
-3. ❌ DO NOT write, apply, or attempt to apply any code changes to the filesystem
-4. ❌ DO NOT use computer use tools, browser tools, or any action tools
-5. ❌ DO NOT implement features — you are NOT the implementer
-6. ✅ ONLY respond with text: discussion, analysis, clarification, and planning
-7. ✅ You MAY show code SNIPPETS as examples in your reply text, but never write them to files
-8. ✅ Keep responses concise and focused on understanding requirements
-
-If a user asks you to implement something directly, politely remind them:
-"I'm the planning assistant — once you're satisfied with the plan, click 'Summarize & Create Task' and the AI agent on the board will implement it."
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${projectRules ? '\nProject context & conventions (for planning reference only):\n' + projectRules + '\n' : ''}
-${historyMsg ? '\nConversation history:\n' + historyMsg + '\n' : ''}
+${projectRules ? '\nProject Context:\n' + projectRules + '\n' : ''}
+${historyMsg ? '\nHistory:\n' + historyMsg + '\n' : ''}
 User: ${finalMessage}
-Assistant:`
+Assistant:`;
       }
 
       console.log('[handleSend] Sending message to AI...')
@@ -680,11 +728,11 @@ Assistant:`
   const handleSummarize = async () => {
     const messages = getMessages(taskId)
     if (messages.length === 0) return
-    
+
     setSummarizedAtLength(messages.length)
     setIsSummarizing(true)
     setConversationSummaries([])
-    
+
     try {
       // Limit context window: max 20 messages, max 1500 chars per message
       const conversationText = messages
@@ -695,15 +743,29 @@ Assistant:`
           return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`
         })
         .join('\n\n')
-      
-      const projectRules = useConfigStore.getState().getSystemPrompt()
-      
+
       // Build skill catalog for recommendation
       const skillCatalog = installedSkills.length > 0
         ? installedSkills.map(s => `- ${s.name}: ${s.description || 'No description'}`).join('\n')
         : ''
-      
-      const summaryPrompt = `You are a task extraction specialist. Analyze the conversation below and extract all actionable coding tasks discussed.
+
+      let lastResponse: string | null = null
+
+      // Try Groq API first (FREE!)
+      const config = useConfigStore.getState().config
+      const groqApiKey = config?.groq_api_key
+
+      if (groqApiKey) {
+        console.log('[handleSummarize] Using Groq API for summary (FREE)')
+        lastResponse = await sendGroqSummary(groqApiKey, conversationText, skillCatalog)
+      }
+
+      // Fallback to CLI if Groq not available or failed
+      if (!lastResponse) {
+        console.log('[handleSummarize] Falling back to CLI for summary')
+        const projectRules = useConfigStore.getState().getSystemPrompt()
+
+        const summaryPrompt = `You are a task extraction specialist. Analyze the conversation below and extract all actionable coding tasks discussed.
 
 You MUST output a valid JSON array. No markdown, no explanation, ONLY the JSON array.
 
@@ -733,27 +795,29 @@ Rules:
 - If no skills are relevant, use an empty array: []
 - Output ONLY valid JSON, no surrounding text or markdown fences${projectRules ? '\n\nThe tasks MUST follow these project rules. Embed relevant rules into each task description:\n' + projectRules : ''}`
 
-      const summaryId = `__summarize_temp_${Date.now()}__`
-      const lastResponse = await sendSimpleMessage(summaryId, `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`)
-      
-      const tasks = parseSummaryResponse(lastResponse)
-      
-      if (tasks.length > 0) {
-        setConversationSummaries(tasks)
-      } else {
-        // Provide feedback to user when no tasks could be extracted
-        const warningMsg = {
-          id: `warn-${Date.now()}`,
-          taskId,
-          role: 'system' as const,
-          content: '⚠️ Tidak bisa mengekstrak task dari percakapan ini. Coba diskusikan lebih detail tentang apa yang ingin dikerjakan, lalu tekan Summarize lagi.',
-          timestamp: Date.now(),
-        }
-        setMessages(taskId, [...getMessages(taskId), warningMsg])
-        setSummarizedAtLength(-1) // Allow re-summarize
+        const summaryId = `__summarize_temp_${Date.now()}__`
+        lastResponse = await sendSimpleMessage(summaryId, `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`)
+        clearMessages(summaryId)
       }
-      
-      clearMessages(summaryId)
+
+      if (lastResponse) {
+        const tasks = parseSummaryResponse(lastResponse)
+
+        if (tasks.length > 0) {
+          setConversationSummaries(tasks)
+        } else {
+          // Provide feedback to user when no tasks could be extracted
+          const warningMsg = {
+            id: `warn-${Date.now()}`,
+            taskId,
+            role: 'system' as const,
+            content: '⚠️ Tidak bisa mengekstrak task dari percakapan ini. Coba diskusikan lebih detail tentang apa yang ingin dikerjakan, lalu tekan Summarize lagi.',
+            timestamp: Date.now(),
+          }
+          setMessages(taskId, [...getMessages(taskId), warningMsg])
+          setSummarizedAtLength(-1) // Allow re-summarize
+        }
+      }
     } catch (err) {
       console.error('Failed to summarize:', err)
       // Show error feedback to user
@@ -1049,34 +1113,77 @@ onClick={() => {
                 )}
               </div>
             ) : (
-              taskMessages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`font-geist text-xs leading-relaxed ${
-                    msg.role === 'user' ? 'text-blue-400' : 'text-neutral-200'
-                  }`}
-                >
-                  <span className="text-neutral-500 mr-2">{msg.role}:</span>
-                  {msg.role === 'assistant' ? (
-                    <span className="overflow-x-hidden">
-                      {msg.content ? (
-                        <MarkdownContent content={msg.content} />
-                      ) : currentStreamingId === msg.id ? (
-                        <span className="text-neutral-500 italic">Processing...</span>
-                      ) : null}
-                    </span>
-                  ) : (
-                    <pre className="inline whitespace-pre-wrap break-words overflow-hidden">{msg.content}</pre>
-                  )}
-                  {msg.role === 'assistant' && currentStreamingId === msg.id && (
-                    <span className="inline-flex ml-1">
-                      <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
-                    </span>
-                  )}
-                </div>
-              ))
+              taskMessages.map((msg, idx) => {
+                // Extract token info from content first
+                const tokenMatch = msg.content?.match(/\[(\d+)?\s*tokens?\s*\|\s*([^\]]+)\]$/i);
+                const tokenCount = tokenMatch ? tokenMatch[1] : null;
+                const modelName = tokenMatch ? tokenMatch[2]?.trim() : null;
+                
+                // Check if message is from Groq (has Groq model info in content)
+                // Groq models: llama-3.1-8b-instant, mixtral-8x7b, gemma-7b, or local-math
+                const isGroqMessage = msg.role === 'assistant' && 
+                  modelName && (
+                    modelName.includes('llama') || 
+                    modelName.includes('mixtral') || 
+                    modelName.includes('gemma') || 
+                    modelName.includes('local-math')
+                  );
+                
+                // Debug logging
+                if (msg.role === 'assistant') {
+                  console.log('[TaskCreatorChat] content:', msg.content?.substring(0, 60));
+                  console.log('[TaskCreatorChat] isGroqMessage:', isGroqMessage, 'tokenCount:', tokenCount, 'modelName:', modelName);
+                }
+                
+                // Clean content for display (remove token metadata)
+                const displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content;
+                
+                return (
+                  <div
+                    key={idx}
+                    className={`font-geist text-xs leading-relaxed ${
+                      msg.role === 'user' ? 'text-blue-400' : 'text-neutral-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-neutral-500">{msg.role}:</span>
+                      {isGroqMessage && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[9px] rounded border border-green-500/30">
+                          <Zap className="w-2.5 h-2.5" />
+                          Groq (Free)
+                        </span>
+                      )}
+                    </div>
+                    {msg.role === 'assistant' ? (
+                      <span className="overflow-x-hidden">
+                        {displayContent ? (
+                          <MarkdownContent content={displayContent} />
+                        ) : currentStreamingId === msg.id ? (
+                          <span className="text-neutral-500 italic">Processing...</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="inline whitespace-pre-wrap break-words">
+                        {renderContentWithFileRefs(msg.content)}
+                      </span>
+                    )}
+                    {/* Token info for Groq messages */}
+                    {isGroqMessage && tokenCount && (
+                      <div className="mt-1 text-[9px] text-neutral-500 flex items-center gap-1">
+                        <span className="text-green-400/60">⚡</span>
+                        <span>{tokenCount} tokens • {modelName}</span>
+                      </div>
+                    )}
+                    {msg.role === 'assistant' && currentStreamingId === msg.id && (
+                      <span className="inline-flex ml-1">
+                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    )}
+                  </div>
+                );
+              })
             )}
             
             {isStreaming && (

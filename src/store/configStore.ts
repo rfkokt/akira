@@ -11,6 +11,7 @@ export interface ProjectConfig {
   md_tone: string;
   git_token?: string | null;
   google_api_key?: string | null;
+  groq_api_key?: string | null;  // For small talk/chat (free tier)
   created_at?: string;
   updated_at?: string;
 }
@@ -20,13 +21,18 @@ interface ConfigState {
   isLoading: boolean;
   error: string | null;
   activeTab: 'rules';
-  
+
+  // Cache for system prompt
+  cachedSystemPrompt: string | null;
+  cachedAt: number;
+
   // Actions
   setActiveTab: (tab: 'rules') => void;
   loadConfig: (workspaceId: string) => Promise<void>;
   saveConfig: (config: Partial<ProjectConfig>) => Promise<void>;
   updateField: (field: keyof ProjectConfig, value: string | null | undefined) => void;
   getSystemPrompt: () => string;
+  getGroqApiKey: () => string | null;
 }
 
 const defaultConfig: ProjectConfig = {
@@ -59,6 +65,10 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   isLoading: false,
   error: null,
   activeTab: 'rules',
+
+  // Cache fields
+  cachedSystemPrompt: null,
+  cachedAt: 0,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -105,10 +115,22 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     if (!config) return;
 
     const updatedConfig = { ...config, ...configUpdate };
-    
+
     try {
       await invoke('save_project_config', { config: updatedConfig });
-      set({ config: updatedConfig });
+      
+      // ✅ CACHE INVALIDATION: Clear cache if rules changed
+      const shouldInvalidateCache = configUpdate.md_rules !== undefined && 
+        configUpdate.md_rules !== config.md_rules;
+      
+      set({ 
+        config: updatedConfig,
+        ...(shouldInvalidateCache ? { cachedSystemPrompt: null, cachedAt: 0 } : {})
+      });
+      
+      if (shouldInvalidateCache) {
+        console.log('[ConfigStore] Cache invalidated due to rules change');
+      }
 
       // Also export to .akira/ for portability
       const folderPath = useWorkspaceStore.getState().activeWorkspace?.folder_path;
@@ -141,13 +163,31 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   getSystemPrompt: () => {
-    const { config } = get();
+    const { config, cachedSystemPrompt, cachedAt } = get();
+
+    // ✅ CACHE: Return cached value if valid (< 5 minutes)
+    if (cachedSystemPrompt && Date.now() - cachedAt < 5 * 60 * 1000) {
+      console.log('[ConfigStore] Using cached system prompt');
+      return cachedSystemPrompt;
+    }
+
     if (!config) return '';
 
     const sections = [
       config.md_rules,
     ].filter(Boolean);
 
-    return sections.join('\n\n---\n\n');
+    const prompt = sections.join('\n\n---\n\n');
+
+    // ✅ CACHE: Save to cache
+    set({ cachedSystemPrompt: prompt, cachedAt: Date.now() });
+    console.log('[ConfigStore] System prompt cached');
+
+    return prompt;
+  },
+
+  getGroqApiKey: () => {
+    const { config } = get();
+    return config?.groq_api_key || null;
   },
 }));
