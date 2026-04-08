@@ -20,6 +20,8 @@ import {
 } from '@/lib/helpers';
 import { formatSkillListing, loadSkillContent, detectSkillInvocation } from '@/lib/skills';
 import { sendGroqSmallTalk } from '@/lib/groq';
+import { routeQuery, logRoutingDecision } from '@/lib/queryRouter';
+import { compressHistory, logCompression } from '@/lib/promptCompression';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -700,10 +702,20 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return;
 
-    // Load skill listing and invoked skills
-    const smallTalk = isSmallTalk(content);
+    // Check if we're in a technical conversation thread (for context awareness)
+    const lastAssistantMsg = [...existingMessages].reverse().find(m => m.role === 'assistant');
+    const inTechnicalThread = lastAssistantMsg && (
+      lastAssistantMsg.content.length > 500 ||
+      lastAssistantMsg.content.includes('```') ||
+      lastAssistantMsg.content.includes('✅ Completed') ||
+      /\b(file|code|function|component|implement|summary|endpoint|modal)\b/i.test(lastAssistantMsg.content)
+    );
 
-    // DIRECT API FALLBACK for small talk
+    // Load skill listing and invoked skills
+    // Don't treat as small talk if we're in a technical thread (follow-up question)
+    const smallTalk = !inTechnicalThread && isSmallTalk(content);
+
+    // DIRECT API FALLBACK for small talk (only if not in technical thread)
     if (smallTalk && !isRevisionMode) {
       const directResponse = await get().sendDirectAPI(content);
       if (directResponse) {
@@ -772,6 +784,33 @@ Please implement the requested changes. Be concise and use 'rtk' for all termina
       let sysPrompt = '';
       try { sysPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* */ }
 
+      // ✅ P2: Compress history for long conversations
+      const relevantMessages = existingMessages.filter(m => m.role !== 'system');
+      let previousChat: string;
+      
+      if (relevantMessages.length > 5) {
+        // Use compression for long conversations
+        const compressed = compressHistory(relevantMessages, 1500);
+        logCompression(
+          relevantMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
+          compressed
+        );
+        previousChat = compressed.summary
+          ? `${compressed.summary}\n\n${compressed.recentMessages}`
+          : compressed.recentMessages;
+      } else {
+        // Short conversation - use as is
+        previousChat = relevantMessages.slice(-5).map(m => {
+          let msgContent = m.content;
+          const analysisMatch = msgContent.match(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/);
+          if (analysisMatch) {
+            msgContent = msgContent.replace(analysisMatch[0], '[Image attached]\n');
+          }
+          const displayContent = msgContent.substring(0, 500) + (msgContent.length > 500 ? '...[truncated]' : '');
+          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${displayContent}`;
+        }).join('\n');
+      }
+
       chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}
 
 ---
@@ -779,15 +818,7 @@ Please implement the requested changes. Be concise and use 'rtk' for all termina
 TASK: "${taskTitle}"
 
 PREVIOUS CHAT:
-${existingMessages.filter(m => m.role !== 'system').slice(-5).map(m => {
-  let content = m.content;
-  const analysisMatch = content.match(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/);
-  if (analysisMatch) {
-    content = content.replace(analysisMatch[0], '[Image attached]\n');
-  }
-  const displayContent = content.substring(0, 500) + (content.length > 500 ? '...[truncated]' : '');
-  return `${m.role === 'user' ? 'User' : 'Assistant'}: ${displayContent}`;
-}).join('\n')}
+${previousChat}
 
 USER QUESTION:
 ${content}
@@ -855,19 +886,21 @@ Please respond concisely. Use 'rtk' for any commands.`;
     const engine = useEngineStore.getState().activeEngine;
     if (!engine) return '';
 
-    const smallTalk = isSmallTalk(prompt);
+    // ✅ P2: Query Router - Smart model selection (with context awareness)
+    const existingMessages = get().messages[taskId] || [];
+    const routing = routeQuery(prompt, existingMessages);
+    logRoutingDecision(prompt, routing);
     
-    // Use getGroqApiKey to ensure we get the latest value
     const groqApiKey = useConfigStore.getState().getGroqApiKey();
     
-    console.log('[sendSimpleMessage] Checking Groq:', { 
-      smallTalk, 
-      hasGroqKey: !!groqApiKey,
-      keyPreview: groqApiKey ? `${groqApiKey.substring(0, 10)}...` : 'none'
+    console.log('[sendSimpleMessage] Query routed:', { 
+      tier: routing.tier,
+      provider: routing.provider,
+      hasGroqKey: !!groqApiKey
     });
 
-    // Show info if small talk but no Groq API key
-    if (smallTalk && !groqApiKey) {
+    // Show info if routed to Groq but no API key
+    if (routing.provider === 'groq' && !groqApiKey) {
       const infoMsg = {
         id: `info-${Date.now()}`,
         taskId,
@@ -878,8 +911,8 @@ Please respond concisely. Use 'rtk' for any commands.`;
       addMessage(get, set, taskId, infoMsg);
     }
 
-    // TOKEN SAVER: Use Groq API for small talk (FREE!)
-    if (smallTalk && groqApiKey) {
+    // TOKEN SAVER: Use Groq API for instant/fast tiers (FREE!)
+    if ((routing.tier === 'instant' || routing.tier === 'fast') && groqApiKey) {
       console.log('[sendSimpleMessage] Small talk detected - using Groq API (FREE)');
 
       const aiMessageId = `msg-${Date.now()}-ai`;
@@ -931,22 +964,22 @@ Please respond concisely. Use 'rtk' for any commands.`;
           return content;
         }
       } catch (error) {
-        console.error('[sendSimpleMessage] Groq failed:', error);
-        // Fallback to CLI below
-      }
-
-      // Groq failed, remove placeholder
-      const state = get();
-      const taskMessages = state.messages[taskId] || [];
-      set({
-        messages: {
-          ...state.messages,
-          [taskId]: taskMessages.filter(m => m.id !== aiMessageId)
-        }
-      });
+      console.error('[sendSimpleMessage] Groq failed:', error);
+      // Fallback to CLI below
     }
 
-    // Fallback to CLI for non-small talk or if Groq failed
+    // Groq failed or not applicable, remove placeholder
+    const state = get();
+    const taskMessages = state.messages[taskId] || [];
+    set({
+      messages: {
+        ...state.messages,
+        [taskId]: taskMessages.filter(m => m.id !== aiMessageId)
+      }
+    });
+  }
+
+  // Fallback to CLI for standard/deep tiers or if Groq failed
     const aiMessageId = `msg-${Date.now()}-ai`;
     addMessage(get, set, taskId, {
       id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
@@ -963,7 +996,7 @@ Please respond concisely. Use 'rtk' for any commands.`;
         engineArgs: engine.args,
         prompt: internalPrompt || prompt,
         cwd,
-        mode: smallTalk ? 'minimal' : 'standard',
+        mode: (routing.tier === 'instant' || routing.tier === 'fast') ? 'minimal' : 'standard',
         onOutput: (text) => {
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
         },
