@@ -13,13 +13,16 @@ import {
   McpAuth,
 } from '@/lib/mcp/types';
 import * as mcpClient from '@/lib/mcp/client';
-import { useToolRegistry } from '@/lib/mcp/registry';
 
 // Cache for external server URLs (not stored in McpServerDto)
 const externalUrlCache = new Map<string, string>();
 export function setExternalServerUrl(serverId: string, url: string) {
   externalUrlCache.set(serverId, url);
 }
+
+// Inject external getter into registry dynamically
+import { setExternalServersGetter } from '@/lib/mcp/registry';
+setExternalServersGetter(() => useMcpStore.getState().servers.filter(s => s.status === 'connected'));
 
 // ============================================================================
 // Types
@@ -267,7 +270,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
       setServerTools(serverId, tools);
       
       // Register tools into the unified AI tool registry
-      const registry = useToolRegistry.getState();
+      const { useToolRegistry: useToolRegistryDynamic } = await import('@/lib/mcp/registry');
+      const registry = useToolRegistryDynamic.getState();
       for (const mcpTool of tools) {
         const registryName = `ext:${serverId}:${mcpTool.name}`;
         registry.registerInternalTool({
@@ -324,7 +328,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
       await disconnectExternalServer(serverId).catch(() => {/* ignore if not connected */});
       
       // Unregister tools from the unified AI tool registry
-      const registry = useToolRegistry.getState();
+      const { useToolRegistry: useToolRegistryDynamic } = await import('@/lib/mcp/registry');
+      const registry = useToolRegistryDynamic.getState();
       const server = get().servers.find(s => s.id === serverId);
       if (server && server.tools) {
         for (const tool of server.tools) {

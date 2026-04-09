@@ -13,11 +13,16 @@ import type {
   ToolSource,
   ToolExecutionResult,
 } from './types';
-import { useMcpStore } from '@/store/mcpStore';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+// External Servers Injection
+let _externalServersGetter: () => any[] = () => [];
+export function setExternalServersGetter(getter: () => any[]) {
+  _externalServersGetter = getter;
+}
 
 interface WorkspaceTool extends InternalTool {
   workspaceId: string;
@@ -171,10 +176,9 @@ export const useToolRegistry = create<ToolRegistryState>((set, get) => ({
 // ============================================================================
 
 export function getExternalTools(): McpTool[] {
-  const mcpState = useMcpStore.getState();
-  const connectedServers = mcpState.servers.filter(s => s.status === 'connected');
+  const connectedServers = _externalServersGetter();
   return connectedServers.flatMap(server => 
-    (server.tools || []).map(tool => ({
+    (server.tools || []).map((tool: any) => ({
       ...tool,
       serverId: server.id,
     }))
@@ -182,8 +186,7 @@ export function getExternalTools(): McpTool[] {
 }
 
 export function getConnectedServerTools(): Array<{ serverId: string; serverName: string; tools: McpTool[] }> {
-  const mcpState = useMcpStore.getState();
-  const connectedServers = mcpState.servers.filter(s => s.status === 'connected');
+  const connectedServers = _externalServersGetter();
   return connectedServers.map(server => ({
     serverId: server.id,
     serverName: server.name,

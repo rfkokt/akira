@@ -16,9 +16,9 @@ pub async fn mcp_add_server(
     let db = state.db.lock().unwrap();
     let conn = &*db;
 
-    // Validate server name (no spaces, alphanumeric + dash/underscore)
-    if !request.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-        return Err("Server name must be alphanumeric with dashes or underscores only".to_string());
+    // Validate server name (no spaces, alphanumeric + dash/underscore/dot/slash/@)
+    if !request.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' || c == '@') {
+        return Err("Server name must not contain spaces or special characters except -_./@".to_string());
     }
 
     // Check if server with same name already exists in workspace
