@@ -113,7 +113,8 @@ export function FileViewer({ filePath }: FileViewerProps) {
               fontFamily: 'JetBrains Mono, monospace',
               readOnly: true,
               minimap: { enabled: true },
-              wordWrap: 'off',
+              wordWrap: 'on',
+              automaticLayout: true,
               scrollBeyondLastLine: false,
               padding: { top: 16 }
             }}

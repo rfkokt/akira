@@ -164,7 +164,9 @@ export function CommitDiffViewer({ commitHash, filePath, workspacePath }: Commit
             originalEditable: false,
             folding: true,
             renderOverviewRuler: true,
+            wordWrap: 'on',
             diffWordWrap: 'on',
+            automaticLayout: true,
           }}
           loading={<div className="h-full w-full flex items-center justify-center text-xs text-neutral-500">Preparing diff viewer...</div>}
         />

@@ -134,7 +134,10 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
             readOnly: true,
             minimap: { enabled: false },
             renderSideBySide: true,
-            padding: { top: 16 }
+            padding: { top: 16 },
+            automaticLayout: true,
+            wordWrap: 'on',
+            diffWordWrap: 'on'
           }}
           loading={<div className="h-full w-full flex items-center justify-center text-xs text-neutral-500">Preparing diff viewer...</div>}
         />

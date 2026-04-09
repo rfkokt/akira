@@ -47,7 +47,9 @@ function App() {
   const [showRecovery, setShowRecovery] = useState(false)
   const [showGlobalChat, setShowGlobalChat] = useState(true)
   const [chatWidth, setChatWidth] = useState(480)
+  const [gitSidebarWidth, setGitSidebarWidth] = useState(300)
   const isResizingRef = useRef(false)
+  const isResizingGitRef = useRef(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFileIndex, setActiveFileIndex] = useState<number | null>(null)
@@ -66,20 +68,27 @@ function App() {
   const [rtkInstalled, setRtkInstalled] = useState(false)
   const [rtkStats, setRtkStats] = useState<{ total_saved: number; avg_savings: number } | null>(null)
 
-  // Resizable Chat Handler
+  // Resizable Panels Handlers
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizingRef.current) return
-      // 56px is the left sidebar width
-      const newWidth = e.clientX - 56
-      if (newWidth > 300 && newWidth < 900) {
-        setChatWidth(newWidth)
+      if (isResizingRef.current) {
+        // 56px is the left sidebar width
+        const newWidth = e.clientX - 56
+        if (newWidth > 300 && newWidth < 900) {
+          setChatWidth(newWidth)
+        }
+      } else if (isResizingGitRef.current) {
+        const newWidth = window.innerWidth - e.clientX
+        if (newWidth > 200 && newWidth < 800) {
+          setGitSidebarWidth(newWidth)
+        }
       }
     }
 
     const handleMouseUp = () => {
-      if (isResizingRef.current) {
+      if (isResizingRef.current || isResizingGitRef.current) {
         isResizingRef.current = false
+        isResizingGitRef.current = false
         document.body.style.cursor = 'default'
       }
     }
@@ -292,7 +301,7 @@ function App() {
   // Get active file
   const activeFile = activeFileIndex !== null && openFiles[activeFileIndex] ? openFiles[activeFileIndex].path : null
 
-  // Render main content based on current page
+  // Render main central content based on current page
   const renderMainContent = () => {
     switch (currentPage) {
       case 'tasks':
@@ -300,90 +309,56 @@ function App() {
       
       case 'files':
         return (
-          <div className="h-full flex overflow-hidden">
-            {/* Left: File Tree */}
-            <div className="w-[300px] shrink-0 border-r border-white/5 flex flex-col bg-transparent">
-              {activeWorkspace ? (
-                <FileTree 
-                  rootPath={activeWorkspace.folder_path}
-                  rootName={activeWorkspace.name}
-                  selectedPath={activeFile || undefined}
-                  onFileSelect={handleFileOpen}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-xs text-neutral-500">No workspace selected</p>
-                </div>
-              )}
-            </div>
-            {/* Middle: File Content / Diff Viewer */}
-            <div className="flex-1 flex flex-col overflow-hidden bg-app-bg relative">
-              {/* File Tabs */}
-              {openFiles.length > 0 && (
-                <div className="flex items-center border-b border-app-border bg-app-sidebar/50 overflow-x-auto">
-                  {openFiles.map((file, index) => (
-                    <div
-                      key={file.path}
-                      onClick={() => setActiveFileIndex(index)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-app-border group min-w-0 ${
-                        index === activeFileIndex
-                          ? 'bg-app-bg text-white'
-                          : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/5'
-                      }`}
+          <div className="h-full flex flex-col overflow-hidden bg-app-bg relative">
+            {/* File Tabs */}
+            {openFiles.length > 0 && (
+              <div className="flex items-center border-b border-app-border bg-app-sidebar/50 overflow-x-auto">
+                {openFiles.map((file, index) => (
+                  <div
+                    key={file.path}
+                    onClick={() => setActiveFileIndex(index)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer border-r border-app-border group min-w-0 ${
+                      index === activeFileIndex
+                        ? 'bg-app-bg text-white'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/5'
+                    }`}
+                  >
+                    <File className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="text-xs truncate max-w-[150px]" title={file.path}>
+                      {getFileDisplayName(file)}
+                    </span>
+                    <button
+                      onClick={(e) => handleFileClose(index, e)}
+                      className="opacity-0 group-hover:opacity-100 hover:bg-white/10 rounded p-0.5 transition-opacity"
                     >
-                      <File className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="text-xs truncate max-w-[150px]" title={file.path}>
-                        {getFileDisplayName(file)}
-                      </span>
-                      <button
-                        onClick={(e) => handleFileClose(index, e)}
-                        className="opacity-0 group-hover:opacity-100 hover:bg-white/10 rounded p-0.5 transition-opacity"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Content Area */}
-              {viewMode === 'diff' && selectedGitFile && activeWorkspace ? (
-                <MonacoDiffViewer filePath={selectedGitFile} workspacePath={activeWorkspace.folder_path} />
-              ) : viewMode === 'commitDiff' && commitDiffInfo && activeWorkspace ? (
-                <CommitDiffViewer 
-                  commitHash={commitDiffInfo.commitHash} 
-                  filePath={commitDiffInfo.filePath}
-                  workspacePath={activeWorkspace.folder_path}
-                />
-              ) : viewMode === 'normal' && activeFile ? (
-                <FileViewer filePath={activeFile} />
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
-                  <div className="text-center">
-                    <FolderOpen className="w-12 h-12 text-neutral-700/50 mb-3 mx-auto" />
-                    <p className="text-sm">Select a file from the explorer</p>
-                    {openFiles.length > 1 && (
-                      <p className="text-xs text-neutral-600 mt-1">
-                        {openFiles.length} files open • Click tabs to switch
-                      </p>
-                    )}
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
+                ))}
+              </div>
+            )}
+            {/* Content Area */}
+            {viewMode === 'diff' && selectedGitFile && activeWorkspace ? (
+              <MonacoDiffViewer filePath={selectedGitFile} workspacePath={activeWorkspace.folder_path} />
+            ) : viewMode === 'commitDiff' && commitDiffInfo && activeWorkspace ? (
+              <CommitDiffViewer 
+                commitHash={commitDiffInfo.commitHash} 
+                filePath={commitDiffInfo.filePath}
+                workspacePath={activeWorkspace.folder_path}
+              />
+            ) : viewMode === 'normal' && activeFile ? (
+              <FileViewer filePath={activeFile} />
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
+                <div className="text-center">
+                  <FolderOpen className="w-12 h-12 text-neutral-700/50 mb-3 mx-auto" />
+                  <p className="text-sm">Select a file from the explorer</p>
+                  {openFiles.length > 1 && (
+                    <p className="text-xs text-neutral-600 mt-1">
+                      {openFiles.length} files open • Click tabs to switch
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
-            {/* Right: Git Workflow */}
-            {activeWorkspace && (
-              <div className="w-[300px] shrink-0 border-l border-white/5 flex flex-col bg-transparent">
-                <GitSourceControl 
-                  selectedFile={selectedGitFile} 
-                  onFileSelect={(path) => {
-                    setSelectedGitFile(path)
-                    setViewMode('diff')
-                  }}
-                  onShowDiff={(commitHash, filePath) => {
-                    setCommitDiffInfo({ commitHash, filePath })
-                    setViewMode('commitDiff')
-                  }}
-                />
               </div>
             )}
           </div>
@@ -591,12 +566,21 @@ function App() {
       </div>
 
       {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Navigation Sidebar (Left) */}
-        <nav className="w-12 shrink-0 bg-app-sidebar flex flex-col items-center py-0 gap-0 border-r border-app-border z-10">
-          {menuItems.map((item) => {
-            const Icon = item.icon
-            const isActive = currentPage === item.id
+      <div className="flex flex-1 overflow-hidden relative">
+        <div 
+          className="absolute top-0 left-0 flex"
+          style={{ 
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            width: scale === 1 ? '100%' : `${100 / scale}%`,
+            height: scale === 1 ? '100%' : `${100 / scale}%`,
+          }}
+        >
+          {/* Navigation Sidebar (Left) */}
+          <nav className="w-12 shrink-0 bg-app-sidebar flex flex-col items-center py-0 gap-0 border-r border-app-border z-10">
+            {menuItems.map((item) => {
+              const Icon = item.icon
+              const isActive = currentPage === item.id
             
             return (
               <Tooltip key={item.id}>
@@ -661,26 +645,62 @@ function App() {
           </div>
         )}
 
-        {/* Main Content Area */}
-        <div 
-          className={`flex flex-col overflow-hidden bg-app-bg relative m-0 ${scale === 1 ? 'flex-1' : 'shrink-0'}`}
-          style={{ 
-            transform: `scale(${scale})`,
-            transformOrigin: 'top left',
-            width: scale === 1 ? '100%' : `${100 / scale}%`,
-            ...(scale !== 1 ? { 
-              height: `${100 / scale}%`,
-              minWidth: `${100 / scale}%`,
-              maxWidth: `${100 / scale}%`
-            } : {})
-          }}
-        >
+        {/* Left: File Tree (Full Height) */}
+        {currentPage === 'files' && (
+          <div className="w-[300px] shrink-0 border-r border-white/5 flex flex-col bg-transparent">
+            {activeWorkspace ? (
+              <FileTree 
+                rootPath={activeWorkspace.folder_path}
+                rootName={activeWorkspace.name}
+                selectedPath={activeFile || undefined}
+                onFileSelect={handleFileOpen}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-xs text-neutral-500">No workspace selected</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Main Content Area (Middle) */}
+        <div className="flex flex-col overflow-hidden bg-app-bg relative m-0 flex-1">
           <main className="flex-1 overflow-auto relative flex flex-col min-h-0">
             {renderMainContent()}
           </main>
           
           {/* Terminal Panel */}
           <TerminalPanel />
+        </div>
+
+        {/* Right: Git Workflow (Full Height) */}
+        {currentPage === 'files' && activeWorkspace && (
+          <div 
+            className="shrink-0 border-l border-app-border flex flex-col bg-transparent relative"
+            style={{ width: `${gitSidebarWidth}px` }}
+          >
+            {/* Resizer Handle */}
+            <div 
+              className="absolute left-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-app-accent/50 active:bg-app-accent z-[60] transition-colors pointer-events-auto -translate-x-1/2"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                isResizingGitRef.current = true
+                document.body.style.cursor = 'col-resize'
+              }}
+            />
+            <GitSourceControl 
+              selectedFile={selectedGitFile} 
+              onFileSelect={(path) => {
+                setSelectedGitFile(path)
+                setViewMode('diff')
+              }}
+              onShowDiff={(commitHash, filePath) => {
+                setCommitDiffInfo({ commitHash, filePath })
+                setViewMode('commitDiff')
+              }}
+            />
+          </div>
+        )}
         </div>
       </div>
     </div>
