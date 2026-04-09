@@ -200,11 +200,11 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const taskMessages = getMessages(taskId)
   const currentStreamingId = streamingMessageId[taskId]
   
-  // Check if rules are already populated (not just the default template)
+  // Check if workspace standards are generated (new format or legacy with real content)
   const hasRules = config?.md_rules 
     && config.md_rules.trim() !== '' 
     && config.md_rules.trim() !== '# Rules\n\n## DO\n- \n\n## DON\'T\n- '
-    && config.md_rules.split('\n').filter(l => l.trim().startsWith('-') && l.trim().length > 2).length > 2
+    && (config.md_rules.includes('# Workspace Standards') || config.md_rules.split('\n').filter(l => l.trim().startsWith('-') && l.trim().length > 2).length > 2)
 
   const fetchFiles = useCallback(async (path: string) => {
     if (!path) return
@@ -1109,25 +1109,34 @@ onClick={() => {
                   ))}
                 </div>
                 {!hasRules && (
-                  <div className="w-full pt-2">
-                    <Button
-                      variant="secondary"
-                      className="w-full justify-center h-auto py-3 bg-app-accent/10 hover:bg-app-accent/20 text-app-accent border border-app-accent/30 hover:border-app-accent/50 transition-all"
-                      onClick={handleAnalyzeInCreator}
-                      disabled={isAnalyzingProject || !activeEngine}
-                    >
-                      {isAnalyzingProject ? (
-                        <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Analyzing project...</>
-                      ) : (
-                        <><Sparkles className="w-3.5 h-3.5 mr-2" /> Analyze Project & Generate Rules</>
+                  <div className="w-full pt-3">
+                    <div className="rounded-xl border border-app-accent/20 bg-gradient-to-b from-app-accent/5 to-transparent p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-app-accent/15 flex items-center justify-center shrink-0 border border-app-accent/20">
+                          <Sparkles className="w-4.5 h-4.5 text-app-accent" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-semibold text-white">Setup Workspace Standards</h4>
+                          <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
+                            Generate coding standards, design patterns, and security rules so AI follows your project's conventions.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        className="w-full justify-center h-9 bg-app-accent hover:bg-app-accent-hover text-white text-xs font-medium shadow-[0_0_12px_var(--app-accent-glow)] transition-all"
+                        onClick={handleAnalyzeInCreator}
+                        disabled={isAnalyzingProject || !activeEngine}
+                      >
+                        {isAnalyzingProject ? (
+                          <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> {analysisStatus || 'Analyzing...'}</>
+                        ) : (
+                          <><Sparkles className="w-3.5 h-3.5 mr-2" /> Generate Standards</>
+                        )}
+                      </Button>
+                      {!isAnalyzingProject && (
+                        <p className="text-[11px] text-neutral-600 text-center">Or configure manually in Settings → Project Config</p>
                       )}
-                    </Button>
-                    {analysisStatus && (
-                      <p className="text-xs text-neutral-400 text-center mt-1.5 animate-in fade-in">{analysisStatus}</p>
-                    )}
-                    {!analysisStatus && (
-                      <p className="text-xs text-neutral-600 text-center mt-1.5">Auto-generate DO/DON'T rules for cleaner AI output</p>
-                    )}
+                    </div>
                   </div>
                 )}
               </div>

@@ -388,7 +388,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                   {isAnalyzing ? (
                     <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Analyzing...</>
                   ) : (
-                    <><Sparkles className="w-3.5 h-3.5 mr-2" /> Analyze Project & Generate Rules</>
+                    <><Sparkles className="w-3.5 h-3.5 mr-2" /> Generate Workspace Standards</>
                   )}
                 </Button>
                 {analysisStatus && (
