@@ -6,7 +6,7 @@
  * No manual form configuration needed.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useWorkspaceStore } from '@/store/workspaceStore';
 import { useMcpStore } from '@/store/mcpStore';
 import { McpToolsList } from './McpToolsList';
@@ -37,6 +37,7 @@ import {
   Search,
   Globe,
   RefreshCw,
+  Terminal,
 } from 'lucide-react';
 import {
   connectExternalServer,
@@ -62,6 +63,20 @@ interface RegistryRemote {
   headers?: RegistryHeader[];
 }
 
+interface RegistryPackage {
+  registryType: string;
+  identifier: string;
+  version?: string;
+  runtimeHint?: string;
+  transport: { type: 'stdio' | string };
+  environmentVariables?: Array<{
+    name: string;
+    description?: string;
+    isRequired?: boolean;
+    isSecret?: boolean;
+  }>;
+}
+
 interface RegistryServer {
   name: string;
   title?: string;
@@ -69,11 +84,20 @@ interface RegistryServer {
   version?: string;
   websiteUrl?: string;
   remotes?: RegistryRemote[];
+  packages?: RegistryPackage[];
   icons?: Array<{ src: string; mimeType?: string }>;
+}
+
+interface RegistryMeta {
+  'io.modelcontextprotocol.registry/official'?: {
+    isLatest: boolean;
+    status: 'active' | 'deprecated' | 'deleted';
+  };
 }
 
 interface RegistryEntry {
   server: RegistryServer;
+  _meta: RegistryMeta;
 }
 
 interface RegistryResponse {
@@ -81,28 +105,40 @@ interface RegistryResponse {
   metadata?: { nextCursor?: string; count?: number };
 }
 
+
 // ============================================================================
-// Catalog Fetch Hook
+// Catalog Fetch Hook — uses official /v0.1/servers API with server-side search
 // ============================================================================
 
-const REGISTRY_BASE = 'https://registry.modelcontextprotocol.io/v0/servers';
+// API base: v0.1 supports ?search=<query>&version=latest&limit=<n>&cursor=<cursor>
+const REGISTRY_BASE = 'https://registry.modelcontextprotocol.io/v0.1/servers';
 const PAGE_SIZE = 50;
 
-function useRegistryCatalog() {
+function useRegistryCatalog(searchQuery: string) {
   const [servers, setServers] = useState<RegistryServer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  // Debounced search to avoid hammering the API
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
 
-  const fetchPage = async (nextCursor?: string | null) => {
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
+
+  const fetchPage = async (nextCursor?: string | null, query?: string) => {
     setIsLoading(true);
     setError(null);
     try {
       const url = new URL(REGISTRY_BASE);
       url.searchParams.set('limit', String(PAGE_SIZE));
-      url.searchParams.set('isLatest', 'true');
-      if (nextCursor) url.searchParams.set('after', nextCursor);
+      // NOTE: ?search= matches server name field only (reverse-DNS format)
+      // e.g. search=context7 won't find a server unless its name contains "context7"
+      // version=latest param is unreliable — we filter isLatest client-side from _meta
+      if (query?.trim()) url.searchParams.set('search', query.trim());
+      if (nextCursor) url.searchParams.set('cursor', nextCursor);
 
       const res = await fetch(url.toString(), {
         headers: { Accept: 'application/json' },
@@ -111,12 +147,19 @@ function useRegistryCatalog() {
 
       const data: RegistryResponse = await res.json();
 
-      // Only show servers that have remote HTTP/SSE endpoints (connectable now)
-      const connectable = data.servers
-        .map((e) => e.server)
-        .filter((s) => s.remotes && s.remotes.length > 0);
+      // Keep only: isLatest + active status
+      const activeLatest = (data.servers ?? [])
+        .filter((e) => e._meta?.['io.modelcontextprotocol.registry/official']?.isLatest === true)
+        .filter((e) => e._meta?.['io.modelcontextprotocol.registry/official']?.status === 'active')
+        .map((e) => e.server);
 
-      setServers((prev) => (nextCursor ? [...prev, ...connectable] : connectable));
+      // Append for pagination, reset for fresh search
+      setServers((prev) => {
+        if (!nextCursor) return activeLatest;
+        const existingNames = new Set(prev.map((s) => s.name));
+        return [...prev, ...activeLatest.filter((s) => !existingNames.has(s.name))];
+      });
+
       setCursor(data.metadata?.nextCursor ?? null);
       setHasMore(!!data.metadata?.nextCursor);
     } catch (err) {
@@ -126,11 +169,22 @@ function useRegistryCatalog() {
     }
   };
 
+  // Re-fetch from first page when debounced search changes
   useEffect(() => {
-    fetchPage(null);
-  }, []);
+    setCursor(null);
+    setHasMore(true);
+    fetchPage(null, debouncedSearch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
-  return { servers, isLoading, error, hasMore, loadMore: () => fetchPage(cursor), refetch: () => fetchPage(null) };
+  return {
+    servers,
+    isLoading,
+    error,
+    hasMore,
+    loadMore: () => fetchPage(cursor, debouncedSearch),
+    refetch: () => fetchPage(null, debouncedSearch),
+  };
 }
 
 // ============================================================================
@@ -146,7 +200,7 @@ export function McpSettings() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { servers, isLoading, error, hasMore, loadMore, refetch } = useRegistryCatalog();
+  const { servers, isLoading, error, hasMore, loadMore, refetch } = useRegistryCatalog(searchQuery);
 
   useEffect(() => {
     if (activeWorkspace?.id) {
@@ -155,17 +209,6 @@ export function McpSettings() {
   }, [activeWorkspace?.id, loadServers]);
 
   const refreshActive = () => setActiveServersState(getActiveServers());
-
-  const filteredServers = useMemo(() => {
-    if (!searchQuery.trim()) return servers;
-    const q = searchQuery.toLowerCase();
-    return servers.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        (s.title || '').toLowerCase().includes(q) ||
-        (s.description || '').toLowerCase().includes(q),
-    );
-  }, [servers, searchQuery]);
 
   const connectedIds = new Set(activeServers.map((s) => s.id));
 
@@ -184,7 +227,13 @@ export function McpSettings() {
       const transport: ExternalMcpTransport = {
         type: transportType,
         url: remote.url,
-        headers: headerValues,
+        // Auto-prefix Bearer for Authorization headers
+        headers: Object.fromEntries(
+          Object.entries(headerValues).map(([k, v]) => [
+            k,
+            k === 'Authorization' && !v.startsWith('Bearer ') ? `Bearer ${v}` : v,
+          ]),
+        ),
       };
 
       await connectExternalServer(server.name, server.title || server.name, transport);
@@ -280,95 +329,40 @@ export function McpSettings() {
         ) : (
           <>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-              Registry ({filteredServers.length} with remote endpoints)
+              {searchQuery.trim()
+                ? `Results for "${searchQuery}" (${servers.length} with remote endpoints)`
+                : `Registry (${servers.length} with remote endpoints)`}
             </h3>
+
             <div className="grid gap-2">
-              {filteredServers.map((server) => {
-                const isConnected = connectedIds.has(server.name);
-                const isConnecting = connectingId === server.name;
-                const remote = server.remotes?.[0];
-                const needsAuth = remote?.headers?.some((h) => h.isRequired && h.isSecret);
-                const iconSrc = server.icons?.[0]?.src;
-
-                return (
-                  <div
-                    key={server.name}
-                    onClick={() => !isConnected && !isConnecting && setSelectedServer(server)}
-                    className={`group flex items-center gap-4 p-3.5 border rounded-xl cursor-pointer transition-all ${
-                      isConnected
-                        ? 'border-green-500/30 bg-green-500/5 cursor-default'
-                        : 'border-border hover:border-primary/40 hover:bg-accent/20'
-                    }`}
-                  >
-                    {/* Icon */}
-                    <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
-                      {iconSrc ? (
-                        <img
-                          src={iconSrc}
-                          alt={server.name}
-                          className="w-7 h-7 object-contain"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <Globe className="w-4 h-4 text-muted-foreground" />
-                      )}
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm truncate">
-                          {server.title || server.name}
-                        </span>
-                        {needsAuth && (
-                          <Badge variant="outline" className="text-xs py-0 shrink-0">
-                            Needs Key
-                          </Badge>
-                        )}
-                        {!needsAuth && (
-                          <Badge className="text-xs py-0 shrink-0 bg-emerald-500/15 text-emerald-500 border-emerald-500/30">
-                            Free
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                        {server.description}
-                      </p>
-                    </div>
-
-                    {/* Status */}
-                    <div className="flex-shrink-0">
-                      {isConnected ? (
-                        <Badge className="bg-green-500/20 text-green-500 border-green-500/30 shrink-0">
-                          <PlugZap className="w-3 h-3 mr-1" />
-                          On
-                        </Badge>
-                      ) : isConnecting ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors">
-                          Connect →
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {servers.map((server) => (
+                <ServerRow
+                  key={server.name}
+                  server={server}
+                  isConnected={connectedIds.has(server.name)}
+                  isConnecting={connectingId === server.name}
+                  onSelect={setSelectedServer}
+                />
+              ))}
             </div>
 
-            {/* Load More */}
-            {hasMore && !searchQuery && (
+            {servers.length === 0 && !isLoading && (
+              <div className="py-12 text-center text-muted-foreground text-sm">
+                {searchQuery.trim()
+                  ? `No connectable servers found for "${searchQuery}"`
+                  : 'No servers available'}
+              </div>
+            )}
+
+            {/* Load More — only show when not searching */}
+            {hasMore && (
               <Button
                 variant="outline"
                 className="w-full"
                 onClick={loadMore}
                 disabled={isLoading}
               >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : null}
+                {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 Load more
               </Button>
             )}
@@ -401,6 +395,98 @@ export function McpSettings() {
           onClose={() => setSelectedServer(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Server Row (shared between pinned + registry)
+// ============================================================================
+
+interface ServerRowProps {
+  server: RegistryServer;
+  isConnected: boolean;
+  isConnecting: boolean;
+  onSelect: (server: RegistryServer) => void;
+}
+
+function ServerRow({ server, isConnected, isConnecting, onSelect }: ServerRowProps) {
+  const remote = server.remotes?.[0];
+  const isRemote = !!(remote?.url);
+  const needsAuth = remote?.headers?.some((h) => h.isRequired && h.isSecret);
+  const iconSrc = server.icons?.[0]?.src;
+  // Stdio install hint
+  const pkg = server.packages?.[0];
+  const installCmd = pkg
+    ? pkg.runtimeHint === 'npx'
+      ? `npx ${pkg.identifier}`
+      : pkg.runtimeHint === 'uvx'
+        ? `uvx ${pkg.identifier}`
+        : `${pkg.registryType} install ${pkg.identifier}`
+    : null;
+
+  const clickable = isRemote && !isConnected && !isConnecting;
+
+  return (
+    <div
+      onClick={() => clickable && onSelect(server)}
+      className={`group flex items-center gap-4 p-3.5 border rounded-xl transition-all ${
+        isConnected
+          ? 'border-green-500/30 bg-green-500/5 cursor-default'
+          : isRemote
+            ? 'border-border hover:border-primary/40 hover:bg-accent/20 cursor-pointer'
+            : 'border-border/50 opacity-70 cursor-default'
+      }`}
+    >
+      {/* Icon */}
+      <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+        {iconSrc ? (
+          <img
+            src={iconSrc}
+            alt={server.name}
+            className="w-7 h-7 object-contain"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : isRemote ? (
+          <Globe className="w-4 h-4 text-muted-foreground" />
+        ) : (
+          <Terminal className="w-4 h-4 text-muted-foreground" />
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm truncate">{server.title || server.name}</span>
+          {!isRemote ? (
+            <Badge variant="outline" className="text-xs py-0 shrink-0 border-dashed">Stdio</Badge>
+          ) : needsAuth ? (
+            <Badge variant="outline" className="text-xs py-0 shrink-0">Needs Key</Badge>
+          ) : (
+            <Badge className="text-xs py-0 shrink-0 bg-emerald-500/15 text-emerald-500 border-emerald-500/30">Free</Badge>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+          {!isRemote && installCmd
+            ? <span className="font-mono">{installCmd}</span>
+            : server.description}
+        </p>
+      </div>
+
+      {/* Status / Action */}
+      <div className="flex-shrink-0">
+        {isConnected ? (
+          <Badge className="bg-green-500/20 text-green-500 border-green-500/30 shrink-0">
+            <PlugZap className="w-3 h-3 mr-1" /> On
+          </Badge>
+        ) : isConnecting ? (
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        ) : isRemote ? (
+          <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors">Connect →</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Local only</span>
+        )}
+      </div>
     </div>
   );
 }
