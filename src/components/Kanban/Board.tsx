@@ -232,11 +232,11 @@ export function KanbanBoard() {
             {activeTask && (
               <div className="bg-app-sidebar rounded-md p-3 border border-app-border-highlight shadow-xl opacity-90 rotate-2">
                 <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded border ${PRIORITY_COLORS[activeTask.priority]} font-geist`}>
+                  <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded border ${PRIORITY_COLORS[activeTask.priority]}`}>
                     {activeTask.priority}
                   </span>
                 </div>
-                <h3 className="text-sm font-medium text-neutral-200 font-geist mb-1">{activeTask.title}</h3>
+                <h3 className="text-sm font-medium text-neutral-200 mb-1">{activeTask.title}</h3>
               </div>
             )}
           </DragOverlay>
@@ -247,25 +247,25 @@ export function KanbanBoard() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
             <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-md shadow-2xl">
               <div className="flex items-center justify-between px-4 py-3 border-b border-app-border">
-                <h3 className="text-sm font-semibold text-white font-geist">New Task</h3>
+                <h3 className="text-sm font-semibold text-white">New Task</h3>
                 <Button variant="ghost" size="icon" onClick={() => setShowAddModal(false)}>
                   <X className="w-4 h-4" />
                 </Button>
               </div>
               <form onSubmit={handleCreateTask} className="p-4 space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">Title</label>
+                  <label className="block text-xs font-medium text-neutral-400 mb-1">Title</label>
                   <input
                     type="text"
                     value={newTask.title}
                     onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white placeholder-white/40 border border-app-border focus:outline-none focus:border-app-accent font-geist"
+                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white placeholder-white/40 border border-app-border focus:outline-none focus:border-app-accent"
                     placeholder="Enter task title..."
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">
+                  <label className="block text-xs font-medium text-neutral-400 mb-1">
                     Description<span className="text-neutral-600 ml-1">(type @ to tag files)</span>
                   </label>
                   <DescriptionWithFileTag
@@ -276,11 +276,11 @@ export function KanbanBoard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1 font-geist">Priority</label>
+                  <label className="block text-xs font-medium text-neutral-400 mb-1">Priority</label>
                   <select
                     value={newTask.priority}
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })}
-                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent font-geist"
+                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>

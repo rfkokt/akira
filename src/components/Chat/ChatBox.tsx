@@ -489,17 +489,17 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
             ) : (
               <Bot className="w-4 h-4 text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]" />
             )}
-            <span className="text-xs font-semibold tracking-wide text-app-text font-geist">
+            <span className="text-xs font-semibold tracking-wide text-app-text">
               {showTerminal ? 'Terminal' : 'Akira AI'}
             </span>
             {useRouter ? (
-              <Badge variant="secondary" className="text-[10px] bg-app-accent/20 text-app-accent border-app-accent/30 tracking-wider">
+              <Badge variant="secondary" className="text-xs bg-app-accent/20 text-app-accent border-app-accent/30 tracking-wider">
                 <Zap className="w-3 h-3 mr-1" />
                 Router: {selectedRouterProvider || 'None'}
               </Badge>
             ) : (
               activeEngine && (
-                <span className="text-[10px] text-app-text-muted">
+                <span className="text-xs text-app-text-muted">
                   ({activeEngine.alias}{activeEngine.model && ` • ${activeEngine.model}`})
                 </span>
               )
@@ -568,7 +568,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
               <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 backdrop-blur-sm">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                  <p className="text-xs text-red-400 font-geist flex-1">{error}</p>
+                  <p className="text-xs text-red-400 flex-1">{error}</p>
                   <Button
                     variant="link"
                     size="sm"
@@ -590,7 +590,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                         <div className="w-16 h-16 bg-app-accent/10 rounded-full flex items-center justify-center mb-4 shadow-[0_0_20px_var(--app-accent-glow)]">
                           <Bot className="w-8 h-8 text-app-accent opacity-80" />
                         </div>
-                        <p className="text-xs font-geist">
+                        <p className="text-xs">
                           {activeEngine ? 'Start a conversation' : 'Configure an engine in Settings'}
                         </p>
                       </div>
@@ -598,7 +598,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       messages.map((msg, idx) => (
                         <div 
                           key={idx}
-                          className={`font-geist text-sm leading-relaxed whitespace-pre-wrap flex flex-col ${
+                          className={`text-sm leading-relaxed whitespace-pre-wrap flex flex-col ${
                             msg.role === 'user' 
                               ? 'items-end' 
                               : 'items-start'
@@ -610,7 +610,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                             ) : (
                               <Bot className="w-3.5 h-3.5 text-app-accent" />
                             )}
-                            <span className="text-[10px] font-semibold tracking-wider uppercase text-app-text-muted">
+                            <span className="text-xs font-semibold tracking-wider uppercase text-app-text-muted">
                               {msg.role}
                             </span>
                           </div>
@@ -644,7 +644,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                         variant={useRouter ? "secondary" : "ghost"}
                         size="sm"
                         onClick={() => setUseRouter(!useRouter)}
-                        className={`h-7 px-2.5 text-[10px] font-semibold tracking-wider rounded-lg transition-all ${useRouter ? 'bg-app-accent/20 text-app-accent border border-app-accent/30 shadow-[0_0_10px_var(--app-accent-glow)]' : 'text-app-text-muted hover:text-white'}`}
+                        className={`h-7 px-2.5 text-xs font-semibold tracking-wider rounded-lg transition-all ${useRouter ? 'bg-app-accent/20 text-app-accent border border-app-accent/30 shadow-[0_0_10px_var(--app-accent-glow)]' : 'text-app-text-muted hover:text-white'}`}
                       >
                         <Zap className="w-3 h-3 mr-1.5" />
                         Router {useRouter ? 'ON' : 'OFF'}
@@ -663,7 +663,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                             ))}
                           </select>
                           {pendingSwitch && (
-                            <span className="text-[10px] text-yellow-400/80 animate-pulse font-medium">
+                            <span className="text-xs text-yellow-400/80 animate-pulse font-medium">
                               Switched to: {pendingSwitch.newProvider}
                             </span>
                           )}
@@ -671,7 +671,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       )}
                     </div>
                     {!useRouter && (
-                      <span className="text-[10px] text-app-text-muted font-medium">
+                      <span className="text-xs text-app-text-muted font-medium">
                         Engine: {activeEngine?.alias || 'None'}
                       </span>
                     )}
@@ -690,7 +690,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       }
                       disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || isStreaming}
                       rows={1}
-                      className="flex-1 bg-app-bg/60 text-sm text-app-text placeholder-app-text-muted/60 font-geist resize-none outline-none px-3.5 py-2.5 max-h-32 min-h-[44px] rounded-xl border border-app-border focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 shadow-inner disabled:opacity-50 transition-all custom-scrollbar"
+                      className="flex-1 bg-app-bg/60 text-sm text-app-text placeholder-app-text-muted/60 resize-none outline-none px-3.5 py-2.5 max-h-32 min-h-[44px] rounded-xl border border-app-border focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 shadow-inner disabled:opacity-50 transition-all custom-scrollbar"
                     />
                     <div className="flex flex-col gap-2">
                        {isStreaming ? (
@@ -714,14 +714,14 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-2 px-1">
-                    <span className="text-[10px] text-app-text-muted/60 tracking-wide font-medium">
-                      Press <kbd className="font-sans px-1 py-0.5 rounded-sm bg-app-bg border border-app-border/50 text-[9px] mx-0.5">Enter</kbd> to send
+                    <span className="text-xs text-app-text-muted/60 tracking-wide font-medium">
+                      Press <kbd className="font-sans px-1 py-0.5 rounded-sm bg-app-bg border border-app-border/50 text-2xs mx-0.5">Enter</kbd> to send
                     </span>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowTerminal(true)}
-                      className="h-5 text-[10px] text-app-text-muted hover:text-app-accent px-1.5"
+                      className="h-5 text-xs text-app-text-muted hover:text-app-accent px-1.5"
                     >
                       Show terminal logs
                     </Button>
@@ -734,7 +734,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                   <div className="flex items-center justify-between px-3 py-2 bg-app-sidebar/40 border-b border-app-border">
                     <div className="flex items-center gap-2">
                       <Terminal className="w-3.5 h-3.5 text-app-text-muted" />
-                      <span className="text-[10px] text-app-text tracking-wider uppercase font-semibold">System Output</span>
+                      <span className="text-xs text-app-text tracking-wider uppercase font-semibold">System Output</span>
                     </div>
                     <div className="flex items-center gap-1">
                     <Tooltip>

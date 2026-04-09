@@ -43,10 +43,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
             <AlertTriangle className="w-8 h-8 text-red-500" />
           </div>
-          <h3 className="text-lg font-semibold text-white mb-2 font-geist">
+          <h3 className="text-lg font-semibold text-white mb-2">
             Something went wrong
           </h3>
-          <p className="text-sm text-neutral-400 mb-4 max-w-md font-geist">
+          <p className="text-sm text-neutral-400 mb-4 max-w-md">
             {this.state.error?.message || 'An unexpected error occurred'}
           </p>
           <Button
@@ -75,10 +75,10 @@ export function ErrorFallback({ error, onRetry }: ErrorFallbackProps) {
       <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
         <AlertTriangle className="w-8 h-8 text-red-500" />
       </div>
-      <h3 className="text-lg font-semibold text-white mb-2 font-geist">
+      <h3 className="text-lg font-semibold text-white mb-2">
         Something went wrong
       </h3>
-      <p className="text-sm text-neutral-400 mb-4 max-w-md font-geist">
+      <p className="text-sm text-neutral-400 mb-4 max-w-md">
         {error.message || 'An unexpected error occurred'}
       </p>
       <Button onClick={onRetry} className="gap-2">

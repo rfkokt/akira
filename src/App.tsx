@@ -282,7 +282,7 @@ function App() {
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
-                  <p className="text-xs text-neutral-500 font-geist">No workspace selected</p>
+                  <p className="text-xs text-neutral-500">No workspace selected</p>
                 </div>
               )}
             </div>
@@ -330,7 +330,7 @@ function App() {
                 <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
                   <div className="text-center">
                     <FolderOpen className="w-12 h-12 text-neutral-700/50 mb-3 mx-auto" />
-                    <p className="text-sm font-geist">Select a file from the explorer</p>
+                    <p className="text-sm">Select a file from the explorer</p>
                     {openFiles.length > 1 && (
                       <p className="text-xs text-neutral-600 mt-1">
                         {openFiles.length} files open • Click tabs to switch
@@ -381,7 +381,7 @@ function App() {
   ]
 
   return (
-    <div className="h-screen w-screen bg-app-bg text-app-text overflow-hidden flex flex-col font-geist">
+    <div className="h-screen w-screen bg-app-bg text-app-text overflow-hidden flex flex-col">
       {/* Welcome Screen */}
       {showWelcome && (
         <WelcomeScreen onClose={() => setShowWelcome(false)} />
@@ -413,10 +413,10 @@ function App() {
             <div className="flex items-center gap-3 pointer-events-auto">
               <div className="flex items-center gap-2 pointer-events-none">
                 <Folder className="w-3.5 h-3.5 text-app-accent" />
-                <span className="text-xs font-medium text-white font-geist select-none">
+                <span className="text-xs font-medium text-white select-none">
                   {activeWorkspace.name}
                 </span>
-                <span className="text-xs text-neutral-600 font-geist select-none">
+                <span className="text-xs text-neutral-600 select-none">
                   {activeWorkspace.folder_path.split('/').slice(-2).join('/')}
                 </span>
               </div>
@@ -426,7 +426,7 @@ function App() {
               </div>
             </div>
           ) : (
-            <span className="text-xs font-medium text-neutral-500 font-geist select-none pointer-events-none">Akira</span>
+            <span className="text-xs font-medium text-neutral-500 select-none pointer-events-none">Akira</span>
           )}
         </div>
         
@@ -438,7 +438,7 @@ function App() {
               <Cpu className="size-3.5" />
               <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
               {activeEngine?.model && (
-                <Badge variant="secondary" className="text-[10px] h-4 px-1">{activeEngine.model}</Badge>
+                <Badge variant="secondary" className="text-xs h-4 px-1">{activeEngine.model}</Badge>
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -454,7 +454,7 @@ function App() {
                     <div className="flex flex-col gap-0.5">
                       <span className="capitalize">{engine.alias}</span>
                       {engine.model && (
-                        <span className="text-[10px] text-muted-foreground">{engine.model}</span>
+                        <span className="text-xs text-muted-foreground">{engine.model}</span>
                       )}
                     </div>
                     {activeEngine?.id === engine.id && (

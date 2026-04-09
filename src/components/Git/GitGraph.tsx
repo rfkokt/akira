@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ChevronDown, ChevronRight, Loader2, GitBranch, User, Clock, Hash, FileText } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, GitBranch, User, Clock, Hash } from 'lucide-react';
 import { useWorkspaceStore } from '@/store';
 
 interface GitLogEntry {
@@ -49,7 +49,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
   const [expandedCommit, setExpandedCommit] = useState<string | null>(null);
   const [hoveredCommit, setHoveredCommit] = useState<string | null>(null);
   const [commitFiles, setCommitFiles] = useState<Record<string, CommitFile[]>>({});
-  const [loadingFiles, setLoadingFiles] = useState<string | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,7 +96,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
   const fetchCommitFiles = useCallback(async (hash: string) => {
     if (!activeWorkspace?.folder_path || commitFiles[hash]) return;
     
-    setLoadingFiles(hash);
     try {
       const files = await invoke<CommitFile[]>('git_show_files', {
         cwd: activeWorkspace.folder_path,
@@ -106,8 +104,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
       setCommitFiles(prev => ({ ...prev, [hash]: files }));
     } catch (err) {
       console.error('Failed to fetch commit files:', err);
-    } finally {
-      setLoadingFiles(null);
     }
   }, [activeWorkspace, commitFiles]);
 
@@ -164,7 +160,7 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
           <span className="text-neutral-500 w-3.5 flex items-center justify-center">
             {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </span>
-          <span className="text-[10px] font-bold tracking-widest text-neutral-400 uppercase">Git Graph</span>
+          <span className="text-xs font-bold tracking-widest text-neutral-400 uppercase">Git Graph</span>
         </div>
         {loading && <Loader2 className="w-3 h-3 animate-spin text-neutral-500" />}
       </div>
@@ -208,11 +204,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                   <div
                     className={`flex items-start gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/5 ${isExpanded ? 'bg-white/5' : ''}`}
                     onClick={() => handleExpandCommit(commit.hash)}
-                    onMouseEnter={() => {
-                      setHoveredCommit(commit.hash);
-                      fetchCommitFiles(commit.hash);
-                    }}
-                    onMouseLeave={() => setHoveredCommit(null)}
                   >
                     {/* Graph Column */}
                     <div className="w-4 flex-shrink-0 flex flex-col items-center relative">
@@ -228,6 +219,11 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                           backgroundColor: commit.refs.length > 0 ? color : 'transparent',
                           boxShadow: commit.refs.length > 0 ? `0 0 6px ${color}40` : 'none',
                         }}
+                        onMouseEnter={() => {
+                          setHoveredCommit(commit.hash);
+                          fetchCommitFiles(commit.hash);
+                        }}
+                        onMouseLeave={() => setHoveredCommit(null)}
                       />
                       {/* Merge indicator */}
                       {commit.is_merge && (
@@ -248,7 +244,7 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                             {commit.refs.slice(0, 2).map((ref, i) => (
                               <span
                                 key={i}
-                                className="text-[10px] px-1.5 py-0.5 rounded-full truncate max-w-20"
+                                className="text-xs px-1.5 py-0.5 rounded-full truncate max-w-20"
                                 style={{
                                   backgroundColor: `${color}20`,
                                   color: color,
@@ -261,7 +257,7 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[10px] text-neutral-500">
+                      <div className="flex items-center gap-2 mt-0.5 text-xs text-neutral-500">
                         <span className="font-mono">{shortenHash(commit.hash)}</span>
                         <span>•</span>
                         <span className="truncate">{commit.author}</span>
@@ -270,6 +266,46 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                       </div>
                     </div>
                   </div>
+
+                  {/* Files tooltip on hover */}
+                  {hoveredCommit === commit.hash && commitFiles[commit.hash] && (
+                    <div className="ml-8 mr-3 mb-1 p-2 bg-app-bg border border-app-border rounded text-xs">
+                      <div className="space-y-0.5">
+                        {commitFiles[commit.hash].slice(0, 5).map((file, idx) => (
+                          <div 
+                            key={idx} 
+                            className="flex items-center justify-between gap-2 py-0.5 px-1 -mx-1 rounded hover:bg-white/5 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFileSelect?.(commit.full_hash, file.path);
+                            }}
+                          >
+                            <span className="text-neutral-300 truncate flex-1">{file.path}</span>
+                            <div className="flex items-center gap-2 text-xs flex-shrink-0">
+                              {file.additions > 0 && (
+                                <span className="text-green-400">+{file.additions}</span>
+                              )}
+                              {file.deletions > 0 && (
+                                <span className="text-red-400">-{file.deletions}</span>
+                              )}
+                              <span className={`w-4 text-center ${
+                                file.status === 'A' ? 'text-green-400' :
+                                file.status === 'D' ? 'text-red-400' :
+                                'text-yellow-400'
+                              }`}>
+                                {file.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                        {commitFiles[commit.hash].length > 5 && (
+                          <div className="text-neutral-500 text-xs pt-1">
+                            +{commitFiles[commit.hash].length - 5} more files
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Expanded Commit Detail */}
                   {isExpanded && (
@@ -297,55 +333,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                           </div>
                         )}
                         
-                        {/* Files Changed - Show on hover */}
-                        {hoveredCommit === commit.hash && (
-                          <div className="mt-2 pt-2 border-t border-app-border">
-                            <div className="flex items-center gap-1.5 mb-1.5">
-                              <FileText className="w-3 h-3 text-neutral-500" />
-                              <span className="text-neutral-500">Files changed</span>
-                            </div>
-                            {loadingFiles === commit.hash ? (
-                              <div className="flex items-center gap-1 text-neutral-500">
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                <span>Loading...</span>
-                              </div>
-                            ) : commitFiles[commit.hash] ? (
-                              <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                                {commitFiles[commit.hash].map((file, idx) => (
-                                  <div 
-                                    key={idx} 
-                                    className="flex items-center justify-between gap-2 py-0.5 px-1 -mx-1 rounded hover:bg-white/5 cursor-pointer group"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onFileSelect?.(commit.full_hash, file.path);
-                                    }}
-                                  >
-                                    <span className="text-neutral-300 truncate flex-1 group-hover:text-white transition-colors">{file.path}</span>
-                                    <div className="flex items-center gap-2 text-[10px] flex-shrink-0">
-                                      {file.additions > 0 && (
-                                        <span className="text-green-400">+{file.additions}</span>
-                                      )}
-                                      {file.deletions > 0 && (
-                                        <span className="text-red-400">-{file.deletions}</span>
-                                      )}
-                                      <span className={`w-4 text-center ${
-                                        file.status === 'A' ? 'text-green-400' :
-                                        file.status === 'D' ? 'text-red-400' :
-                                        file.status === 'R' ? 'text-yellow-400' :
-                                        'text-yellow-400'
-                                      }`}>
-                                        {file.status}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-neutral-600">No files</span>
-                            )}
-                          </div>
-                        )}
-                        
                         {/* Actions */}
                         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-app-border">
                           <button
@@ -353,7 +340,7 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                               e.stopPropagation();
                               navigator.clipboard.writeText(commit.full_hash);
                             }}
-                            className="text-neutral-500 hover:text-white transition-colors text-[10px]"
+                            className="text-neutral-500 hover:text-white transition-colors text-xs"
                           >
                             Copy Hash
                           </button>
@@ -363,7 +350,7 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
                                 e.stopPropagation();
                                 onCommitSelect(commit.full_hash);
                               }}
-                              className="text-neutral-500 hover:text-white transition-colors text-[10px]"
+                              className="text-neutral-500 hover:text-white transition-colors text-xs"
                             >
                               View Diff
                             </button>

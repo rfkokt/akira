@@ -5,8 +5,10 @@ import { useWorkspaceStore, useTaskStore } from '@/store'
 import type { Task } from '@/types'
 import type { AITaskState } from '@/store/aiChatStore'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { AIActivityIndicator } from './AIActivityIndicator'
-import { STATUS_COLORS, STATUS_LABELS } from './constants'
 
 interface TaskDetailModalProps {
   task: Task
@@ -152,12 +154,12 @@ export function TaskDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-app-panel rounded-lg border border-app-border shadow-2xl w-full max-w-lg max-h-[85%] flex flex-col">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-app-overlay-dim backdrop-blur-[2px]">
+      <div className="bg-app-panel rounded-xl border border-app-border shadow-2xl w-full max-w-lg max-h-[85%] flex flex-col modal-content shadow-[0_0_40px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-app-border shrink-0">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[task.status]}`} />
-            <h3 className="text-sm font-semibold text-white font-geist">Task Details</h3>
+            <h3 className="text-sm font-semibold text-white">Task Details</h3>
           </div>
           <div className="flex items-center gap-1">
             {task.status === 'todo' && !isEditing && (
@@ -176,63 +178,63 @@ export function TaskDetailModal({
           {isEditing ? (
             <>
               <div>
-                <label className="block text-xs text-neutral-500 font-geist mb-1">Title</label>
-                <input
+                <label className="block text-xs font-medium text-app-text-secondary mb-1.5">Title</label>
+                <Input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white placeholder-white/40 border border-app-border focus:outline-none focus:border-app-accent font-geist"
+                  className="bg-app-sidebar border-app-border focus-visible:ring-1 focus-visible:ring-app-accent placeholder:text-app-text-muted"
                   placeholder="Enter task title..."
                 />
               </div>
               <div>
-                <label className="block text-xs text-neutral-500 font-geist mb-1">Description</label>
-                <textarea
+                <label className="block text-xs font-medium text-app-text-secondary mb-1.5">Description</label>
+                <Textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white placeholder-white/40 border border-app-border focus:outline-none focus:border-app-accent font-geist resize-none"
-                  rows={4}
+                  className="bg-app-sidebar border-app-border focus-visible:ring-1 focus-visible:ring-app-accent placeholder:text-app-text-muted resize-none min-h-[100px]"
                   placeholder="Enter task description..."
                 />
               </div>
               <div>
-                <label className="block text-xs text-neutral-500 font-geist mb-1">Priority</label>
-                <select
-                  value={editPriority}
-                  onChange={(e) => setEditPriority(e.target.value as Task['priority'])}
-                  className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent font-geist"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
+                <label className="block text-xs text-neutral-500 mb-1">Priority</label>
+                <Select value={editPriority} onValueChange={(val) => setEditPriority(val as Task['priority'])}>
+                  <SelectTrigger className="w-full bg-app-sidebar border-app-border focus:ring-1 focus:ring-app-accent h-9 rounded-lg">
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-app-panel border-app-border rounded-lg shadow-xl">
+                    <SelectItem value="low" className="focus:bg-app-surface-2 cursor-pointer">Low</SelectItem>
+                    <SelectItem value="medium" className="focus:bg-app-surface-2 cursor-pointer">Medium</SelectItem>
+                    <SelectItem value="high" className="focus:bg-app-surface-2 cursor-pointer">High</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </>
           ) : (
             <>
               <div>
-                <label className="block text-xs text-neutral-500 font-geist mb-1">Title</label>
-                <h2 className="text-base font-medium text-white font-geist">{task.title}</h2>
+                <label className="block text-xs text-neutral-500 mb-1">Title</label>
+                <h2 className="text-base font-medium text-white">{task.title}</h2>
               </div>
 
               {task.description && (
                 <div>
-                  <label className="block text-xs text-neutral-500 font-geist mb-1">Description</label>
-                  <p className="text-sm text-neutral-300 font-geist whitespace-pre-wrap">{task.description}</p>
+                  <label className="block text-xs text-neutral-500 mb-1">Description</label>
+                  <p className="text-sm text-neutral-300 whitespace-pre-wrap">{task.description}</p>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-neutral-500 font-geist mb-1">Status</label>
+                  <label className="block text-xs text-neutral-500 mb-1">Status</label>
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${STATUS_COLORS[task.status]}`} />
-                    <span className="text-sm text-white font-geist">{STATUS_LABELS[task.status]}</span>
+                    <span className="text-sm text-white">{STATUS_LABELS[task.status]}</span>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-neutral-500 font-geist mb-1">Priority</label>
-                  <span className={`text-sm font-geist capitalize ${getPriorityColorClass(task.priority)}`}>
+                  <label className="block text-xs text-neutral-500 mb-1">Priority</label>
+                  <span className={`text-sm capitalize ${getPriorityColorClass(task.priority)}`}>
                     {task.priority}
                   </span>
                 </div>
@@ -242,7 +244,7 @@ export function TaskDetailModal({
 
           {(taskState?.status === 'running' || taskState?.status === 'queued' || taskState?.status === 'error') && (
             <div className="bg-yellow-500/5 border border-yellow-500/10 rounded-lg p-3">
-              <label className="block text-xs text-yellow-500 font-geist mb-2">AI Processing Status</label>
+              <label className="block text-xs text-yellow-500 mb-2">AI Processing Status</label>
               <AIActivityIndicator 
                 taskId={task.id} 
                 taskState={taskState} 
@@ -254,7 +256,7 @@ export function TaskDetailModal({
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs text-neutral-500 font-geist">Actual Workspace Changes</label>
+              <label className="block text-xs text-neutral-500">Actual Workspace Changes</label>
               {loadingGitChanges ? (
                 <Loader2 className="w-3 h-3 animate-spin text-neutral-500" />
               ) : actualGitChanges.length > 0 ? (
@@ -269,7 +271,7 @@ export function TaskDetailModal({
             {actualGitChanges.length > 0 ? (
               <div className="space-y-1 max-h-32 overflow-y-auto bg-green-500/5 rounded-lg p-2">
                 {actualGitChanges.map((file, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs text-green-300 font-geist">
+                  <div key={idx} className="flex items-center gap-2 text-xs text-green-300">
                     <FileCode className="w-3 h-3 text-green-400" />
                     <span className="truncate">{file}</span>
                   </div>
@@ -286,14 +288,14 @@ export function TaskDetailModal({
             <div className="mt-2">
               <div className="flex items-center gap-2 mb-1">
                 <AlertTriangle className="w-3 h-3 text-yellow-500" />
-                <label className="block text-xs text-yellow-500 font-geist">AI Reported Files</label>
+                <label className="block text-xs text-yellow-500">AI Reported Files</label>
               </div>
-              <p className="text-xs text-yellow-500/60 font-geist mb-2 italic">
+              <p className="text-xs text-yellow-500/60 mb-2 italic">
                 These are extracted from AI output - may not match actual changes
               </p>
               <div className="space-y-1 max-h-24 overflow-y-auto bg-yellow-500/5 rounded-lg p-2">
                 {taskState.filesModified.map((file, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs text-yellow-300 font-geist">
+                  <div key={idx} className="flex items-center gap-2 text-xs text-yellow-300">
                     <FileCode className="w-3 h-3 text-yellow-400" />
                     <span className="truncate">{file}</span>
                   </div>
@@ -304,12 +306,12 @@ export function TaskDetailModal({
 
           <div className="grid grid-cols-2 gap-4 pt-2 border-t border-app-border">
             <div>
-              <label className="block text-xs text-neutral-500 font-geist mb-1">Created</label>
-              <span className="text-xs text-neutral-400 font-geist">{formatDate(task.created_at)}</span>
+              <label className="block text-xs text-neutral-500 mb-1">Created</label>
+              <span className="text-xs text-neutral-400">{formatDate(task.created_at)}</span>
             </div>
             <div>
-              <label className="block text-xs text-neutral-500 font-geist mb-1">Updated</label>
-              <span className="text-xs text-neutral-400 font-geist">{formatDate(task.updated_at)}</span>
+              <label className="block text-xs text-neutral-500 mb-1">Updated</label>
+              <span className="text-xs text-neutral-400">{formatDate(task.updated_at)}</span>
             </div>
           </div>
         </div>
@@ -341,7 +343,7 @@ export function TaskDetailModal({
                     </Button>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-400 font-geist">Are you sure?</span>
+                      <span className="text-xs text-neutral-400">Are you sure?</span>
                       <Button size="sm" onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
                         {isDeleting ? '...' : 'Yes'}
                       </Button>

@@ -8,11 +8,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-app-accent text-white hover:bg-app-accent-hover shadow-lg shadow-[#0ea5e9]/20 hover:shadow-[#0ea5e9]/40",
-        destructive: "bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/20",
-        outline: "border border-app-border bg-black/30 hover:bg-app-panel hover:text-white backdrop-blur-sm",
-        secondary: "bg-black/30 text-app-text hover:bg-app-panel hover:text-white shadow-sm border",
-        ghost: "hover:bg-white/10 hover:text-white text-app-text",
+        default: "bg-app-accent text-white hover:bg-app-accent-hover shadow-lg shadow-app-accent/20 hover:shadow-app-accent/40",
+        destructive: "bg-app-danger text-white hover:bg-red-600 shadow-lg shadow-app-danger/20",
+        outline: "border border-app-border bg-app-surface-1 hover:bg-app-surface-hover hover:text-white backdrop-blur-sm",
+        secondary: "bg-app-surface-2 text-app-text hover:bg-app-surface-hover hover:text-white border border-app-border shadow-sm",
+        ghost: "hover:bg-app-surface-hover hover:text-white text-app-text",
         link: "text-app-accent underline-offset-4 hover:underline",
       },
       size: {

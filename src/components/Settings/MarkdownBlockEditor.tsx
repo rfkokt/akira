@@ -71,7 +71,7 @@ export function MarkdownEditor({ value, onChange, height = '100%' }: MarkdownEdi
           <div className="flex items-center justify-center h-full text-neutral-500 bg-black/10">
             <div className="flex items-center gap-3">
               <div className="w-5 h-5 border-2 border-app-accent border-t-transparent rounded-full animate-spin shadow-[0_0_10px_var(--app-accent-glow)]" />
-              <span className="text-sm tracking-wide font-geist">Initializing editor...</span>
+              <span className="text-sm tracking-wide">Initializing editor...</span>
             </div>
           </div>
         }

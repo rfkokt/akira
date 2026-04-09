@@ -104,19 +104,19 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
   }
 
   if (loading) {
-     return <div className="h-full w-full flex items-center justify-center text-xs text-neutral-500 font-geist">Loading diff...</div>;
+     return <div className="h-full w-full flex items-center justify-center text-xs text-neutral-500">Loading diff...</div>;
   }
 
   if (error) {
-     return <div className="h-full w-full flex items-center justify-center text-xs text-red-500 font-geist">Error loading diff: {error}</div>;
+     return <div className="h-full w-full flex items-center justify-center text-xs text-red-500">Error loading diff: {error}</div>;
   }
 
   return (
     <div className="h-full w-full flex flex-col relative bg-transparent overflow-hidden">
       <div className="px-5 py-2.5 border-b border-app-border flex items-center shrink-0 bg-black/10">
          <div className="flex items-center gap-2">
-           <span className="text-xs font-semibold text-neutral-300 font-geist tracking-wide">{filePath.split('/').pop()}</span>
-           <span className="text-[10px] text-neutral-600 font-geist truncate max-w-[400px]">({filePath})</span>
+           <span className="text-xs font-semibold text-neutral-300 tracking-wide">{filePath.split('/').pop()}</span>
+           <span className="text-xs text-neutral-600 truncate max-w-[400px]">({filePath})</span>
          </div>
       </div>
       <div className="flex-1 relative">
@@ -136,7 +136,7 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
             renderSideBySide: true,
             padding: { top: 16 }
           }}
-          loading={<div className="h-full w-full flex items-center justify-center text-xs text-neutral-500 font-geist">Preparing diff viewer...</div>}
+          loading={<div className="h-full w-full flex items-center justify-center text-xs text-neutral-500">Preparing diff viewer...</div>}
         />
       </div>
     </div>

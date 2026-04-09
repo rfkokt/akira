@@ -186,7 +186,7 @@ export function McpToolsList() {
               <div className="flex items-center gap-2">
                 {getCategoryIcon(group.category)}
                 <span className="text-sm font-medium">{getCategoryLabel(group.category)}</span>
-                <Badge variant="outline" className="text-[10px] h-5">
+                <Badge variant="outline" className="text-xs h-5">
                   {group.count}
                 </Badge>
               </div>
@@ -216,12 +216,12 @@ export function McpToolsList() {
                             {displayName}
                           </code>
                           {isInternal && (
-                            <Badge variant="outline" className="text-[9px] h-4 px-1 text-purple-400 border-purple-400/30">
+                            <Badge variant="outline" className="text-2xs h-4 px-1 text-purple-400 border-purple-400/30">
                               internal
                             </Badge>
                           )}
                         </div>
-                        <span className="text-[10px] text-muted-foreground shrink-0">
+                        <span className="text-xs text-muted-foreground shrink-0">
                           {parsed.source === 'internal' ? '🔧' : '🔌'}
                         </span>
                       </div>

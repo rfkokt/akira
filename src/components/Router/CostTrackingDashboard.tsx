@@ -91,8 +91,8 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
         </DialogHeader>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-[#2d2d2d] rounded-lg p-4">
-            <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
+          <div className="bg-app-sidebar rounded-lg p-4">
+            <div className="flex items-center gap-2 text-app-text-muted text-sm mb-1">
               <DollarSign className="w-4 h-4" />
               Total Cost
             </div>
@@ -100,8 +100,8 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
               ${totalCost.toFixed(4)}
             </div>
           </div>
-          <div className="bg-[#2d2d2d] rounded-lg p-4">
-            <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
+          <div className="bg-app-sidebar rounded-lg p-4">
+            <div className="flex items-center gap-2 text-app-text-muted text-sm mb-1">
               <Activity className="w-4 h-4" />
               Total Requests
             </div>
@@ -109,8 +109,8 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
               {providerStats.reduce((sum, p) => sum + p.totalRequests, 0)}
             </div>
           </div>
-          <div className="bg-[#2d2d2d] rounded-lg p-4">
-            <div className="flex items-center gap-2 text-[#858585] text-sm mb-1">
+          <div className="bg-app-sidebar rounded-lg p-4">
+            <div className="flex items-center gap-2 text-app-text-muted text-sm mb-1">
               <TrendingUp className="w-4 h-4" />
               Total Tokens
             </div>
@@ -142,9 +142,9 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
 
         <ScrollArea className="h-[300px]">
           {loading ? (
-            <div className="text-center py-8 text-[#858585]">Loading...</div>
+            <div className="text-center py-8 text-app-text-muted">Loading...</div>
           ) : filteredStats.length === 0 ? (
-            <div className="text-center py-8 text-[#858585]">
+            <div className="text-center py-8 text-app-text-muted">
               No cost data available
             </div>
           ) : (
@@ -158,7 +158,7 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
                 return (
                   <div
                     key={stat.alias}
-                    className="bg-[#2d2d2d] rounded-lg p-4"
+                    className="bg-app-sidebar rounded-lg p-4"
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
@@ -180,19 +180,19 @@ export function CostTrackingDashboard({ isOpen, onClose }: CostTrackingDashboard
                     
                     <div className="grid grid-cols-4 gap-4 text-sm">
                       <div>
-                        <div className="text-[#858585] mb-1">Requests</div>
+                        <div className="text-app-text-muted mb-1">Requests</div>
                         <div className="text-white">{stat.totalRequests}</div>
                       </div>
                       <div>
-                        <div className="text-[#858585] mb-1">Input Tokens</div>
+                        <div className="text-app-text-muted mb-1">Input Tokens</div>
                         <div className="text-white">{stat.totalInputTokens.toLocaleString()}</div>
                       </div>
                       <div>
-                        <div className="text-[#858585] mb-1">Output Tokens</div>
+                        <div className="text-app-text-muted mb-1">Output Tokens</div>
                         <div className="text-white">{stat.totalOutputTokens.toLocaleString()}</div>
                       </div>
                       <div>
-                        <div className="text-[#858585] mb-1">Avg Cost/Req</div>
+                        <div className="text-app-text-muted mb-1">Avg Cost/Req</div>
                         <div className="text-white">${avgCost.toFixed(6)}</div>
                       </div>
                     </div>

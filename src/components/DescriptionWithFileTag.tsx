@@ -152,7 +152,7 @@ export function DescriptionWithFileTag({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] font-geist resize-none"
+          className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] resize-none"
           rows={rows}
           placeholder={placeholder}
         />
@@ -166,7 +166,7 @@ export function DescriptionWithFileTag({
 
       {showSuggestions && suggestions.length > 0 && (
         <div className="absolute z-50 mt-1 w-full bg-[#2d2d2d] border border-white/10 rounded-lg shadow-xl overflow-hidden max-h-60 overflow-y-auto">
-          <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-white/5 font-geist">
+          <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-white/5">
             File references (↑↓ to navigate, Enter/Tab to insert)
           </div>
           {suggestions.map((file, index) => (

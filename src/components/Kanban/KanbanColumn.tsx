@@ -30,15 +30,15 @@ export function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="bg-black/30 backdrop-blur-xl border border-app-border rounded-xl flex flex-col w-[380px] shrink-0 h-full overflow-hidden shadow-2xl relative"
+      className="bg-app-surface-1 backdrop-blur-md border border-app-border rounded-xl flex flex-col w-[380px] shrink-0 h-full overflow-hidden shadow-2xl relative"
     >
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-app-border shrink-0 bg-black/40">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-app-border shrink-0 bg-app-surface-2">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${column.color} shadow-[0_0_8px_currentColor]`} />
-          <span className="text-xs font-semibold tracking-wider text-app-text font-geist">
+          <span className="text-xs font-semibold tracking-wider text-app-text">
             {column.label}
           </span>
-          <span className="text-[10px] font-mono text-app-text-muted bg-app-bg px-2 py-0.5 rounded-full border border-app-border">
+          <span className="text-xs font-mono text-app-text-muted bg-app-bg px-2 py-0.5 rounded-full border border-app-border">
             {tasks.length}
           </span>
         </div>

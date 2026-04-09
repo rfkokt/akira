@@ -148,14 +148,14 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
       <div className="w-[300px] shrink-0 border-r border-app-border flex flex-col bg-transparent">
         {/* Header */}
         <div className="px-3 py-2 border-b border-app-border flex items-center justify-between shadow-sm z-10 bg-transparent">
-          <span className="text-xs font-medium text-app-text-muted font-geist uppercase tracking-widest">
+          <span className="text-xs font-medium text-app-text-muted uppercase tracking-widest">
             Configuration
           </span>
         </div>
 
         {/* Tab Navigation Menu */}
         <div className="flex-1 overflow-auto py-1 flex flex-col gap-0.5">
-          <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-neutral-600 uppercase">Project Config</p>
+          <p className="px-3 pt-3 pb-1 text-2xs font-bold tracking-widest text-neutral-600 uppercase">Project Config</p>
           {sidebarTabs.filter(t => t.section === 'project').map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -173,13 +173,13 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                 {isActive && <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-app-accent shadow-[0_0_8px_var(--app-accent)]" />}
                 <div className="flex items-center gap-2 w-full">
                   <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]' : 'text-neutral-500 group-hover:text-neutral-400'}`} />
-                  <span className={`text-xs font-geist flex-1 truncate ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-300'}`}>{tab.label}</span>
+                  <span className={`text-xs flex-1 truncate ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-300'}`}>{tab.label}</span>
                 </div>
               </button>
             );
           })}
 
-          <p className="px-3 pt-4 pb-1 text-[9px] font-bold tracking-widest text-neutral-600 uppercase">System Settings</p>
+          <p className="px-3 pt-4 pb-1 text-2xs font-bold tracking-widest text-neutral-600 uppercase">System Settings</p>
           {sidebarTabs.filter(t => t.section === 'system').map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -197,7 +197,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                 {isActive && <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-app-accent shadow-[0_0_8px_var(--app-accent)]" />}
                 <div className="flex items-center gap-2 w-full">
                   <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]' : 'text-neutral-500 group-hover:text-neutral-400'}`} />
-                  <span className={`text-xs font-geist flex-1 truncate ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-300'}`}>{tab.label}</span>
+                  <span className={`text-xs flex-1 truncate ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-300'}`}>{tab.label}</span>
                 </div>
               </button>
             );
@@ -232,12 +232,12 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
             {syncStatus === 'synced' && (
               <div className="flex items-center gap-1.5 justify-center animate-in fade-in">
                 <CheckCircle2 className="w-3 h-3 text-green-400" />
-                <span className="text-[10px] text-green-400 font-geist">Synced to .akira/</span>
+                <span className="text-xs text-green-400">Synced to .akira/</span>
                 <FolderOpen className="w-3 h-3 text-green-400" />
               </div>
             )}
             {syncStatus === 'error' && (
-              <span className="text-[10px] text-red-400 text-center font-geist animate-in fade-in">⚠ Save failed</span>
+              <span className="text-xs text-red-400 text-center animate-in fade-in">⚠ Save failed</span>
             )}
           </div>
         )}
@@ -249,9 +249,9 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
           showPreview ? (
             /* Preview Mode */
             <div className="h-full flex flex-col animate-in fade-in duration-300">
-              <div className="px-8 py-5 border-b border-white/5 flex items-center justify-between shrink-0">
+              <div className="px-8 py-5 border-b border-app-border flex items-center justify-between shrink-0">
                 <div>
-                  <h3 className="text-sm font-semibold text-white tracking-wide font-geist flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
                     <Eye className="w-4 h-4 text-app-accent" />
                     Compiled System Prompt
                   </h3>
@@ -273,20 +273,20 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                 <div className="relative h-full flex flex-col p-10 rounded-2xl overflow-y-auto overflow-x-hidden custom-scrollbar">
                   <div className="max-w-3xl mx-auto w-full">
                     <div className="prose prose-invert prose-p:leading-relaxed prose-sm max-w-none 
-                      prose-headings:font-geist prose-headings:font-medium prose-headings:tracking-tight 
-                      prose-h1:text-white prose-h1:border-b prose-h1:border-white/10 prose-h1:pb-4 prose-h1:mb-8 prose-h1:text-2xl
-                      prose-h2:text-app-accent prose-h2:mt-10 prose-h2:border-b prose-h2:border-white/5 prose-h2:pb-2 prose-h2:text-lg
+                      prose-headings:prose-headings:font-medium prose-headings:tracking-tight 
+                      prose-h1:text-white prose-h1:border-b prose-h1:border-app-border prose-h1:pb-4 prose-h1:mb-8 prose-h1:text-2xl
+                      prose-h2:text-app-accent prose-h2:mt-10 prose-h2:border-b prose-h2:border-app-border prose-h2:pb-2 prose-h2:text-lg
                       prose-h3:text-white prose-h3:mt-8 prose-h3:text-base
                       prose-strong:text-white prose-strong:font-semibold
                       prose-p:text-neutral-300 prose-p:text-[13px]
                       prose-a:text-app-accent hover:prose-a:text-app-accent-hover prose-a:no-underline hover:prose-a:underline
                       prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-[12px]
                       [&_:not(pre)>code]:text-app-accent [&_:not(pre)>code]:bg-app-accent/10 [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:rounded-md
-                      prose-pre:bg-[#0d0d0d] prose-pre:border prose-pre:border-white/10 prose-pre:shadow-2xl prose-pre:rounded-xl prose-pre:p-4 [&>pre>code]:text-neutral-300
+                      prose-pre:bg-app-bg prose-pre:border prose-pre:border-app-border prose-pre:shadow-2xl prose-pre:rounded-xl prose-pre:p-4 [&>pre>code]:text-neutral-300
                       prose-blockquote:border-l-2 prose-blockquote:border-l-app-accent prose-blockquote:bg-gradient-to-r prose-blockquote:from-app-accent/10 prose-blockquote:to-transparent prose-blockquote:py-1 prose-blockquote:px-5 prose-blockquote:rounded-r-xl prose-blockquote:text-neutral-300 prose-blockquote:not-italic prose-blockquote:my-6
                       prose-ul:marker:text-neutral-600 prose-ol:marker:text-neutral-600 prose-li:text-[13px] prose-li:text-neutral-300
                       prose-li:my-1
-                      prose-hr:border-white/5 prose-hr:my-10
+                      prose-hr:border-app-border prose-hr:my-10
                       selection:bg-app-accent/30 selection:text-white">
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -307,14 +307,14 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                             }
                             
                             return (
-                              <div className="my-4 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
-                                <div className="flex items-center px-4 py-2 bg-[#1e1e1e] border-b border-white/5">
+                              <div className="my-4 rounded-xl overflow-hidden border border-app-border shadow-2xl">
+                                <div className="flex items-center px-4 py-2 bg-app-bg border-b border-app-border">
                                   <div className="flex gap-1.5 opacity-80">
                                     <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
                                     <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
                                     <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
                                   </div>
-                                  <span className="text-[10px] text-neutral-400 font-mono tracking-wider uppercase ml-3">
+                                  <span className="text-xs text-neutral-400 font-mono tracking-wider uppercase ml-3">
                                     {match ? match[1] : 'code'}
                                   </span>
                                 </div>
@@ -347,7 +347,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
           ) : (
             /* Editor Mode */
             <div className="h-full w-full relative animate-in fade-in duration-300 flex flex-col">
-              <div className="px-8 flex flex-col font-geist border-b border-white/5 shrink-0 z-10">
+              <div className="px-8 flex flex-col border-b border-app-border shrink-0 z-10">
                  <div className="pt-6 pb-2 flex flex-col">
                    <h3 className="text-base font-semibold text-white tracking-wide">
                      Project Configuration
@@ -365,7 +365,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all flex items-center gap-2 ${
                              isActive 
                                ? 'border-app-accent text-app-accent bg-app-accent/5' 
-                               : 'border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-white/5 hover:border-white/10'
+                               : 'border-transparent text-neutral-500 hover:text-neutral-300 hover:bg-white/5 hover:border-app-border'
                            }`}
                          >
                            <Icon className="w-4 h-4" />
@@ -377,7 +377,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                  </div>
               </div>
               {/* Analyze Project Button */}
-              <div className="px-8 py-3 border-b border-white/5 flex items-center gap-3 shrink-0">
+              <div className="px-8 py-3 border-b border-app-border flex items-center gap-3 shrink-0">
                 <Button
                   variant="secondary"
                   size="sm"
@@ -392,7 +392,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                   )}
                 </Button>
                 {analysisStatus && (
-                  <span className="text-xs text-neutral-400 font-geist animate-in fade-in">{analysisStatus}</span>
+                  <span className="text-xs text-neutral-400 animate-in fade-in">{analysisStatus}</span>
                 )}
               </div>
               <div className="flex-1 relative">
@@ -424,7 +424,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
               {activeTab === 'git-integration' && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-base font-semibold text-white font-geist flex items-center gap-2">
+                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
                       <GitPullRequest className="w-4 h-4 text-app-accent" />
                       Git Integration
                     </h3>
@@ -436,8 +436,8 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                       <KeyRound className="w-4 h-4 text-app-accent mt-0.5 shrink-0" />
                       <div className="flex-1 space-y-3">
                         <div>
-                          <label className="text-xs font-medium text-white font-geist">Personal Access Token</label>
-                          <p className="text-[10px] text-neutral-500 mt-0.5">
+                          <label className="text-xs font-medium text-white">Personal Access Token</label>
+                          <p className="text-xs text-neutral-500 mt-0.5">
                             GitHub: Settings → Developer Settings → Personal Access Tokens (scope: <code className="text-app-accent">repo</code>)<br />
                             GitLab: Settings → Access Tokens (scope: <code className="text-app-accent">api</code>)
                           </p>
@@ -461,8 +461,8 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                       </div>
                     </div>
 
-                    <div className="mt-3 p-3 bg-black/20 rounded-md border border-white/5">
-                      <p className="text-[10px] text-neutral-500 font-geist">
+                    <div className="mt-3 p-3 bg-black/20 rounded-md border border-app-border">
+                      <p className="text-xs text-neutral-500">
                         🔒 Token is saved in local SQLite only. It is never written to <code className="text-neutral-400">.akira/</code> or committed to git.
                       </p>
                     </div>
@@ -506,7 +506,7 @@ function EnginesTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between border-b border-white/5 pb-4">
+      <div className="flex items-center justify-between border-b border-app-border pb-4">
         <div>
           <h3 className="text-xl font-semibold text-white">CLI Engines</h3>
           <p className="text-sm text-neutral-400 mt-1">Manage LLM engines that Akira can use for context completion</p>
@@ -530,13 +530,13 @@ function EnginesTab() {
       ) : (
         <div className="grid gap-3">
           {engines.map(engine => (
-            <div key={engine.id} className="flex items-center justify-between p-4 bg-transparent border border-white/5 rounded-xl hover:bg-white/5 transition-colors">
+            <div key={engine.id} className="flex items-center justify-between p-4 bg-transparent border border-app-border rounded-xl hover:bg-white/5 transition-colors">
               <div className="flex items-center gap-4">
                 <Checkbox checked={engine.enabled} onCheckedChange={(c) => toggleEngine(engine.id, !!c)} />
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold capitalize text-white">{engine.alias}</span>
-                    {engine.model && <Badge variant="secondary" className="text-[10px] bg-black/40 text-neutral-300 border-white/5">{engine.model}</Badge>}
+                    {engine.model && <Badge variant="secondary" className="text-xs bg-black/40 text-neutral-300 border-app-border">{engine.model}</Badge>}
                   </div>
                   <div className="text-xs text-neutral-500 font-mono mt-1">{engine.binary_path} {engine.args}</div>
                 </div>
@@ -550,26 +550,26 @@ function EnginesTab() {
       )}
 
       <Dialog open={showAddEngine} onOpenChange={(open) => !open && setShowAddEngine(false)}>
-        <DialogContent className="sm:max-w-[425px] bg-app-bg border border-white/10 text-white shadow-2xl">
+        <DialogContent className="sm:max-w-[425px] bg-app-bg border border-app-border text-white shadow-2xl">
           <DialogHeader>
             <DialogTitle>Add New Engine</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleAddEngine} className="space-y-4 pt-4">
             <div className="space-y-2">
               <Label>Alias</Label>
-              <Input value={newEngine.alias} onChange={e => setNewEngine({...newEngine, alias: e.target.value})} placeholder="e.g. claude" required className="bg-black/30 border-white/10" />
+              <Input value={newEngine.alias} onChange={e => setNewEngine({...newEngine, alias: e.target.value})} placeholder="e.g. claude" required className="bg-black/30 border-app-border" />
             </div>
             <div className="space-y-2">
               <Label>Binary Path</Label>
-              <Input value={newEngine.binary_path} onChange={e => setNewEngine({...newEngine, binary_path: e.target.value})} placeholder="/usr/local/bin/claude" required className="bg-black/30 border-white/10" />
+              <Input value={newEngine.binary_path} onChange={e => setNewEngine({...newEngine, binary_path: e.target.value})} placeholder="/usr/local/bin/claude" required className="bg-black/30 border-app-border" />
             </div>
             <div className="space-y-2">
               <Label>Model (optional)</Label>
-              <Input value={newEngine.model} onChange={e => setNewEngine({...newEngine, model: e.target.value})} placeholder="e.g. claude-3-5" className="bg-black/30 border-white/10" />
+              <Input value={newEngine.model} onChange={e => setNewEngine({...newEngine, model: e.target.value})} placeholder="e.g. claude-3-5" className="bg-black/30 border-app-border" />
             </div>
             <div className="space-y-2">
               <Label>Args (optional)</Label>
-              <Input value={newEngine.args} onChange={e => setNewEngine({...newEngine, args: e.target.value})} placeholder="e.g. --dangerously-skip-permissions" className="bg-black/30 border-white/10" />
+              <Input value={newEngine.args} onChange={e => setNewEngine({...newEngine, args: e.target.value})} placeholder="e.g. --dangerously-skip-permissions" className="bg-black/30 border-app-border" />
             </div>
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => setShowAddEngine(false)}>Cancel</Button>
@@ -652,13 +652,13 @@ function RTKTab() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="border-b border-white/5 pb-4">
+      <div className="border-b border-app-border pb-4">
         <h3 className="text-xl font-semibold text-white">RTK Analytics</h3>
         <p className="text-sm text-neutral-400 mt-1">Manage Rapid Tokenization Kit for maximizing AI context</p>
       </div>
 
       <div className="grid gap-4">
-        <div className="p-6 bg-transparent border border-white/5 rounded-xl space-y-4">
+        <div className="p-6 bg-transparent border border-app-border rounded-xl space-y-4">
           <div className="flex items-center justify-between">
              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
@@ -673,7 +673,7 @@ function RTKTab() {
                {isChecking ? 'Checking...' : 'Refresh'}
              </Button>
           </div>
-          <div className="space-y-2 text-sm mt-4 p-4 bg-black/20 rounded-lg border border-white/5">
+          <div className="space-y-2 text-sm mt-4 p-4 bg-black/20 rounded-lg border border-app-border">
             <div className="flex gap-2">
                <span className="w-24 text-neutral-500">Status:</span>
                <span className={rtkStatus?.installed ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
@@ -708,7 +708,7 @@ function RTKTab() {
              <div className="flex gap-3">
                 <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
                 <div>
-                   <h4 className="border border-white/50font-medium text-yellow-500 mb-1">Initialization Required for Max Context</h4>
+                   <h4 className="border border-app-border0font-medium text-yellow-500 mb-1">Initialization Required for Max Context</h4>
                    <p className="text-sm text-yellow-500/80 mb-3">Install global cache rules for 60-90% token savings using `rtk init -g`.</p>
                    <div className="flex items-center gap-3">
                       <Button size="sm" onClick={initRTK} disabled={isInitializing} className="bg-yellow-500 text-black hover:bg-yellow-400 font-semibold shadow-[0_0_10px_rgba(234,179,8,0.2)]">
@@ -723,27 +723,27 @@ function RTKTab() {
 
         {/* Stats Section */}
         {rtkStatus?.installed && (
-          <div className="p-6 bg-transparent border border-white/5 rounded-xl space-y-4">
+          <div className="p-6 bg-transparent border border-app-border rounded-xl space-y-4">
             <h4 className="font-semibold text-white">Efficiency Metrics</h4>
             <div className="grid grid-cols-3 gap-4">
-               <div className="p-4 bg-black/30 rounded-lg border border-white/5 flex flex-col items-center justify-center text-center">
+               <div className="p-4 bg-black/30 rounded-lg border border-app-border flex flex-col items-center justify-center text-center">
                   <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold mb-1">Total Savings</div>
                   <div className="text-2xl font-bold text-app-accent">{stats?.total_saved.toLocaleString() ?? '0'}</div>
-                  <div className="text-[10px] text-neutral-500 mt-1">Tokens bypassed</div>
+                  <div className="text-xs text-neutral-500 mt-1">Tokens bypassed</div>
                </div>
-               <div className="p-4 bg-black/30 rounded-lg border border-white/5 flex flex-col items-center justify-center text-center">
+               <div className="p-4 bg-black/30 rounded-lg border border-app-border flex flex-col items-center justify-center text-center">
                   <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold mb-1">Avg Efficiency</div>
                   <div className="text-2xl font-bold text-green-400">{stats?.avg_savings.toFixed(1) ?? '0.0'}%</div>
-                  <div className="text-[10px] text-neutral-500 mt-1">Token reduction</div>
+                  <div className="text-xs text-neutral-500 mt-1">Token reduction</div>
                </div>
-               <div className="p-4 bg-black/30 rounded-lg border border-white/5 flex flex-col items-center justify-center text-center">
+               <div className="p-4 bg-black/30 rounded-lg border border-app-border flex flex-col items-center justify-center text-center">
                   <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold mb-1">Commands Mod</div>
                   <div className="text-2xl font-bold text-white">{stats?.total_commands.toLocaleString() ?? '0'}</div>
-                  <div className="text-[10px] text-neutral-500 mt-1">Git ops intercepted</div>
+                  <div className="text-xs text-neutral-500 mt-1">Git ops intercepted</div>
                </div>
             </div>
             
-            <div className="pt-4 border-t border-white/5 mt-4">
+            <div className="pt-4 border-t border-app-border mt-4">
                <div className="flex items-center justify-between mb-3">
                  <h5 className="text-sm font-medium text-neutral-300">System Tester</h5>
                  <Button onClick={runTest} disabled={isTesting} size="sm" variant="secondary" className="bg-black/40 hover:bg-black/60">
@@ -752,8 +752,8 @@ function RTKTab() {
                </div>
                
                {testResult && (
-                  <div className="mt-3 bg-black/40 p-3 rounded-lg border border-white/5 font-mono text-xs text-neutral-400">
-                    <div className="flex justify-between items-center mb-2 border-b border-white/5 pb-2">
+                  <div className="mt-3 bg-black/40 p-3 rounded-lg border border-app-border font-mono text-xs text-neutral-400">
+                    <div className="flex justify-between items-center mb-2 border-b border-app-border pb-2">
                        <span>Result: <span className="text-green-400">Success</span></span>
                        <span className="text-app-accent">Saved {testResult.savings_pct.toFixed(0)}% ({testResult.input_tokens} → {testResult.output_tokens})</span>
                     </div>
@@ -778,13 +778,13 @@ function RouterTab() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="border-b border-white/5 pb-4">
+      <div className="border-b border-app-border pb-4">
         <h3 className="text-xl font-semibold text-white">AI Router Config</h3>
         <p className="text-sm text-neutral-400 mt-1">Manage fallback logic and token cost budgets across AI models</p>
       </div>
 
       <div className="grid gap-4">
-        <div className="p-6 bg-transparent border border-white/5 rounded-xl flex items-center justify-between">
+        <div className="p-6 bg-transparent border border-app-border rounded-xl flex items-center justify-between">
            <div>
               <Label className="text-base font-semibold text-white">Auto-Switch Engine</Label>
               <p className="text-sm text-neutral-500 mt-1">Silently switch to fallback engine if primary fails or exhausts limits.</p>
@@ -792,13 +792,13 @@ function RouterTab() {
            <Switch checked={autoSwitch} onCheckedChange={setAutoSwitch} />
         </div>
         
-        <div className="p-6 bg-transparent border border-white/5 rounded-xl">
+        <div className="p-6 bg-transparent border border-app-border rounded-xl">
            <h4 className="font-semibold text-white mb-4">Fallback Matrix</h4>
            <div className="space-y-2">
               {['claude', 'gpt-4o', 'gemini'].map((p, i) => (
-                 <div key={p} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-white/5">
+                 <div key={p} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-app-border">
                     <span className="text-sm font-medium capitalize text-neutral-300">{i + 1}. {p}</span>
-                    <Badge variant="outline" className="border-white/10 text-neutral-500">Active</Badge>
+                    <Badge variant="outline" className="border-app-border text-neutral-500">Active</Badge>
                  </div>
               ))}
            </div>
@@ -829,7 +829,7 @@ function VisionTab() {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-white/5 pb-4">
+      <div className="border-b border-app-border pb-4">
         <h3 className="text-xl font-semibold text-white">Image Analysis</h3>
         <p className="text-sm text-neutral-400 mt-1">Configure Gemini API for image analysis in chat</p>
       </div>
@@ -839,8 +839,8 @@ function VisionTab() {
           <Image className="w-4 h-4 text-app-accent mt-0.5 shrink-0" />
           <div className="flex-1 space-y-3">
             <div>
-              <label className="text-xs font-medium text-white font-geist">Gemini API Key</label>
-              <p className="text-[10px] text-neutral-500 mt-0.5">
+              <label className="text-xs font-medium text-white">Gemini API Key</label>
+              <p className="text-xs text-neutral-500 mt-0.5">
                 Used to analyze images uploaded in task chats. Get your key from{' '}
                 <a 
                   href="https://aistudio.google.com/app/apikey" 
@@ -872,23 +872,23 @@ function VisionTab() {
               {syncStatus === 'synced' && (
                 <div className="flex items-center gap-1.5 animate-in fade-in">
                   <CheckCircle2 className="w-3 h-3 text-green-400" />
-                  <span className="text-[10px] text-green-400 font-geist">Saved</span>
+                  <span className="text-xs text-green-400">Saved</span>
                 </div>
               )}
               {syncStatus === 'error' && (
-                <span className="text-[10px] text-red-400 font-geist animate-in fade-in">Failed to save</span>
+                <span className="text-xs text-red-400 animate-in fade-in">Failed to save</span>
               )}
             </div>
           </div>
         </div>
 
-        <div className="mt-3 p-3 bg-black/20 rounded-md border border-white/5">
-          <p className="text-[10px] text-neutral-500 font-geist">
+        <div className="mt-3 p-3 bg-black/20 rounded-md border border-app-border">
+          <p className="text-xs text-neutral-500">
             🔒 API key is saved in local SQLite only. It is never written to <code className="text-neutral-400">.akira/</code> or committed to git.
           </p>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-white/5">
+        <div className="mt-4 pt-4 border-t border-app-border">
           <h4 className="text-sm font-semibold text-white mb-2">How it works</h4>
           <ul className="text-xs text-neutral-400 space-y-2">
             <li className="flex items-start gap-2">
@@ -1019,14 +1019,14 @@ function SkillsTab() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="border-b border-white/5 pb-4">
+      <div className="border-b border-app-border pb-4">
         <h3 className="text-xl font-semibold text-white">Skills</h3>
         <p className="text-sm text-neutral-400 mt-1">Install agent capabilities from GitHub repositories</p>
       </div>
 
       <div className="grid gap-4">
         {/* Install from URL */}
-        <div className="p-5 bg-transparent border border-white/5 rounded-xl space-y-3">
+        <div className="p-5 bg-transparent border border-app-border rounded-xl space-y-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
               <Download className="w-4 h-4 text-purple-500" />
@@ -1043,7 +1043,7 @@ function SkillsTab() {
               value={installUrl}
               onChange={e => { setInstallUrl(e.target.value); setInstallError(null); setInstallSuccess(null); }}
               onKeyDown={e => { if (e.key === 'Enter') handleInstall(); }}
-              className="bg-black/30 border-white/10 text-white placeholder-neutral-600"
+              className="bg-black/30 border-app-border text-white placeholder-neutral-600"
             />
             <Button onClick={handleInstall} disabled={isInstalling === 'installing' || !installUrl.trim()}>
               {isInstalling === 'installing' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Install'}
@@ -1057,7 +1057,7 @@ function SkillsTab() {
             <p className="text-xs text-green-400">{installSuccess}</p>
           )}
           
-          <div className="p-3 bg-black/20 rounded-lg border border-white/5 space-y-2">
+          <div className="p-3 bg-black/20 rounded-lg border border-app-border space-y-2">
             <p className="text-xs text-neutral-400">
               Find skills at <a href="https://skills.sh" target="_blank" rel="noopener noreferrer" className="text-app-accent hover:underline">skills.sh</a> - copy the install command
             </p>
@@ -1071,7 +1071,7 @@ function SkillsTab() {
         </div>
 
         {/* Installed Skills */}
-        <div className="p-5 bg-transparent border border-white/5 rounded-xl space-y-3">
+        <div className="p-5 bg-transparent border border-app-border rounded-xl space-y-3">
           <h4 className="font-medium text-white">Installed Skills</h4>
           
           {isLoading && installedSkills.length === 0 ? (
@@ -1087,11 +1087,11 @@ function SkillsTab() {
           ) : (
             <div className="grid gap-2">
               {installedSkills.map(skill => (
-                <div key={skill.id} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-white/5">
+                <div key={skill.id} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-app-border">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-white">{skill.name}</span>
-                      <Badge variant="outline" className="text-[10px] border-white/10 text-neutral-400">
+                      <Badge variant="outline" className="text-xs border-app-border text-neutral-400">
                         {skill.owner}/{skill.repo}
                       </Badge>
                     </div>
@@ -1124,7 +1124,7 @@ function SkillsTab() {
         </div>
 
         {/* Sync Engine Skills */}
-        <div className="p-5 bg-transparent border border-white/5 rounded-xl space-y-3">
+        <div className="p-5 bg-transparent border border-app-border rounded-xl space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20">
@@ -1148,11 +1148,11 @@ function SkillsTab() {
           {engineSkills.length > 0 && (
             <div className="space-y-2">
               {engineSkills.map((skill) => (
-                <div key={skill.path} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-white/5">
+                <div key={skill.path} className="flex items-center justify-between p-3 bg-black/20 rounded-lg border border-app-border">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-white">{skill.name}</span>
-                      <Badge variant="outline" className="text-[10px] border-white/10 text-neutral-400">
+                      <Badge variant="outline" className="text-xs border-app-border text-neutral-400">
                         {skill.source}
                       </Badge>
                     </div>
@@ -1181,7 +1181,7 @@ function SkillsTab() {
 
         {/* Skill Path Info */}
         {activeWorkspace && (
-          <div className="p-3 bg-black/20 rounded-lg border border-white/5">
+          <div className="p-3 bg-black/20 rounded-lg border border-app-border">
             <p className="text-xs text-neutral-500">
               Skills are stored in <code className="text-neutral-400">{activeWorkspace.folder_path}/.akira/skills/</code>
             </p>
@@ -1213,7 +1213,7 @@ function GroqTab() {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-white/5 pb-4">
+      <div className="border-b border-app-border pb-4">
         <h3 className="text-xl font-semibold text-white">Chat API (Groq)</h3>
         <p className="text-sm text-neutral-400 mt-1">
           Configure Groq API for free small talk and chat. Save up to <span className="text-green-400 font-semibold">98% tokens</span> on casual conversations!
@@ -1225,17 +1225,17 @@ function GroqTab() {
         <div className="p-4 bg-green-500/5 rounded-lg border border-green-500/20 text-center">
           <div className="text-2xl font-bold text-green-400">FREE</div>
           <div className="text-xs text-neutral-500 mt-1">20 requests/min</div>
-          <div className="text-[10px] text-neutral-600">1M tokens/day</div>
+          <div className="text-xs text-neutral-600">1M tokens/day</div>
         </div>
         <div className="p-4 bg-app-accent/5 rounded-lg border border-app-accent/20 text-center">
           <div className="text-2xl font-bold text-app-accent">98%</div>
           <div className="text-xs text-neutral-500 mt-1">Token savings</div>
-          <div className="text-[10px] text-neutral-600">vs CLI for small talk</div>
+          <div className="text-xs text-neutral-600">vs CLI for small talk</div>
         </div>
         <div className="p-4 bg-purple-500/5 rounded-lg border border-purple-500/20 text-center">
           <div className="text-2xl font-bold text-purple-400">FAST</div>
           <div className="text-xs text-neutral-500 mt-1">~0.5s response</div>
-          <div className="text-[10px] text-neutral-600">No file scanning</div>
+          <div className="text-xs text-neutral-600">No file scanning</div>
         </div>
       </div>
 
@@ -1244,8 +1244,8 @@ function GroqTab() {
           <KeyRound className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
           <div className="flex-1 space-y-3">
             <div>
-              <label className="text-xs font-medium text-white font-geist">Groq API Key</label>
-              <p className="text-[10px] text-neutral-500 mt-0.5">
+              <label className="text-xs font-medium text-white">Groq API Key</label>
+              <p className="text-xs text-neutral-500 mt-0.5">
                 Get your free API key from{' '}
                 <a 
                   href="https://console.groq.com/keys" 
@@ -1278,23 +1278,23 @@ function GroqTab() {
               {syncStatus === 'synced' && (
                 <div className="flex items-center gap-1.5 animate-in fade-in">
                   <CheckCircle2 className="w-3 h-3 text-green-400" />
-                  <span className="text-[10px] text-green-400 font-geist">Saved</span>
+                  <span className="text-xs text-green-400">Saved</span>
                 </div>
               )}
               {syncStatus === 'error' && (
-                <span className="text-[10px] text-red-400 font-geist animate-in fade-in">Failed to save</span>
+                <span className="text-xs text-red-400 animate-in fade-in">Failed to save</span>
               )}
             </div>
           </div>
         </div>
 
-        <div className="mt-3 p-3 bg-black/20 rounded-md border border-white/5">
-          <p className="text-[10px] text-neutral-500 font-geist">
+        <div className="mt-3 p-3 bg-black/20 rounded-md border border-app-border">
+          <p className="text-xs text-neutral-500">
             🔒 API key is saved in local SQLite only. It is never written to <code className="text-neutral-400">.akira/</code> or committed to git.
           </p>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-white/5">
+        <div className="mt-4 pt-4 border-t border-app-border">
           <h4 className="text-sm font-semibold text-white mb-2">How it works</h4>
           <ul className="text-xs text-neutral-400 space-y-2">
             <li className="flex items-start gap-2">
@@ -1313,7 +1313,7 @@ function GroqTab() {
         </div>
 
         <div className="mt-4 p-3 bg-yellow-500/5 rounded-md border border-yellow-500/20">
-          <p className="text-[10px] text-yellow-400/80 font-geist">
+          <p className="text-xs text-yellow-400/80">
             💡 <strong>Pro tip:</strong> Without Groq API key, small talk still works but uses CLI (~11k tokens). 
             With Groq, you save <strong>$0.10-0.15 per small talk</strong>!
           </p>

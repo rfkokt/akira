@@ -55,8 +55,8 @@ export function ScheduleGroupList() {
       <div className="flex items-center justify-center h-full border-2 border-dashed border-white/10 rounded-lg">
         <div className="text-center">
           <Users className="w-12 h-12 text-neutral-600 mb-3 mx-auto" />
-          <p className="text-sm text-neutral-500 font-geist">Belum ada jadwal group</p>
-          <p className="text-xs text-neutral-600 font-geist mt-1">
+          <p className="text-sm text-neutral-500">Belum ada jadwal group</p>
+          <p className="text-xs text-neutral-600 mt-1">
             Buat jadwal baru menggunakan form di samping
           </p>
         </div>
@@ -67,8 +67,8 @@ export function ScheduleGroupList() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white font-geist">Daftar Jadwal Group</h3>
-        <span className="text-xs text-neutral-500 font-geist">
+        <h3 className="text-sm font-semibold text-white">Daftar Jadwal Group</h3>
+        <span className="text-xs text-neutral-500">
           {scheduleGroups.length} jadwal
         </span>
       </div>
@@ -88,17 +88,17 @@ export function ScheduleGroupList() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <h4 className="text-sm font-semibold text-white font-geist">
+                    <h4 className="text-sm font-semibold text-white">
                       {group.name}
                     </h4>
                     <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium ${status.textColor} ${status.color}/20 font-geist`}
+                      className={`px-2 py-0.5 rounded text-xs font-medium ${status.textColor} ${status.color}/20`}
                     >
                       {status.label}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-4 text-xs text-neutral-400 font-geist">
+                  <div className="flex items-center gap-4 text-xs text-neutral-400">
                     <div className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
                       <span>{formatDate(group.scheduledDate)}</span>
@@ -163,12 +163,12 @@ export function ScheduleGroupList() {
             {isExpanded && (
               <div className="border-t border-white/5 p-4 bg-[#1e1e1e]">
                 <div className="mb-3">
-                  <p className="text-xs text-neutral-500 font-geist mb-2">DAFTAR PESERTA</p>
+                  <p className="text-xs text-neutral-500 mb-2">DAFTAR PESERTA</p>
                   <div className="space-y-1">
                     {group.participants.map((participant, index) => (
                       <div
                         key={index}
-                        className="px-3 py-1.5 bg-[#252526] rounded text-xs text-neutral-300 font-geist"
+                        className="px-3 py-1.5 bg-[#252526] rounded text-xs text-neutral-300"
                       >
                         {participant}
                       </div>
@@ -176,7 +176,7 @@ export function ScheduleGroupList() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-xs text-neutral-500 font-geist">
+                <div className="flex items-center gap-4 text-xs text-neutral-500">
                   <span>
                     Dibuat: {formatDate(group.createdAt)} {formatTime(group.createdAt)}
                   </span>

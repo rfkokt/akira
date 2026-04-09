@@ -93,14 +93,14 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCallDisplay }) {
                 {parsed.name}
               </span>
               {parsed.serverId && (
-                <span className="text-[10px] text-app-text-muted truncate">
+                <span className="text-xs text-app-text-muted truncate">
                   ({parsed.serverId.substring(0, 8)})
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2">
               <span className={cn(
-                'text-[10px] font-medium',
+                'text-xs font-medium',
                 toolCall.status === 'success' && 'text-green-400',
                 toolCall.status === 'error' && 'text-red-400',
                 (toolCall.status === 'pending' || toolCall.status === 'running') && 'text-yellow-400'
@@ -122,7 +122,7 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCallDisplay }) {
             <div className="border-t border-app-border/50 px-3 py-2 space-y-2">
               {toolCall.arguments && Object.keys(toolCall.arguments).length > 0 && (
                 <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-app-text-muted uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-app-text-muted uppercase tracking-wider">
                     Arguments
                   </span>
                   <pre className="text-[11px] font-mono text-app-text/80 bg-app-panel/50 rounded p-2 overflow-x-auto">
@@ -133,7 +133,7 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCallDisplay }) {
               
               {toolCall.result && (
                 <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-app-text-muted uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-app-text-muted uppercase tracking-wider">
                     Result
                   </span>
                   <pre className="text-[11px] font-mono text-green-400/80 bg-app-panel/50 rounded p-2 overflow-x-auto max-h-40">
@@ -146,7 +146,7 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCallDisplay }) {
               
               {toolCall.error && (
                 <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-app-text-muted uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-app-text-muted uppercase tracking-wider">
                     Error
                   </span>
                   <pre className="text-[11px] font-mono text-red-400/80 bg-red-500/5 rounded p-2 overflow-x-auto">
@@ -219,7 +219,7 @@ export function ToolCallsSummary({ toolCalls, className }: ToolCallsSummaryProps
 
   return (
     <div className={cn(
-      'flex flex-wrap items-center gap-2 text-[10px] text-app-text-muted',
+      'flex flex-wrap items-center gap-2 text-xs text-app-text-muted',
       className
     )}>
       <span className="font-semibold uppercase tracking-wider">Tools:</span>

@@ -23,9 +23,9 @@ export const KANBAN_WIDTHS = {
 } as const
 
 export const PRIORITY_COLORS: Record<Task['priority'], string> = {
-  high: 'bg-red-500/20 text-red-400 border-red-500/30',
-  medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  low: 'bg-green-500/20 text-green-400 border-green-500/30',
+  high: 'bg-red-500/10 text-red-500 border-red-500/20 shadow-sm',
+  medium: 'bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-sm',
+  low: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shadow-sm',
 }
 
 export const STATUS_COLORS: Record<Task['status'], string> = {

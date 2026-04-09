@@ -22,6 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 interface ConversationSummary {
   title: string
@@ -46,7 +47,7 @@ function FileReference({ path }: { path: string }) {
   
   if (!isLongPath) {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-[10px]">
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-xs">
         <FileIcon className="w-2.5 h-2.5 flex-shrink-0" />
         {displayPath}
       </span>
@@ -55,12 +56,12 @@ function FileReference({ path }: { path: string }) {
   
   return (
     <Tooltip>
-      <TooltipTrigger className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-[10px] max-w-[200px] cursor-default">
+      <TooltipTrigger className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-xs max-w-[200px] cursor-default">
         <FileIcon className="w-2.5 h-2.5 flex-shrink-0" />
         <span className="truncate">{displayPath}</span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[400px]">
-        <code className="text-[10px] break-all">{path}</code>
+        <code className="text-xs break-all">{path}</code>
       </TooltipContent>
     </Tooltip>
   )
@@ -966,17 +967,17 @@ Rules:
       <div className="flex flex-col min-h-0 h-full bg-app-panel rounded-lg border border-app-border overflow-hidden">
         <div className="px-4 py-2 border-b border-app-border flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-white font-geist">
+            <h3 className="text-sm font-semibold text-white">
               {yoloMode ? 'YOLO Chat' : 'Task Creator'}
             </h3>
             <div className="flex items-center gap-1 ml-2">
               <Tooltip>
                 <TooltipTrigger
                   onClick={handleToggleYoloMode}
-                  className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
+                  className={`px-2 py-1 rounded text-xs font-medium transition-all ${
                     yoloMode 
                       ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
-                      : 'bg-white/5 text-neutral-400 border border-transparent hover:border-white/10'
+                      : 'bg-white/5 text-neutral-400 border border-transparent hover:border-app-border'
                   }`}
                 >
                   <Zap className="w-3 h-3 inline mr-1" />
@@ -1035,7 +1036,7 @@ Rules:
               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-md max-h-[70%] overflow-hidden">
                   <div className="px-4 py-3 border-b border-app-border flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-white font-geist">Chat History</h3>
+                    <h3 className="text-sm font-semibold text-white">Chat History</h3>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1066,7 +1067,7 @@ onClick={() => {
                           <div className="flex flex-col items-start w-full">
                             <div className="flex items-center justify-between w-full mb-1">
                               <span className="text-xs text-app-accent capitalize">{item.role}</span>
-                              <span className="text-[10px] text-neutral-500">
+                              <span className="text-xs text-neutral-500">
                                 {new Date(item.created_at).toLocaleDateString()}
                               </span>
                             </div>
@@ -1082,15 +1083,15 @@ onClick={() => {
             {taskMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
                 <div>
-                  <p className="text-sm text-neutral-300 font-geist">
+                  <p className="text-sm text-neutral-300">
                     {yoloMode ? 'Chat dengan AI untuk eksekusi langsung' : 'Chat dengan AI untuk diskusi'}
                   </p>
-                  <p className="text-xs text-neutral-500 font-geist mt-1">
+                  <p className="text-xs text-neutral-500 mt-1">
                     {yoloMode 
                       ? 'AI akan langsung mengeksekusi permintaan Anda'
                       : 'Setelah diskusi, buat task dari percakapan'}
                   </p>
-                  <p className="text-xs text-app-accent font-geist mt-2">
+                  <p className="text-xs text-app-accent mt-2">
                     Type @ untuk reference files
                   </p>
                 </div>
@@ -1121,10 +1122,10 @@ onClick={() => {
                       )}
                     </Button>
                     {analysisStatus && (
-                      <p className="text-[10px] text-neutral-400 text-center mt-1.5 animate-in fade-in">{analysisStatus}</p>
+                      <p className="text-xs text-neutral-400 text-center mt-1.5 animate-in fade-in">{analysisStatus}</p>
                     )}
                     {!analysisStatus && (
-                      <p className="text-[10px] text-neutral-600 text-center mt-1.5">Auto-generate DO/DON'T rules for cleaner AI output</p>
+                      <p className="text-xs text-neutral-600 text-center mt-1.5">Auto-generate DO/DON'T rules for cleaner AI output</p>
                     )}
                   </div>
                 )}
@@ -1158,46 +1159,53 @@ onClick={() => {
                 return (
                   <div
                     key={idx}
-                    className={`font-geist text-xs leading-relaxed ${
-                      msg.role === 'user' ? 'text-blue-400' : 'text-neutral-200'
-                    }`}
+                    className={cn(
+                      "flex w-full",
+                      msg.role === 'user' ? 'justify-end' : 'justify-start'
+                    )}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-neutral-500">{msg.role}:</span>
-                      {isGroqMessage && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[9px] rounded border border-green-500/30">
-                          <Zap className="w-2.5 h-2.5" />
-                          Groq (Free)
-                        </span>
+                    <div className={cn(
+                      "max-w-[85%] px-4 py-2.5 text-xs leading-relaxed",
+                      msg.role === 'user' 
+                        ? 'bg-app-accent/15 border border-app-accent/20 rounded-2xl rounded-br-md text-app-text shadow-sm' 
+                        : 'bg-app-surface-2 border border-app-border rounded-2xl rounded-bl-md text-app-text shadow-sm'
+                    )}>
+                      {isGroqMessage && msg.role === 'assistant' && (
+                        <div className="mb-2">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-500/10 text-green-400 text-2xs rounded border border-green-500/20">
+                            <Zap className="w-2.5 h-2.5" />
+                            Groq (Free)
+                          </span>
+                        </div>
+                      )}
+                      {msg.role === 'assistant' ? (
+                        <div className="overflow-x-hidden">
+                          {displayContent ? (
+                            <MarkdownContent content={displayContent} />
+                          ) : currentStreamingId === msg.id ? (
+                            <span className="text-neutral-500 italic">Processing...</span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words">
+                          {renderContentWithFileRefs(msg.content)}
+                        </div>
+                      )}
+                      {/* Token info for Groq messages */}
+                      {isGroqMessage && tokenCount && (
+                        <div className="mt-2 text-2xs text-app-text-muted flex items-center justify-end gap-1 opacity-70">
+                          <span className="text-green-400/60">⚡</span>
+                          <span>{tokenCount} tokens • {modelName}</span>
+                        </div>
+                      )}
+                      {msg.role === 'assistant' && currentStreamingId === msg.id && (
+                        <div className="flex gap-1 mt-2">
+                          <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
                       )}
                     </div>
-                    {msg.role === 'assistant' ? (
-                      <span className="overflow-x-hidden">
-                        {displayContent ? (
-                          <MarkdownContent content={displayContent} />
-                        ) : currentStreamingId === msg.id ? (
-                          <span className="text-neutral-500 italic">Processing...</span>
-                        ) : null}
-                      </span>
-                    ) : (
-                      <span className="inline whitespace-pre-wrap break-words">
-                        {renderContentWithFileRefs(msg.content)}
-                      </span>
-                    )}
-                    {/* Token info for Groq messages */}
-                    {isGroqMessage && tokenCount && (
-                      <div className="mt-1 text-[9px] text-neutral-500 flex items-center gap-1">
-                        <span className="text-green-400/60">⚡</span>
-                        <span>{tokenCount} tokens • {modelName}</span>
-                      </div>
-                    )}
-                    {msg.role === 'assistant' && currentStreamingId === msg.id && (
-                      <span className="inline-flex ml-1">
-                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-0.5" style={{ animationDelay: '300ms' }} />
-                      </span>
-                    )}
                   </div>
                 );
               })
@@ -1208,22 +1216,22 @@ onClick={() => {
                 <div className="flex items-center justify-between px-3 py-2 bg-app-sidebar/40 border-b border-app-border/40">
                   <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5 text-app-accent" />
-                    <span className="text-[10px] font-semibold text-app-text-muted uppercase tracking-wider">AI Progress</span>
+                    <span className="text-xs font-semibold text-app-text-muted uppercase tracking-wider">AI Progress</span>
                     {executionSteps.length > 0 && !showProgress && (
-                      <span className="text-[10px] text-neutral-500">({executionSteps.length} steps)</span>
+                      <span className="text-xs text-neutral-500">({executionSteps.length} steps)</span>
                     )}
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowProgress(!showProgress)}
-                    className="h-5 px-1.5 text-[10px] text-app-text-muted hover:text-white"
+                    className="h-5 px-1.5 text-xs text-app-text-muted hover:text-white"
                   >
                     {showProgress ? 'Hide' : 'Show'}
                   </Button>
                 </div>
                 {showProgress && (
-                  <div className="max-h-32 overflow-y-auto p-2 font-mono text-[10px] space-y-1">
+                  <div className="max-h-32 overflow-y-auto p-2 font-mono text-xs space-y-1">
                     {executionSteps.length === 0 ? (
                       <div className="flex items-center gap-2 text-neutral-400">
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -1287,7 +1295,7 @@ onClick={() => {
             {isSummarizing && (
               <div className="flex items-center justify-center p-4 mt-4 bg-app-accent/5 rounded-lg border border-app-accent/20">
                 <Loader2 className="w-4 h-4 animate-spin text-app-accent" />
-                <span className="ml-2 text-xs text-neutral-300 font-geist">Summarizing conversation into tasks...</span>
+                <span className="ml-2 text-xs text-neutral-300">Summarizing conversation into tasks...</span>
               </div>
             )}
             
@@ -1305,29 +1313,29 @@ onClick={() => {
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                           <Check className="w-4 h-4 text-green-400" />
-                          <span className="text-xs text-green-400 font-geist font-medium">Task {idx + 1} Ready</span>
+                          <span className="text-xs text-green-400 font-medium">Task {idx + 1} Ready</span>
                         </div>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${priorityConfig.bg} ${priorityConfig.border} border ${priorityConfig.color} uppercase tracking-wider`}>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${priorityConfig.bg} ${priorityConfig.border} border ${priorityConfig.color} uppercase tracking-wider`}>
                           {priorityConfig.label}
                         </span>
                       </div>
                       <div className="space-y-3">
                         <div className="bg-app-panel rounded-lg p-3 border border-app-border">
-                          <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Title</label>
-                          <p className="text-sm text-white font-geist mt-1 break-words">{summary.title}</p>
+                          <label className="text-xs text-neutral-500 uppercase tracking-wide">Title</label>
+                          <p className="text-sm text-white mt-1 break-words">{summary.title}</p>
                         </div>
                         {summary.description && (
                           <div className="bg-app-panel rounded-lg p-3 border border-app-border">
-                            <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Description</label>
-                            <p className="text-xs text-neutral-300 font-geist mt-1 whitespace-pre-wrap break-words leading-relaxed">{summary.description}</p>
+                            <label className="text-xs text-neutral-500 uppercase tracking-wide">Description</label>
+                            <p className="text-xs text-neutral-300 mt-1 whitespace-pre-wrap break-words leading-relaxed">{summary.description}</p>
                           </div>
                         )}
                         {summary.recommendedSkills && summary.recommendedSkills.length > 0 && (
                           <div className="bg-app-panel rounded-lg p-3 border border-app-border">
-                            <label className="text-[10px] text-neutral-500 font-geist uppercase tracking-wide">Recommended Skills</label>
+                            <label className="text-xs text-neutral-500 uppercase tracking-wide">Recommended Skills</label>
                             <div className="flex flex-wrap gap-1.5 mt-1.5">
                               {summary.recommendedSkills.map((skill, skillIdx) => (
-                                <span key={skillIdx} className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                <span key={skillIdx} className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                                   {skill}
                                 </span>
                               ))}
@@ -1367,7 +1375,7 @@ onClick={() => {
         <div className="p-4 border-t border-app-border">
           {showFileSuggestions && filteredFiles.length > 0 && (
             <div className="mb-2 bg-app-panel rounded-lg border border-app-border shadow-xl max-h-48 overflow-y-auto">
-              <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-app-border font-geist">
+              <div className="px-2 py-1.5 text-xs text-neutral-500 border-b border-app-border">
                 Files (↑↓ navigate, Enter to insert)
               </div>
               {filteredFiles.map((file, idx) => (
@@ -1391,7 +1399,7 @@ onClick={() => {
             </div>
           )}
           
-          <div className="relative flex flex-col bg-app-panel rounded-xl border border-app-border focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/20 transition-all shadow-inner">
+          <div className="relative flex flex-col bg-app-panel rounded-xl border border-app-border focus-within:border-app-accent focus-within:ring-1 focus-within:ring-app-accent-glow transition-all shadow-inner">
             <textarea
               ref={textareaRef}
               value={message}
@@ -1404,7 +1412,7 @@ onClick={() => {
                     : "Describe what you want to build...")
                 : "Select a model first"}
               disabled={!activeEngine || isStreaming}
-              className="w-full px-4 pt-3 pb-2 text-sm bg-transparent text-white placeholder-neutral-600 focus:outline-none resize-none custom-scrollbar"
+              className="w-full px-4 pt-3 pb-2 text-sm bg-transparent text-app-text placeholder-app-text-muted focus:outline-none resize-none custom-scrollbar"
               rows={1}
               style={{ minHeight: '52px', maxHeight: '150px' }}
             />

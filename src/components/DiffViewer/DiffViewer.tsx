@@ -348,44 +348,44 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-5xl max-h-[90%] flex flex-col">
+      <div className="bg-app-bg rounded-lg border border-app-border shadow-2xl w-full max-w-5xl max-h-[90%] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-app-border">
           <div className="flex items-center gap-3">
             {loading ? (
               <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
             ) : (
-              <GitBranch className="w-5 h-5 text-[#0e639c]" />
+              <GitBranch className="w-5 h-5 text-app-accent" />
             )}
             <div>
-              <h3 className="text-sm font-semibold text-white font-geist">
+              <h3 className="text-sm font-semibold text-white">
                 {task.title}
               </h3>
           {loading ? (
-            <p className="text-xs text-blue-400 font-geist flex items-center gap-1">
+            <p className="text-xs text-blue-400 flex items-center gap-1">
               {loadingMessage}
               {elapsedTime > 0 && <span className="text-neutral-500">({elapsedTime}s)</span>}
             </p>
           ) : error ? (
-            <p className="text-xs text-yellow-500 font-geist">{error}</p>
+            <p className="text-xs text-yellow-500">{error}</p>
           ) : parsedFiles.length > 0 ? (
             <div className="flex items-center gap-2">
-              <p className="text-xs text-neutral-500 font-geist">
+              <p className="text-xs text-neutral-500">
                 {files} file diubah • {additions} penambahan • {deletions} penghapusan
               </p>
               {(prBranch || taskState?.prBranch) ? (
-                <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-geist flex items-center gap-1">
+                <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full flex items-center gap-1">
                   <GitBranch className="w-2.5 h-2.5" />
                   {prBranch || taskState?.prBranch}
                 </span>
               ) : task.diff_content ? (
-                <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-geist">
+                <span className="text-xs px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded-full">
                   Snapshot
                 </span>
               ) : null}
             </div>
           ) : (
-            <p className="text-xs text-neutral-500 font-geist">
+            <p className="text-xs text-neutral-500">
               Tidak ada perubahan
             </p>
           )}
@@ -393,13 +393,13 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
           </div>
           <div className="flex items-center gap-2">
             {parsedFiles.length > 0 && (
-              <div className="flex items-center bg-black/30 border border-white/5 rounded-lg p-1 mr-2">
+              <div className="flex items-center bg-black/30 border border-app-border rounded-lg p-1 mr-2">
                 <Button
                   variant="ghost"
                   onClick={() => setViewMode('summary')}
                   className={`rounded-md px-3 h-7 text-xs transition-all ${
                     viewMode === 'summary' 
-                      ? 'bg-app-panel text-white shadow-sm border border-white/5' 
+                      ? 'bg-app-panel text-white shadow-sm border border-app-border' 
                       : 'text-neutral-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
@@ -410,7 +410,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
                   onClick={() => setViewMode('detail')}
                   className={`rounded-md px-3 h-7 text-xs transition-all ${
                     viewMode === 'detail' 
-                      ? 'bg-app-panel text-white shadow-sm border border-white/5' 
+                      ? 'bg-app-panel text-white shadow-sm border border-app-border' 
                       : 'text-neutral-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
@@ -473,8 +473,8 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
 
         {/* Footer */}
         {parsedFiles.length > 0 && (
-          <div className="px-4 py-3 border-t border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-4 text-xs text-neutral-500 font-geist">
+          <div className="px-4 py-3 border-t border-app-border flex items-center justify-between">
+            <div className="flex items-center gap-4 text-xs text-neutral-500">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-green-500" />
                 {additions} penambahan
@@ -501,7 +501,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
               <Button
                 size="sm"
                 onClick={onClose}
-                className="bg-[#0e639c] hover:bg-[#1177bb]"
+                className="bg-app-accent hover:bg-app-accent-hover"
               >
                 Tutup
               </Button>
@@ -513,14 +513,14 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
       {/* Discard Confirmation Modal */}
       {showDiscardConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80">
-          <div className="bg-[#1e1e1e] rounded-lg border border-red-500/30 shadow-2xl w-full max-w-sm">
+          <div className="bg-app-bg rounded-lg border border-red-500/30 shadow-2xl w-full max-w-sm">
             <div className="p-4">
-              <h3 className="text-sm font-semibold text-red-400 font-geist mb-2">Batalkan Perubahan?</h3>
-              <p className="text-xs text-neutral-400 font-geist">
+              <h3 className="text-sm font-semibold text-red-400 mb-2">Batalkan Perubahan?</h3>
+              <p className="text-xs text-neutral-400">
                 Semua perubahan yang belum disimpan akan dikembalikan. Tindakan ini tidak dapat dibatalkan.
               </p>
             </div>
-            <div className="px-4 py-3 border-t border-white/5 flex justify-end gap-2">
+            <div className="px-4 py-3 border-t border-app-border flex justify-end gap-2">
               <Button
                 variant="ghost"
                 onClick={() => setShowDiscardConfirm(false)}
@@ -557,7 +557,7 @@ function SummaryView({
       {parsedFiles.map((file) => (
         <div
           key={file.path}
-          className="bg-[#252526] rounded-lg border border-white/5 overflow-hidden"
+          className="bg-app-panel rounded-lg border border-app-border overflow-hidden"
         >
           <Button
             variant="ghost"
@@ -570,8 +570,8 @@ function SummaryView({
               ) : (
                 <ChevronRight className="w-4 h-4 text-neutral-500" />
               )}
-              <FileText className="w-4 h-4 text-[#0e639c]" />
-              <span className="text-sm text-white font-medium font-geist">{file.path}</span>
+              <FileText className="w-4 h-4 text-app-accent" />
+              <span className="text-sm text-white font-medium">{file.path}</span>
               <div className="flex items-center gap-3 text-xs ml-auto">
                 <span className="flex items-center gap-1 text-green-400">
                   <Plus className="w-3 h-3" />
@@ -586,11 +586,11 @@ function SummaryView({
           </Button>
 
           {expandedFiles.has(file.path) && (
-            <div className="px-4 py-3 border-t border-white/5 bg-[#1e1e1e]">
+            <div className="px-4 py-3 border-t border-app-border bg-app-bg">
               <div className="space-y-2">
                 {file.hunks.map((hunk, hunkIdx) => (
                   <div key={hunkIdx} className="space-y-1">
-                    <div className="text-xs text-neutral-500 font-geist px-2">
+                    <div className="text-xs text-neutral-500 px-2">
                       Baris {hunk.oldStart} - {hunk.oldStart + hunk.lines.filter(l => l.type === 'removed').length + hunk.lines.filter(l => l.type === 'context').length}
                     </div>
                     {hunk.lines.map((line, lineIdx) => (
@@ -637,7 +637,7 @@ function DetailView({
         <div key={file.path}>
           <Button
             variant="ghost"
-            className="w-full justify-start h-auto py-2 px-4 rounded-none bg-[#252526] hover:bg-[#2a2d2e] sticky top-0 z-10"
+            className="w-full justify-start h-auto py-2 px-4 rounded-none bg-app-panel hover:bg-[#2a2d2e] sticky top-0 z-10"
             onClick={() => toggleFile(file.path)}
           >
             <div className="flex items-center gap-3 w-full">
@@ -646,8 +646,8 @@ function DetailView({
               ) : (
                 <ChevronRight className="w-4 h-4 text-neutral-500" />
               )}
-              <FileText className="w-4 h-4 text-[#0e639c]" />
-              <span className="text-[#0e639c]">{file.path}</span>
+              <FileText className="w-4 h-4 text-app-accent" />
+              <span className="text-app-accent">{file.path}</span>
               <span className="flex items-center gap-2 ml-auto text-xs">
                 <span className="text-green-400">+{file.additions}</span>
                 <span className="text-red-400">-{file.deletions}</span>
@@ -659,7 +659,7 @@ function DetailView({
             <div>
               {file.hunks.map((hunk, hunkIdx) => (
                 <div key={hunkIdx}>
-                  <div className="px-3 py-1 bg-[#1e1e1e] text-[#0e639c] border-b border-white/5">
+                  <div className="px-3 py-1 bg-app-bg text-app-accent border-b border-app-border">
                     @@ -{hunk.oldStart},... +{hunk.newStart},... @@
                   </div>
                   {hunk.lines.map((line, lineIdx) => {
@@ -675,10 +675,10 @@ function DetailView({
                           ${line.type === 'context' && !showContext ? 'hidden' : ''}
                         `}
                       >
-                        <span className="w-12 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-white/5">
+                        <span className="w-12 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
                           {line.oldLineNum || ''}
                         </span>
-                        <span className="w-12 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-white/5">
+                        <span className="w-12 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
                           {line.newLineNum || ''}
                         </span>
                         <span className="w-6 text-center py-0.5 text-neutral-600">
@@ -748,15 +748,15 @@ function LoadingState({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full p-8 bg-[#1e1e1e]">
-      <div className="w-full max-w-md bg-[#252526] rounded-xl p-8 border border-white/10 shadow-xl">
+    <div className="flex flex-col items-center justify-center h-full p-8 bg-app-bg">
+      <div className="w-full max-w-md bg-app-panel rounded-xl p-8 border border-app-border shadow-xl">
         <div className="flex items-center justify-center mb-6">
           {getStepIcon()}
         </div>
         
         <div className="text-center mb-4">
-          <p className="text-white font-semibold font-geist text-lg mb-2">{message}</p>
-          <p className="text-neutral-400 text-sm font-geist flex items-center justify-center gap-2">
+          <p className="text-white font-semibold text-lg mb-2">{message}</p>
+          <p className="text-neutral-400 text-sm flex items-center justify-center gap-2">
             <Clock className="w-4 h-4" />
             {formatTime(elapsedTime)}
           </p>
@@ -773,7 +773,7 @@ function LoadingState({
         </div>
 
         {/* Step labels */}
-        <div className="flex justify-between mt-3 text-xs text-neutral-500 font-geist">
+        <div className="flex justify-between mt-3 text-xs text-neutral-500">
           <span className={step === 'initial' ? 'text-blue-400' : ''}>Memulai</span>
           <span className={step === 'fetching' ? 'text-blue-400' : ''}>Mengambil Data</span>
           <span className={step === 'parsing' ? 'text-blue-400' : ''}>Memproses</span>
@@ -788,7 +788,7 @@ function LoadingState({
 
         {elapsedTime > 5 && (
           <div className="mt-6 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
-            <p className="text-yellow-500 text-xs text-center font-geist">
+            <p className="text-yellow-500 text-xs text-center">
               ⚡ Sedang mengambil banyak data dari remote...
             </p>
           </div>

@@ -158,7 +158,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
 
   if (loadError) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-geist">
+      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
         <GitBranch className="w-3 h-3" />
         <span>No git repo</span>
       </div>
@@ -167,7 +167,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
 
   if (!branchInfo) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-geist">
+      <div className="flex items-center gap-1.5 text-xs text-neutral-500">
         <GitBranch className="w-3 h-3 animate-pulse" />
         <span>Loading...</span>
       </div>
@@ -187,14 +187,14 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
       
       <DropdownMenuContent align="start" className="w-[240px] p-2 bg-app-panel/95 backdrop-blur-2xl">
         <div className="px-2 py-1.5 border-b border-app-border/40 mb-1 flex items-center justify-between">
-          <span className="text-[10px] font-medium text-app-text-muted uppercase tracking-wider">Select Branch</span>
+          <span className="text-xs font-medium text-app-text-muted uppercase tracking-wider">Select Branch</span>
           <button
             onClick={(e) => {
               e.stopPropagation()
               loadBranches(true) // true = fetch from remote first
             }}
             disabled={isLoading}
-            className="text-[10px] text-app-accent hover:text-app-accent-hover disabled:opacity-50 flex items-center gap-1"
+            className="text-xs text-app-accent hover:text-app-accent-hover disabled:opacity-50 flex items-center gap-1"
           >
             <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
@@ -204,7 +204,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
         {/* Checkout Error */}
         {checkoutError && (
           <div className="px-2 py-1.5 mb-2 bg-red-500/10 border border-red-500/30 rounded">
-            <p className="text-[10px] text-red-400 font-geist truncate" title={checkoutError}>
+            <p className="text-xs text-red-400 truncate" title={checkoutError}>
               ⚠ {checkoutError.length > 50 ? checkoutError.substring(0, 50) + '...' : checkoutError}
             </p>
           </div>
@@ -214,7 +214,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
           {/* Remote branches first */}
           {branchInfo?.remote?.length > 0 && (
             <>
-              <div className="px-2 py-1 text-[10px] text-neutral-500 uppercase tracking-wider">
+              <div className="px-2 py-1 text-xs text-neutral-500 uppercase tracking-wider">
                 Remote
               </div>
               {branchInfo.remote.map((branch) => {
@@ -248,7 +248,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
             
             return uniqueLocalBranches.length > 0 ? (
               <>
-                <div className="px-2 py-1 text-[10px] text-neutral-500 uppercase tracking-wider mt-1">
+                <div className="px-2 py-1 text-xs text-neutral-500 uppercase tracking-wider mt-1">
                   Local
                 </div>
                 {uniqueLocalBranches.map((branch) => (
@@ -276,7 +276,7 @@ export function GitBranchSelector({ workspacePath }: GitBranchSelectorProps) {
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
                 placeholder="Branch name..."
-                className="flex-1 px-2 py-1.5 rounded-lg text-xs bg-app-bg text-app-text border border-app-border focus:outline-none focus:border-app-accent/50 focus:ring-1 focus:ring-app-accent/30 font-geist transition-all"
+                className="flex-1 px-2 py-1.5 rounded-lg text-xs bg-app-bg text-app-text border border-app-border focus:outline-none focus:border-app-accent/50 focus:ring-1 focus:ring-app-accent/30 transition-all"
                 onKeyDown={(e) => {
                   e.stopPropagation();
                   if (e.key === 'Enter') handleCreateBranch();

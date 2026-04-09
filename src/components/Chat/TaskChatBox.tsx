@@ -38,7 +38,7 @@ const CodeBlock = memo(function CodeBlock({ code, language }: { code: string; la
             <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
             <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
           </div>
-          <span className="text-[10px] text-app-text-muted font-mono tracking-wider uppercase ml-1">
+          <span className="text-xs text-app-text-muted font-mono tracking-wider uppercase ml-1">
             {language || 'code'}
           </span>
         </div>
@@ -46,7 +46,7 @@ const CodeBlock = memo(function CodeBlock({ code, language }: { code: string; la
           variant="ghost"
           size="sm"
           onClick={handleCopy}
-          className="h-6 px-2 text-[10px] text-app-text-muted hover:text-white"
+          className="h-6 px-2 text-xs text-app-text-muted hover:text-white"
         >
           {copied ? (
             <>
@@ -206,7 +206,7 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
         {msg.role === 'assistant' && isGroqMessage && (
           <div className="flex items-center gap-1 mb-1.5">
             <Zap className="w-3 h-3 text-green-400" />
-            <span className="text-[9px] text-green-400 font-medium">Groq (Free)</span>
+            <span className="text-2xs text-green-400 font-medium">Groq (Free)</span>
           </div>
         )}
         {msg.role === 'assistant' ? (
@@ -221,7 +221,7 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
             )}
           </div>
         ) : (
-          <pre className="whitespace-pre-wrap break-all text-[13px] leading-relaxed font-geist">{msg.content}</pre>
+          <pre className="whitespace-pre-wrap break-all text-[13px] leading-relaxed">{msg.content}</pre>
         )}
       </div>
     </div>
@@ -435,7 +435,7 @@ const ChatInput = memo(function ChatInput({
             disabled={isDisabled}
           />
           {!hasApiKey && (
-            <p className="text-[10px] text-yellow-500 mt-1">
+            <p className="text-xs text-yellow-500 mt-1">
               ⚠️ Set Gemini API key in Settings → Image Analysis to analyze images
             </p>
           )}
@@ -630,10 +630,10 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     >
       <div className="flex items-center justify-between px-4 py-3 bg-app-sidebar/40 border-b border-app-border/40 select-none">
         <div>
-          <h3 className="text-sm font-semibold text-app-text font-geist tracking-wide">
+          <h3 className="text-sm font-semibold text-app-text tracking-wide">
             Task AI Assistant
           </h3>
-          <p className="text-xs text-app-text-muted font-geist truncate max-w-[280px] mt-0.5">
+          <p className="text-xs text-app-text-muted truncate max-w-[280px] mt-0.5">
             {task.title}
           </p>
         </div>
@@ -650,7 +650,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
       <div className="px-4 py-2 bg-app-sidebar/20 border-b border-app-border/30">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${activeEngine ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'bg-red-400'}`} />
-          <span className="text-[10px] text-app-text-muted font-mono uppercase tracking-wider">
+          <span className="text-xs text-app-text-muted font-mono uppercase tracking-wider">
             {activeEngine ? activeEngine.alias : 'No engine selected'}
           </span>
         </div>
@@ -662,15 +662,15 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
             <div className="w-16 h-16 bg-app-accent/10 rounded-full flex items-center justify-center mb-4 shadow-[0_0_20px_var(--app-accent-glow)]">
               <MessageSquare className="w-7 h-7 text-app-accent opacity-60" />
             </div>
-            <p className="text-sm font-medium text-app-text font-geist mb-1">
+            <p className="text-sm font-medium text-app-text mb-1">
               {task.status === 'review' ? 'Request Revisions' : 'Start a conversation'}
             </p>
-            <p className="text-xs text-app-text-muted/70 font-geist max-w-[220px] leading-relaxed">
+            <p className="text-xs text-app-text-muted/70 max-w-[220px] leading-relaxed">
               {task.status === 'review' 
                 ? 'Tell the AI what to change — it will directly modify the code'
                 : `AI is ready to help you implement "${task.title}"`}
             </p>
-            <p className="text-xs text-app-accent/70 font-geist mt-2">
+            <p className="text-xs text-app-accent/70 mt-2">
               Type @ to reference files
             </p>
           </div>

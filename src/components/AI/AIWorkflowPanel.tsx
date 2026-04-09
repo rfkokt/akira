@@ -42,25 +42,25 @@ export function AIWorkflowPanel({
       case 'todo':
         return (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-[#1e1e1e] rounded-lg border border-white/5">
-              <Bot className="w-8 h-8 text-[#0e639c]" />
+            <div className="flex items-center gap-3 p-3 bg-app-bg rounded-lg border border-app-border">
+              <Bot className="w-8 h-8 text-app-accent" />
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-white font-geist">Start AI Workflow</h4>
-                <p className="text-xs text-neutral-500 font-geist">
+                <h4 className="text-sm font-medium text-white">Start AI Workflow</h4>
+                <p className="text-xs text-neutral-500">
                   AI will analyze and implement this task
                 </p>
               </div>
               <Button
                 onClick={onStartAI}
                 disabled={!activeEngine}
-                className="bg-[#0e639c] hover:bg-[#1177bb]"
+                className="bg-app-accent hover:bg-app-accent-hover"
               >
                 <Play className="w-4 h-4" />
                 Start
               </Button>
             </div>
             {!activeEngine && (
-              <p className="text-xs text-yellow-500 font-geist text-center">
+              <p className="text-xs text-yellow-500 text-center">
                 Please select an AI engine first
               </p>
             )}
@@ -70,13 +70,13 @@ export function AIWorkflowPanel({
       case 'in-progress':
         return (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-[#1e1e1e] rounded-lg border border-white/5">
+            <div className="flex items-center gap-3 p-3 bg-app-bg rounded-lg border border-app-border">
               <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center">
                 <div className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
               </div>
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-white font-geist">AI Working...</h4>
-                <p className="text-xs text-neutral-500 font-geist">
+                <h4 className="text-sm font-medium text-white">AI Working...</h4>
+                <p className="text-xs text-neutral-500">
                   AI is implementing changes
                 </p>
               </div>
@@ -95,11 +95,11 @@ export function AIWorkflowPanel({
       case 'review':
         return (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-[#1e1e1e] rounded-lg border border-white/5">
+            <div className="flex items-center gap-3 p-3 bg-app-bg rounded-lg border border-app-border">
               <CheckCircle className="w-8 h-8 text-green-500" />
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-white font-geist">Ready for Review</h4>
-                <p className="text-xs text-neutral-500 font-geist">
+                <h4 className="text-sm font-medium text-white">Ready for Review</h4>
+                <p className="text-xs text-neutral-500">
                   AI has completed the task
                 </p>
               </div>
@@ -135,11 +135,11 @@ export function AIWorkflowPanel({
 case 'done':
         return (
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-[#1e1e1e] rounded-lg border border-white/5">
+            <div className="flex items-center gap-3 p-3 bg-app-bg rounded-lg border border-app-border">
               <CheckCircle className="w-8 h-8 text-green-500" />
               <div className="flex-1">
-                <h4 className="text-sm font-medium text-white font-geist">Task Completed</h4>
-                <p className="text-xs text-neutral-500 font-geist">
+                <h4 className="text-sm font-medium text-white">Task Completed</h4>
+                <p className="text-xs text-neutral-500">
                   {task.is_merged 
                     ? `Merged: ${task.merge_source_branch || 'branch'} → ${task.merged_to_branch || 'target'}`
                     : (hasBranch ? 'Ready to merge' : 'Task finished successfully')}
@@ -178,7 +178,7 @@ case 'done':
 
             {task.is_merged && task.merged_to_branch && (
               <>
-                <div className="text-xs text-neutral-400 font-geist p-2 bg-[#1a1a1a] rounded">
+                <div className="text-xs text-neutral-400 p-2 bg-[#1a1a1a] rounded">
                   Current branch: <span className="text-app-accent font-mono">{task.merged_to_branch}</span>
                 </div>
 
@@ -218,9 +218,9 @@ case 'done':
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#252526] rounded-lg border border-white/10 shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-          <h3 className="text-sm font-semibold text-white font-geist">
+      <div className="bg-app-panel rounded-lg border border-app-border shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-app-border">
+          <h3 className="text-sm font-semibold text-white">
             AI Workflow: {task.title}
           </h3>
           <Button
@@ -377,10 +377,10 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
-      <div className="bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between shrink-0">
-          <h3 className="text-sm font-semibold text-white font-geist flex items-center gap-2">
-            <GitBranch className="w-4 h-4 text-[#0e639c]" />
+      <div className="bg-app-bg rounded-lg border border-app-border shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+        <div className="px-4 py-3 border-b border-app-border flex items-center justify-between shrink-0">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-app-accent" />
             Merge Task: {task.title}
           </h3>
           {!isExecuting && (
@@ -393,41 +393,41 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
         <div className="p-4 space-y-5 overflow-y-auto max-h-[70vh]">
           {/* Target Branch Dropdown */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-neutral-300 font-geist">Target Branch (Merge Into)</label>
-            <div className="flex bg-[#2d2d2d] border border-white/10 rounded-md">
+            <label className="text-xs font-medium text-neutral-300">Target Branch (Merge Into)</label>
+            <div className="flex bg-app-sidebar border border-app-border rounded-md">
               <Select value={targetBranch} onValueChange={(val) => val && setTargetBranch(val)} disabled={isExecuting}>
                 <SelectTrigger className="w-full border-none h-9 bg-transparent focus:ring-0">
                   <SelectValue placeholder="Select target branch" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#2d2d2d] border-white/10 text-white">
+                <SelectContent className="bg-app-sidebar border-app-border text-white">
                   {branches.map(b => (
                     <SelectItem key={b} value={b} className="hover:bg-white/5">{b}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-[11px] text-neutral-500 font-geist">
+            <p className="text-[11px] text-neutral-500">
               Source branch: <span className="text-app-accent">{task.is_merged ? (task.merged_to_branch || 'Unknown') : (taskState?.prBranch || task.pr_branch || task.merge_source_branch || 'Unknown')}</span>
             </p>
           </div>
 
           {/* Version Tagging Toggle */}
-          <div className="p-3 bg-[#252526] border border-white/5 rounded-lg space-y-4">
+          <div className="p-3 bg-app-panel border border-app-border rounded-lg space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm font-medium text-white font-geist">Create Version Tag</h4>
-                <p className="text-[11px] text-neutral-500 font-geist mt-0.5">Generate a new alpha tag natively</p>
+                <h4 className="text-sm font-medium text-white">Create Version Tag</h4>
+                <p className="text-[11px] text-neutral-500 mt-0.5">Generate a new alpha tag natively</p>
               </div>
               <Switch checked={createTag} onCheckedChange={setCreateTag} disabled={isExecuting} />
             </div>
 
             {createTag && (
-              <div className="pt-3 border-t border-white/5 space-y-3 animate-in fade-in slide-in-from-top-1">
+              <div className="pt-3 border-t border-app-border space-y-3 animate-in fade-in slide-in-from-top-1">
                 <div className="grid grid-cols-3 gap-2">
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className={`text-xs ${bumpType === 'patch' ? 'bg-[#0e639c]/20 border-[#0e639c] text-[#0e639c]' : 'bg-transparent text-neutral-400 border-white/10'}`}
+                    className={`text-xs ${bumpType === 'patch' ? 'bg-app-accent/20 border-app-accent text-app-accent' : 'bg-transparent text-neutral-400 border-app-border'}`}
                     onClick={() => setBumpType('patch')}
                     disabled={isExecuting}
                   >
@@ -436,7 +436,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className={`text-xs ${bumpType === 'minor' ? 'bg-[#0e639c]/20 border-[#0e639c] text-[#0e639c]' : 'bg-transparent text-neutral-400 border-white/10'}`}
+                    className={`text-xs ${bumpType === 'minor' ? 'bg-app-accent/20 border-app-accent text-app-accent' : 'bg-transparent text-neutral-400 border-app-border'}`}
                     onClick={() => setBumpType('minor')}
                     disabled={isExecuting}
                   >
@@ -445,7 +445,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className={`text-xs ${bumpType === 'major' ? 'bg-[#0e639c]/20 border-[#0e639c] text-[#0e639c]' : 'bg-transparent text-neutral-400 border-white/10'}`}
+                    className={`text-xs ${bumpType === 'major' ? 'bg-app-accent/20 border-app-accent text-app-accent' : 'bg-transparent text-neutral-400 border-app-border'}`}
                     onClick={() => setBumpType('major')}
                     disabled={isExecuting}
                   >
@@ -461,10 +461,10 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
             )}
           </div>
 
-          <div className="p-3 bg-[#252526] border border-white/5 rounded-lg flex items-center justify-between">
+          <div className="p-3 bg-app-panel border border-app-border rounded-lg flex items-center justify-between">
             <div>
-              <h4 className="text-sm font-medium text-white font-geist">Delete Feature Branch</h4>
-              <p className="text-[11px] text-neutral-500 font-geist mt-0.5">Automatically clean up local & remote branch</p>
+              <h4 className="text-sm font-medium text-white">Delete Feature Branch</h4>
+              <p className="text-[11px] text-neutral-500 mt-0.5">Automatically clean up local & remote branch</p>
             </div>
             <Switch checked={deleteBranch} onCheckedChange={setDeleteBranch} disabled={isExecuting} />
           </div>
@@ -472,8 +472,8 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
           {/* Terminal Logs (If executing or failed) */}
           {(isExecuting || execLog) && (
             <div className="space-y-1.5 animate-in fade-in">
-              <label className="text-[11px] font-medium text-neutral-400 font-geist uppercase tracking-wider">Git Output</label>
-              <div className="bg-black rounded-md p-2.5 h-32 overflow-y-auto font-mono text-[11px] text-neutral-300 leading-relaxed border border-white/5 whitespace-pre">
+              <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">Git Output</label>
+              <div className="bg-black rounded-md p-2.5 h-32 overflow-y-auto font-mono text-[11px] text-neutral-300 leading-relaxed border border-app-border whitespace-pre">
                 {execLog}
               </div>
             </div>
@@ -481,7 +481,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
         </div>
 
         {/* Actions */}
-        <div className="p-4 border-t border-white/5 flex gap-2 justify-end shrink-0 bg-[#1e1e1e]">
+        <div className="p-4 border-t border-app-border flex gap-2 justify-end shrink-0 bg-app-bg">
           <Button
             variant="ghost"
             onClick={onClose}
@@ -493,7 +493,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
           <Button
             onClick={handleMerge}
             disabled={isExecuting || (!taskState?.prBranch && !task.pr_branch)}
-            className="bg-[#0e639c] hover:bg-[#1177bb] text-xs font-medium min-w-[120px]"
+            className="bg-app-accent hover:bg-app-accent-hover text-xs font-medium min-w-[120px]"
           >
             {isExecuting ? (
               <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Working...</>

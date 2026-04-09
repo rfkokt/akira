@@ -531,14 +531,14 @@ const handleStashDrop = useCallback(async (stashId: string) => {
   }
 
   if (!activeWorkspace) {
-    return <div className="h-full flex items-center justify-center text-xs text-neutral-500 font-geist">No workspace selected</div>;
+    return <div className="h-full flex items-center justify-center text-xs text-neutral-500">No workspace selected</div>;
   }
 
   return (
     <div className="h-full w-full flex flex-col bg-transparent overflow-hidden border-app-border">
       {/* Header */}
       <div className="px-3 py-2 border-b border-app-border flex items-center justify-between shadow-sm z-10 bg-transparent shrink-0">
-        <span className="text-xs font-medium text-app-text-muted font-geist uppercase tracking-widest">
+        <span className="text-xs font-medium text-app-text-muted uppercase tracking-widest">
           Source Control
         </span>
         <div className="flex items-center gap-1">
@@ -569,13 +569,13 @@ const handleStashDrop = useCallback(async (stashId: string) => {
       </div>
       
       {/* Commit Message Input */}
-      <div className="px-3 py-2 border-b border-app-border shrink-0">
-        <div className="flex items-center gap-1.5 mb-1.5">
+      <div className="px-3 py-2 border-b border-app-border shrink-0 bg-app-sidebar">
+        <div className="flex items-center gap-1.5 mb-2">
           <textarea
             value={commitInputMessage}
             onChange={(e) => setCommitInputMessage(e.target.value)}
             placeholder="Message (press Ctrl+Enter to commit)"
-            className="flex-1 px-2 py-1.5 bg-app-bg border border-app-border rounded text-xs text-white font-mono resize-none focus:outline-none focus:border-app-accent min-h-[60px]"
+            className="flex-1 px-3 py-2 bg-app-bg border border-app-border rounded-lg text-xs text-app-text font-mono resize-none focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent-glow min-h-[64px]"
             rows={3}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -589,7 +589,7 @@ const handleStashDrop = useCallback(async (stashId: string) => {
           <button
             onClick={handleGenerateCommitMessage}
             disabled={isGenerating || status.staged.length === 0}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] text-neutral-400 hover:text-app-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-400 hover:text-app-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isGenerating ? (
               <Loader2 className="w-3 h-3 animate-spin" />
@@ -651,8 +651,8 @@ const handleStashDrop = useCallback(async (stashId: string) => {
                 <span className="text-neutral-500 w-3.5 flex items-center justify-center">
                   {expandedStaged ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </span>
-                <span className="text-[10px] font-bold tracking-widest text-neutral-400 uppercase">Staged Changes</span>
-                <span className="text-[10px] bg-white/10 px-1.5 rounded-full text-neutral-400">{status.staged.length}</span>
+                <span className="text-xs font-bold tracking-widest text-neutral-400 uppercase">Staged Changes</span>
+                <span className="text-xs bg-white/10 px-1.5 rounded-full text-neutral-400">{status.staged.length}</span>
               </div>
               <div className="hidden group-hover:flex items-center gap-1">
                 <button onClick={(e) => { e.stopPropagation(); handleUnstageAll(); }} className="text-neutral-500 hover:text-white transition-colors" title="Unstage All Changes">
@@ -668,8 +668,8 @@ const handleStashDrop = useCallback(async (stashId: string) => {
                 className={`flex items-center justify-between px-3 pl-8 py-1 cursor-pointer group h-7 ${selectedFile === file.path ? 'bg-white/10 text-white' : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}`}
               >
                 <div className="flex items-center gap-2 truncate flex-1 pr-2">
-                  <span className={`text-xs truncate font-geist flex-shrink-0 ${selectedFile === file.path ? 'font-medium' : ''}`}>{file.path.split('/').pop()}</span>
-                  <span className="text-[10px] text-neutral-600 truncate">{file.path.split('/').slice(0,-1).join('/')}</span>
+                  <span className={`text-xs truncate flex-shrink-0 ${selectedFile === file.path ? 'font-medium' : ''}`}>{file.path.split('/').pop()}</span>
+                  <span className="text-xs text-neutral-600 truncate">{file.path.split('/').slice(0,-1).join('/')}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <div className="hidden group-hover:flex items-center gap-1">
@@ -677,7 +677,7 @@ const handleStashDrop = useCallback(async (stashId: string) => {
                       <Minus className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <span className={`text-[10px] font-bold w-3 text-right ${getBadgeColor(file.status)}`}>{file.status.trim()}</span>
+                  <span className={`text-xs font-bold w-3 text-right ${getBadgeColor(file.status)}`}>{file.status.trim()}</span>
                 </div>
               </div>
             ))}
@@ -694,8 +694,8 @@ const handleStashDrop = useCallback(async (stashId: string) => {
               <span className="text-neutral-500 w-3.5 flex items-center justify-center">
                 {expandedChanges ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
               </span>
-              <span className="text-[10px] font-bold tracking-widest text-neutral-400 uppercase">Changes</span>
-              <span className="text-[10px] bg-white/10 px-1.5 rounded-full text-neutral-400">{status.unstaged.length}</span>
+              <span className="text-xs font-bold tracking-widest text-neutral-400 uppercase">Changes</span>
+              <span className="text-xs bg-white/10 px-1.5 rounded-full text-neutral-400">{status.unstaged.length}</span>
             </div>
             <div className="hidden group-hover:flex items-center gap-1">
               <button 
@@ -729,8 +729,8 @@ const handleStashDrop = useCallback(async (stashId: string) => {
               className={`flex items-center justify-between px-3 pl-8 py-1 cursor-pointer group h-7 ${selectedFile === file.path ? 'bg-white/10 text-white' : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}`}
             >
               <div className="flex items-center gap-2 truncate flex-1 pr-2">
-                <span className={`text-xs truncate font-geist flex-shrink-0 ${selectedFile === file.path ? 'font-medium' : ''}`}>{file.path.split('/').pop()}</span>
-                <span className="text-[10px] text-neutral-600 truncate">{file.path.split('/').slice(0,-1).join('/')}</span>
+                <span className={`text-xs truncate flex-shrink-0 ${selectedFile === file.path ? 'font-medium' : ''}`}>{file.path.split('/').pop()}</span>
+                <span className="text-xs text-neutral-600 truncate">{file.path.split('/').slice(0,-1).join('/')}</span>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className="hidden group-hover:flex items-center gap-1">
@@ -741,12 +741,12 @@ const handleStashDrop = useCallback(async (stashId: string) => {
                     <Plus className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <span className={`text-[10px] font-bold w-3 text-right ${getBadgeColor(file.status)}`}>{file.status.trim()}</span>
+                <span className={`text-xs font-bold w-3 text-right ${getBadgeColor(file.status)}`}>{file.status.trim()}</span>
               </div>
             </div>
           ))}
           {expandedChanges && status.unstaged.length === 0 && (
-            <div className="px-8 py-2 text-[10px] text-neutral-600 font-geist">No changes to display.</div>
+            <div className="px-8 py-2 text-xs text-neutral-600">No changes to display.</div>
           )}
         </div>
       </div>
@@ -764,7 +764,7 @@ const handleStashDrop = useCallback(async (stashId: string) => {
             <div className="px-4 py-3 border-b border-app-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <GitBranch className="w-4 h-4 text-app-accent" />
-                <h3 className="text-sm font-medium text-white font-geist">Merge Branch</h3>
+                <h3 className="text-sm font-medium text-white">Merge Branch</h3>
               </div>
               <Button
                 variant="ghost"
@@ -783,14 +783,14 @@ const handleStashDrop = useCallback(async (stashId: string) => {
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-xs text-yellow-200 font-medium font-geist">Uncommitted Changes Detected</p>
-                      <p className="text-[10px] text-yellow-400/80 mt-1">
+                      <p className="text-xs text-yellow-200 font-medium">Uncommitted Changes Detected</p>
+                      <p className="text-xs text-yellow-400/80 mt-1">
                         {status.staged.length} staged, {status.unstaged.length} unstaged files
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs text-neutral-400 font-geist">Commit Message</label>
+                    <label className="text-xs text-neutral-400">Commit Message</label>
                     <input
                       type="text"
                       value={commitMessage}
@@ -831,14 +831,14 @@ const handleStashDrop = useCallback(async (stashId: string) => {
               )}
 
               <div className="space-y-1.5">
-                <label className="text-xs text-neutral-400 font-geist">Current Branch (Source)</label>
+                <label className="text-xs text-neutral-400">Current Branch (Source)</label>
                 <div className="px-3 py-2 bg-app-bg rounded border border-app-border text-sm text-white font-mono">
                   {currentBranch || '...'}
                 </div>
               </div>
               
               <div className="space-y-1.5">
-                <label className="text-xs text-neutral-400 font-geist">Target Branch</label>
+                <label className="text-xs text-neutral-400">Target Branch</label>
                 <select
                   value={targetBranch}
                   onChange={(e) => setTargetBranch(e.target.value)}
@@ -852,8 +852,8 @@ const handleStashDrop = useCallback(async (stashId: string) => {
 
               <div className="flex items-center justify-between p-3 bg-app-bg rounded border border-app-border">
                 <div>
-                  <p className="text-xs text-white font-medium font-geist">Create Version Tag</p>
-                  <p className="text-[10px] text-neutral-500 font-geist">Auto-generate alpha tag</p>
+                  <p className="text-xs text-white font-medium">Create Version Tag</p>
+                  <p className="text-xs text-neutral-500">Auto-generate alpha tag</p>
                 </div>
                 <Switch checked={createTag} onCheckedChange={setCreateTag} disabled={isMerging} />
               </div>
@@ -901,8 +901,8 @@ const handleStashDrop = useCallback(async (stashId: string) => {
 
               <div className="flex items-center justify-between p-3 bg-app-bg rounded border border-app-border">
                 <div>
-                  <p className="text-xs text-white font-medium font-geist">Delete Feature Branch</p>
-                  <p className="text-[10px] text-neutral-500 font-geist">Clean up after merge</p>
+                  <p className="text-xs text-white font-medium">Delete Feature Branch</p>
+                  <p className="text-xs text-neutral-500">Clean up after merge</p>
                 </div>
                 <Switch checked={deleteBranch} onCheckedChange={setDeleteBranch} disabled={isMerging} />
               </div>
@@ -952,7 +952,7 @@ const handleStashDrop = useCallback(async (stashId: string) => {
             <div className="px-4 py-3 border-b border-app-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Inbox className="w-4 h-4 text-app-accent" />
-                <h3 className="text-sm font-medium text-white font-geist">Stash</h3>
+                <h3 className="text-sm font-medium text-white">Stash</h3>
               </div>
               <Button
                 variant="ghost"
@@ -968,13 +968,13 @@ const handleStashDrop = useCallback(async (stashId: string) => {
               {/* Stash Form */}
               {(status.staged.length > 0 || status.unstaged.length > 0) && (
                 <div className="space-y-2">
-                  <label className="text-xs text-neutral-400 font-geist">Stash Message (optional)</label>
+                  <label className="text-xs text-neutral-400">Stash Message (optional)</label>
                   <input
                     type="text"
                     value={stashMessage}
                     onChange={(e) => setStashMessage(e.target.value)}
                     placeholder="Describe your changes..."
-                    className="w-full px-3 py-2 bg-app-bg border border-app-border rounded text-sm text-white font-geist focus:outline-none focus:border-app-accent"
+                    className="w-full px-3 py-2 bg-app-bg border border-app-border rounded text-sm text-white focus:outline-none focus:border-app-accent"
                   />
                   <Button
                     size="sm"
@@ -999,7 +999,7 @@ const handleStashDrop = useCallback(async (stashId: string) => {
 
               {/* Stash List */}
               <div className="space-y-2">
-                <label className="text-xs text-neutral-400 font-geist">Stashed Changes</label>
+                <label className="text-xs text-neutral-400">Stashed Changes</label>
                 {stashes.length === 0 ? (
                   <div className="text-xs text-neutral-500 text-center py-4 bg-app-bg rounded border border-app-border">
                     No stashed changes
@@ -1013,7 +1013,7 @@ const handleStashDrop = useCallback(async (stashId: string) => {
                       >
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-white font-medium truncate">{stash.message}</p>
-                          <p className="text-[10px] text-neutral-500">{stash.id}</p>
+                          <p className="text-xs text-neutral-500">{stash.id}</p>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button

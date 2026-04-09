@@ -105,7 +105,7 @@ export function DiffViewer({ commitHash, filePath, onClose, showHeader = true }:
         <div className="px-4 py-2 border-b border-app-border flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 text-app-accent" />
-            <span className="text-sm font-medium text-white font-geist truncate">
+            <span className="text-sm font-medium text-white truncate">
               {filePath}
             </span>
             <span className="text-xs text-neutral-500 font-mono bg-neutral-800 px-1.5 py-0.5 rounded">

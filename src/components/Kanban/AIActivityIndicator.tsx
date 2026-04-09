@@ -97,7 +97,7 @@ export function AIActivityIndicator({
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-        <span className="text-xs font-medium text-cyan-400 font-geist">
+        <span className="text-xs font-medium text-cyan-400">
           {getCurrentAction()}
         </span>
       </div>
@@ -105,7 +105,7 @@ export function AIActivityIndicator({
       {(showTerminal || taskState?.status === 'running') && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-neutral-500 font-geist">Output</span>
+            <span className="text-xs text-neutral-500">Output</span>
             {taskState?.currentFile && (
               <span className="text-xs text-blue-400 font-mono truncate max-w-[150px]">
                 {formatFileName(taskState.currentFile)}
@@ -113,7 +113,7 @@ export function AIActivityIndicator({
             )}
           </div>
           <div 
-            className="bg-[#0d0d0d] rounded border border-app-border p-2 font-mono text-xs overflow-y-auto"
+            className="bg-app-bg rounded border border-app-border p-2 font-mono text-xs overflow-y-auto"
             style={{ maxHeight: maxHeight === 'auto' ? '120px' : maxHeight }}
           >
             {latestOutput ? (
@@ -144,7 +144,7 @@ export function AIActivityIndicator({
       {!showTerminal && taskState?.status === 'running' && (
         <div className="flex items-start gap-1.5">
           <Terminal className="w-3 h-3 text-neutral-500 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-neutral-400 font-geist line-clamp-1">
+          <p className="text-xs text-neutral-400 line-clamp-1">
             {taskState.currentFile 
               ? `Editing ${formatFileName(taskState.currentFile)}...` 
               : latestOutput ? 'Processing...' : 'Initializing...'}

@@ -113,7 +113,7 @@ export function TerminalPanel() {
       <div className="flex items-center justify-between px-3 py-1.5 bg-app-titlebar border-b border-app-border shrink-0">
         <div className="flex items-center gap-2">
           <TerminalIcon className="w-3.5 h-3.5 text-neutral-400" />
-          <span className="text-xs font-medium text-neutral-300 font-geist">Terminal</span>
+          <span className="text-xs font-medium text-neutral-300">Terminal</span>
           {sessions.length > 0 && (
             <div className="flex items-center gap-1 ml-2 overflow-x-auto hide-scrollbar">
               {sessions.map((session, index) => (
@@ -121,7 +121,7 @@ export function TerminalPanel() {
                   <button
                     onClick={() => setActiveSession(session.id)}
                     className={`
-                      px-2.5 py-1 pr-6 text-[10px] rounded transition-colors font-geist flex items-center gap-1.5
+                      px-2.5 py-1 pr-6 text-xs rounded transition-colors flex items-center gap-1.5
                       ${session.id === activeSessionId 
                         ? 'bg-app-accent/20 text-app-accent border border-app-accent/30 tracking-wide font-medium shadow-[0_0_8px_rgba(255,255,255,0.05)]' 
                         : 'bg-app-sidebar text-neutral-400 hover:text-neutral-200 border border-transparent'}
@@ -255,8 +255,8 @@ export function TerminalPanel() {
         {sessions.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-neutral-500">
             <TerminalIcon className="w-8 h-8 mb-2 opacity-50" />
-            <p className="text-xs font-geist">No terminal session</p>
-            <p className="text-[10px] text-neutral-600 mt-1">Open a workspace to start</p>
+            <p className="text-xs">No terminal session</p>
+            <p className="text-xs text-neutral-600 mt-1">Open a workspace to start</p>
           </div>
         )}
       </div>

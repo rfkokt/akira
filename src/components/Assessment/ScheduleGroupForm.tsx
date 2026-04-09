@@ -127,7 +127,7 @@ export function ScheduleGroupForm() {
   return (
     <div className="bg-[#252526] border border-white/10 rounded-lg p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-white font-geist">Buat Jadwal Group</h3>
+        <h3 className="text-sm font-semibold text-white">Buat Jadwal Group</h3>
         <Button
           variant="ghost"
           size="icon"
@@ -140,7 +140,7 @@ export function ScheduleGroupForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Group Name */}
         <div>
-          <label className="block text-xs font-medium text-neutral-300 mb-1.5 font-geist">
+          <label className="block text-xs font-medium text-neutral-300 mb-1.5">
             Nama Group
           </label>
           <input
@@ -148,14 +148,14 @@ export function ScheduleGroupForm() {
             value={formData.groupName || ''}
             onChange={(e) => setFormData({ groupName: e.target.value })}
             placeholder="Contoh: Group A - Pagi"
-            className="w-full px-3 py-2 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 font-geist text-sm"
+            className="w-full px-3 py-2 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 text-sm"
             autoFocus
           />
         </div>
 
         {/* Scheduled Date */}
         <div>
-          <label className="block text-xs font-medium text-neutral-300 mb-1.5 font-geist">
+          <label className="block text-xs font-medium text-neutral-300 mb-1.5">
             Tanggal Pelaksanaan
           </label>
           <div className="relative">
@@ -165,12 +165,12 @@ export function ScheduleGroupForm() {
               onChange={(e) => setFormData({ scheduledDate: new Date(e.target.value) })}
               min={validDateRange ? new Date(validDateRange.startDate).toISOString().split('T')[0] : undefined}
               max={validDateRange ? new Date(validDateRange.endDate).toISOString().split('T')[0] : undefined}
-              className="w-full px-3 py-2 pr-10 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 font-geist text-sm"
+              className="w-full px-3 py-2 pr-10 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 text-sm"
             />
             <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
           </div>
           {validDateRange && (
-            <p className="text-xs text-neutral-500 font-geist mt-1">
+            <p className="text-xs text-neutral-500 mt-1">
               Periode: {new Date(validDateRange.startDate).toLocaleDateString('id-ID')} - {new Date(validDateRange.endDate).toLocaleDateString('id-ID')}
             </p>
           )}
@@ -178,7 +178,7 @@ export function ScheduleGroupForm() {
 
         {/* Participants */}
         <div>
-          <label className="block text-xs font-medium text-neutral-300 mb-1.5 font-geist">
+          <label className="block text-xs font-medium text-neutral-300 mb-1.5">
             Peserta
           </label>
           <div className="flex gap-2">
@@ -193,7 +193,7 @@ export function ScheduleGroupForm() {
                 }
               }}
               placeholder="Nama atau NIP peserta"
-              className="flex-1 px-3 py-2 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 font-geist text-sm"
+              className="flex-1 px-3 py-2 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 text-sm"
             />
             <Button
               type="button"
@@ -211,7 +211,7 @@ export function ScheduleGroupForm() {
                   key={index}
                   className="flex items-center justify-between px-3 py-1.5 bg-[#1e1e1e] rounded-lg"
                 >
-                  <span className="text-sm text-neutral-300 font-geist">{participant}</span>
+                  <span className="text-sm text-neutral-300">{participant}</span>
                   <Button
                     type="button"
                     variant="ghost"
@@ -230,7 +230,7 @@ export function ScheduleGroupForm() {
         {/* Error */}
         {error && (
           <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <p className="text-xs text-red-400 font-geist">{error}</p>
+            <p className="text-xs text-red-400">{error}</p>
           </div>
         )}
 

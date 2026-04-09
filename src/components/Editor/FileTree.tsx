@@ -352,7 +352,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
             getFileIcon(node.name)
           )}
           <span
-            className={`flex-1 truncate text-xs font-geist ${
+            className={`flex-1 truncate text-xs ${
               isSelected
                 ? 'text-white font-medium'
                 : node.is_dir
@@ -364,7 +364,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
             {node.name}
           </span>
           {!node.is_dir && node.size !== undefined && (
-            <span className="text-xs text-neutral-600 font-geist pr-2">
+            <span className="text-xs text-neutral-600 pr-2">
               {formatSize(node.size)}
             </span>
           )}
@@ -386,7 +386,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
       <div className="flex flex-col h-full bg-transparent border-r border-app-border">
         {/* Header */}
         <div className="px-3 py-2 border-b border-app-border flex items-center justify-between">
-          <span className="text-xs font-medium text-app-text-muted font-geist uppercase tracking-widest">
+          <span className="text-xs font-medium text-app-text-muted uppercase tracking-widest">
             Explorer
           </span>
           <div className="flex items-center gap-1">
@@ -429,7 +429,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
         <div className="flex-1 overflow-auto py-1">
           {!rootPath ? (
             <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-              <p className="text-xs text-neutral-500 font-geist">
+              <p className="text-xs text-neutral-500">
                 No workspace selected
               </p>
             </div>
@@ -461,7 +461,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
                   )}
                 </span>
                 <FolderOpen className="w-4 h-4 text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]" />
-                <span className="flex-1 truncate text-xs font-medium text-app-text font-geist">
+                <span className="flex-1 truncate text-xs font-medium text-app-text">
                   {rootName || rootPath.split('/').pop() || rootPath}
                 </span>
               </Button>
@@ -540,7 +540,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
                   placeholder={searchMode === 'filename' ? 'Search files by name...' : 'Search in files...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-transparent text-white text-lg placeholder-neutral-500 outline-none font-geist"
+                  className="w-full bg-transparent text-white text-lg placeholder-neutral-500 outline-none"
                 />
               </div>
               {isSearching && (

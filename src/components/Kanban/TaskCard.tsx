@@ -6,6 +6,7 @@ import type { AITaskState } from '@/store/aiChatStore'
 import { Button } from '@/components/ui/button'
 import { AIActivityIndicator } from './AIActivityIndicator'
 import { PRIORITY_COLORS } from './constants'
+import { cn } from '@/lib/utils'
 
 interface TaskCardProps {
   task: Task
@@ -75,17 +76,39 @@ const style = {
       {...attributes}
       {...((isAIWorking || task.status === 'done') ? {} : listeners)}
       onClick={handleClick}
-      className={`group rounded-lg p-4 transition-all duration-300 border relative ${
+      className={cn(
+        "group relative rounded-xl pl-5 pr-4 py-4 overflow-hidden transition-all duration-300 border",
         isAIWorking 
-          ? 'bg-yellow-500/5 border-yellow-500/20 cursor-not-allowed' 
-          : 'bg-app-sidebar hover:bg-app-panel border-app-border cursor-pointer shadow-lg hover:shadow-[0_0_15px_var(--app-accent-glow)]'
-      }`}
+          ? 'bg-yellow-500/5 border-yellow-500/30 cursor-not-allowed shadow-[0_0_15px_rgba(234,179,8,0.1)]' 
+          : 'bg-gradient-to-br from-app-surface-2 to-app-surface-1 hover:from-app-surface-3 hover:to-app-surface-2 border-app-border hover:border-app-border-highlight cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-0.5'
+      )}
     >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded border ${PRIORITY_COLORS[task.priority]} font-geist`}>
+      {/* Priority Stripe */}
+      <div className={cn(
+        "absolute left-0 top-0 bottom-0 w-1",
+        task.priority === 'high' ? 'bg-red-500' : 
+        task.priority === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'
+      )} />
+
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <span className={cn(`text-2xs font-bold tracking-wider uppercase px-2 py-0.5 rounded-md border`, PRIORITY_COLORS[task.priority])}>
           {task.priority}
         </span>
 
+        
+      </div>
+      
+      <h3 className="text-[15px] font-semibold text-app-text tracking-tight mb-1.5 leading-snug">
+        {task.title}
+      </h3>
+      
+      {task.description && (
+        <p className="text-sm text-app-text-secondary line-clamp-3 leading-relaxed">
+          {task.description}
+        </p>
+      )}
+
+      <div className="mt-4 flex items-center justify-end border-t border-app-border/30 pt-3">
         <div className="flex items-center gap-1.5">
           {task.status === 'todo' && (
             <Button
@@ -143,7 +166,7 @@ const style = {
             (task.pr_branch || task.merge_source_branch || taskStates[task.id]?.prBranch) ? (
               <Button
                 size="sm"
-                className="h-8 px-2.5 text-xs bg-green-600 hover:bg-green-700"
+                className="h-8 px-2.5 text-xs bg-app-accent hover:bg-app-accent-hover text-white shadow-md shadow-app-accent/20"
                 onClick={(e) => {
                   e.stopPropagation()
                   onComplete(task)
@@ -159,7 +182,7 @@ const style = {
                 {isMergeLoading ? 'Merging...' : 'Merge'}
               </Button>
             ) : (
-              <div className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400 font-geist">
+              <div className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400">
                 <CheckCircle className="w-3 h-3" />
                 Done
               </div>
@@ -196,16 +219,6 @@ const style = {
         </div>
       </div>
       
-      <h3 className="text-sm font-medium text-neutral-200 font-geist mb-2 leading-snug">
-        {task.title}
-      </h3>
-      
-      {task.description && (
-        <p className="text-xs text-neutral-500 font-geist line-clamp-3 leading-relaxed">
-          {task.description}
-        </p>
-      )}
-      
       {isAIWorking && (
         <div className="mt-2 pt-2 border-t border-yellow-500/10">
           <AIActivityIndicator 
@@ -228,7 +241,7 @@ const style = {
                 <AlertCircle className="w-3 h-3" />
                 <span>AI completed but PR failed</span>
               </div>
-              <div className="mt-1 p-1.5 bg-red-500/10 rounded text-[10px] text-red-400 font-mono">
+              <div className="mt-1 p-1.5 bg-red-500/10 rounded text-xs text-red-400 font-mono">
                 {taskStates[task.id].prError}
               </div>
             </>
@@ -240,7 +253,7 @@ const style = {
           )}
           {!taskStates[task.id]?.creatingPR && (
             <>
-              <p className="text-[10px] text-neutral-500 mt-1">
+              <p className="text-xs text-neutral-500 mt-1">
                 Check chat for details. Manual PR required.
               </p>
               <Button

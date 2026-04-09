@@ -32,10 +32,10 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#252526]">
           <div>
-            <h3 className="text-sm font-semibold text-white font-geist">
+            <h3 className="text-sm font-semibold text-white">
               System Prompt Preview
             </h3>
-            <p className="text-xs text-neutral-500 font-geist mt-0.5">
+            <p className="text-xs text-neutral-500 mt-0.5">
               This is the full prompt that will be sent to AI
             </p>
           </div>
@@ -75,8 +75,8 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
         <div className="flex-1 overflow-auto p-4 space-y-4">
           {sections.length === 0 ? (
             <div className="text-center py-8 text-neutral-500">
-              <p className="text-sm font-geist">No configuration yet</p>
-              <p className="text-xs font-geist mt-1">
+              <p className="text-sm">No configuration yet</p>
+              <p className="text-xs mt-1">
                 Configure Rules first
               </p>
             </div>
@@ -84,11 +84,11 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
             sections.map((section, index) => (
               <div key={index} className="bg-[#252526] rounded border border-white/5 overflow-hidden">
                 <div className="px-3 py-2 bg-[#2d2d2d] border-b border-white/5">
-                  <span className="text-xs font-medium text-neutral-400 font-geist uppercase tracking-wide">
+                  <span className="text-xs font-medium text-neutral-400 uppercase tracking-wide">
                     Section {index + 1}
                   </span>
                 </div>
-                <pre className="p-3 text-xs text-neutral-300 font-geist whitespace-pre-wrap overflow-x-auto">
+                <pre className="p-3 text-xs text-neutral-300 whitespace-pre-wrap overflow-x-auto">
                   {section}
                 </pre>
               </div>
@@ -99,14 +99,14 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
           {sections.length > 0 && (
             <div className="mt-4 pt-4 border-t border-white/5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-neutral-400 font-geist uppercase tracking-wide">
+                <span className="text-xs font-medium text-neutral-400 uppercase tracking-wide">
                   Full Prompt
                 </span>
-                <span className="text-xs text-neutral-500 font-geist">
+                <span className="text-xs text-neutral-500">
                   {systemPrompt.length} characters
                 </span>
               </div>
-              <pre className="p-3 text-xs text-neutral-300 font-geist whitespace-pre-wrap bg-[#252526] rounded border border-white/5 overflow-x-auto max-h-[300px]">
+              <pre className="p-3 text-xs text-neutral-300 whitespace-pre-wrap bg-[#252526] rounded border border-white/5 overflow-x-auto max-h-[300px]">
                 {systemPrompt}
               </pre>
             </div>
@@ -115,7 +115,7 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-white/5 bg-[#252526] flex items-center justify-between">
-          <div className="text-xs text-neutral-500 font-geist">
+          <div className="text-xs text-neutral-500">
             Project: Workspace Config
           </div>
           <Button

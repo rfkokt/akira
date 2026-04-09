@@ -5,6 +5,7 @@ import { useTaskStore } from '@/store/taskStore'
 import { useWorkspaceStore } from '@/store/workspaceStore'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 
 interface TaskImporterProps {
   isOpen: boolean
@@ -196,15 +197,15 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-[#252526] border border-white/10 w-full max-w-lg shadow-2xl">
+      <div className="bg-app-panel border border-app-border w-full max-w-lg shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#2d2d2d]">
-          <h2 className="text-sm font-semibold text-white font-geist">Import Tasks</h2>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-app-border bg-app-sidebar">
+          <h2 className="text-sm font-semibold text-white">Import Tasks</h2>
           <Button 
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="h-8 w-8 text-[#858585] hover:text-white"
+            className="h-8 w-8 text-app-text-muted hover:text-white"
           >
             <X className="w-4 h-4" />
           </Button>
@@ -213,12 +214,12 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
         <div className="p-6">
           {/* Import Mode Tabs */}
           <Tabs value={importMode} onValueChange={(v) => setImportMode(v as 'file' | 'text')} className="mb-4">
-            <TabsList className="grid w-full grid-cols-2 bg-[#1e1e1e]">
-              <TabsTrigger value="file" className="text-xs data-[state=active]:bg-[#0e639c] data-[state=active]:text-white">
+            <TabsList className="grid w-full grid-cols-2 bg-app-bg">
+              <TabsTrigger value="file" className="text-xs data-[state=active]:bg-app-accent data-[state=active]:text-white">
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
                 Upload File
               </TabsTrigger>
-              <TabsTrigger value="text" className="text-xs data-[state=active]:bg-[#0e639c] data-[state=active]:text-white">
+              <TabsTrigger value="text" className="text-xs data-[state=active]:bg-app-accent data-[state=active]:text-white">
                 <ClipboardPaste className="w-3.5 h-3.5 mr-1.5" />
                 Paste JSON
               </TabsTrigger>
@@ -226,17 +227,17 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
           </Tabs>
 
           {result ? (
-            <div className={`text-center py-8 ${result.success ? 'text-green-400' : 'text-[#f48771]'}`}>
+            <div className={`text-center py-8 ${result.success ? 'text-green-400' : 'text-red-400'}`}>
               {result.success ? (
                 <CheckCircle2 className="w-12 h-12 mx-auto mb-4" />
               ) : (
                 <AlertCircle className="w-12 h-12 mx-auto mb-4" />
               )}
-              <p className="text-sm font-geist">{result.message}</p>
+              <p className="text-sm">{result.message}</p>
               {!result.success && (
                 <Button 
                   onClick={() => setResult(null)}
-                  className="mt-4 bg-[#0e639c] hover:bg-[#1177bb]"
+                  className="mt-4 bg-app-accent hover:bg-app-accent-hover"
                 >
                   Try Again
                 </Button>
@@ -251,8 +252,8 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
                 onDrop={handleDrop}
                 className={`relative border-2 border-dashed transition-all duration-200 ${
                   isDragging 
-                    ? 'border-[#0e639c] bg-[#0e639c]/10' 
-                    : 'border-white/20 bg-[#1e1e1e] hover:border-white/40'
+                    ? 'border-app-accent bg-app-accent/10' 
+                    : 'border-app-border-highlight bg-app-bg hover:border-white/40'
                 }`}
               >
                 <input
@@ -265,18 +266,18 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
                 <div className="p-8 text-center">
                   {isImporting ? (
                     <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 border-2 border-[#0e639c] border-t-transparent rounded-full animate-spin mb-4" />
-                      <p className="text-sm text-[#cccccc] font-geist">Importing...</p>
+                      <div className="w-8 h-8 border-2 border-app-accent border-t-transparent rounded-full animate-spin mb-4" />
+                      <p className="text-sm text-app-text">Importing...</p>
                     </div>
                   ) : (
                     <>
                       <Upload className={`w-10 h-10 mx-auto mb-4 transition-colors ${
-                        isDragging ? 'text-[#0e639c]' : 'text-[#858585]'
+                        isDragging ? 'text-app-accent' : 'text-app-text-muted'
                       }`} />
-                      <p className="text-sm text-[#cccccc] font-geist mb-2">
+                      <p className="text-sm text-app-text mb-2">
                         Drop your file here, or click to browse
                       </p>
-                      <p className="text-xs text-[#6e6e6e] font-geist">
+                      <p className="text-xs text-app-text-muted">
                         Supports JSON, Markdown, and Excel files
                       </p>
                     </>
@@ -286,27 +287,27 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
 
               {/* File Types */}
               <div className="mt-6 grid grid-cols-3 gap-3">
-                <div className="flex flex-col items-center p-3 bg-[#1e1e1e] border border-white/5">
-                  <FileJson className="w-6 h-6 text-[#858585] mb-2" />
-                  <span className="text-xs text-[#858585] font-geist">JSON</span>
+                <div className="flex flex-col items-center p-3 bg-app-bg border border-app-border">
+                  <FileJson className="w-6 h-6 text-app-text-muted mb-2" />
+                  <span className="text-xs text-app-text-muted">JSON</span>
                 </div>
-                <div className="flex flex-col items-center p-3 bg-[#1e1e1e] border border-white/5">
-                  <FileText className="w-6 h-6 text-[#858585] mb-2" />
-                  <span className="text-xs text-[#858585] font-geist">Markdown</span>
+                <div className="flex flex-col items-center p-3 bg-app-bg border border-app-border">
+                  <FileText className="w-6 h-6 text-app-text-muted mb-2" />
+                  <span className="text-xs text-app-text-muted">Markdown</span>
                 </div>
-                <div className="flex flex-col items-center p-3 bg-[#1e1e1e] border border-white/5">
-                  <FileSpreadsheet className="w-6 h-6 text-[#858585] mb-2" />
-                  <span className="text-xs text-[#858585] font-geist">Excel</span>
+                <div className="flex flex-col items-center p-3 bg-app-bg border border-app-border">
+                  <FileSpreadsheet className="w-6 h-6 text-app-text-muted mb-2" />
+                  <span className="text-xs text-app-text-muted">Excel</span>
                 </div>
               </div>
 
               {/* Format Examples */}
               <div className="mt-6 space-y-3">
                 <details className="text-xs">
-                  <summary className="text-[#858585] cursor-pointer font-geist hover:text-[#cccccc]">
+                  <summary className="text-app-text-muted cursor-pointer hover:text-app-text">
                     View JSON format example
                   </summary>
-                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-xs overflow-x-auto border border-white/5">
+                  <pre className="mt-2 p-3 bg-app-bg text-app-info font-mono text-xs overflow-x-auto border border-app-border">
 {`[
   {
     "title": "Implement feature X",
@@ -319,10 +320,10 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
                 </details>
 
                 <details className="text-xs">
-                  <summary className="text-[#858585] cursor-pointer font-geist hover:text-[#cccccc]">
+                  <summary className="text-app-text-muted cursor-pointer hover:text-app-text">
                     View Markdown format example
                   </summary>
-                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-xs overflow-x-auto border border-white/5">
+                  <pre className="mt-2 p-3 bg-app-bg text-app-info font-mono text-xs overflow-x-auto border border-app-border">
 {`# Tasks
 
 ## TODO
@@ -346,21 +347,21 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
               {/* Paste JSON Text Area */}
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs text-[#858585] font-geist mb-2 block">
+                  <label className="text-xs text-app-text-muted mb-2 block">
                     Paste your JSON array here
                   </label>
-                  <textarea
+                  <Textarea
                     value={pastedText}
                     onChange={(e) => setPastedText(e.target.value)}
                     placeholder={`[\n  {\n    "title": "Task title",\n    "description": "Task description",\n    "status": "todo",\n    "priority": "high"\n  }\n]`}
-                    className="w-full h-48 p-3 bg-[#1e1e1e] border border-white/20 text-[#cccccc] text-xs font-mono resize-none focus:outline-none focus:border-[#0e639c] rounded-lg"
+                    className="min-h-[192px] p-3 bg-app-bg border-app-border-highlight text-app-text font-mono focus-visible:ring-1 focus-visible:ring-app-accent rounded-lg"
                   />
                 </div>
                 
                 <Button
                   onClick={handleImportText}
                   disabled={!pastedText.trim() || isImporting}
-                  className="w-full bg-[#0e639c] hover:bg-[#1177bb] text-white"
+                  className="w-full bg-app-accent hover:bg-app-accent-hover text-white"
                 >
                   {isImporting ? (
                     <>
@@ -374,10 +375,10 @@ export function TaskImporter({ isOpen, onClose }: TaskImporterProps) {
 
                 {/* Format Examples for Text Mode */}
                 <details className="text-xs">
-                  <summary className="text-[#858585] cursor-pointer font-geist hover:text-[#cccccc]">
+                  <summary className="text-app-text-muted cursor-pointer hover:text-app-text">
                     View JSON format example
                   </summary>
-                  <pre className="mt-2 p-3 bg-[#1e1e1e] text-[#9cdcfe] font-mono text-xs overflow-x-auto border border-white/5">
+                  <pre className="mt-2 p-3 bg-app-bg text-app-info font-mono text-xs overflow-x-auto border border-app-border">
 {`[
   {
     "title": "Implement feature X",
