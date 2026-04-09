@@ -25,6 +25,8 @@ import type { CliOutputEvent, CliCompleteEvent, ChatMessage, RouterProviderInfo 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Tooltip,
   TooltipContent,
@@ -651,17 +653,21 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       </Button>
                       {useRouter && (
                         <div className="flex items-center gap-2">
-                          <select
-                            value={selectedRouterProvider || ''}
-                            onChange={(e) => setSelectedRouterProvider(e.target.value)}
-                            className="bg-app-bg/50 text-xs text-app-text px-2 py-1 rounded-md border border-app-border/50 outline-none focus:border-app-accent cursor-pointer transition-colors"
+                          <Select
+                            value={selectedRouterProvider || undefined}
+                            onValueChange={(val) => setSelectedRouterProvider(val)}
                           >
-                            {routerProviders.filter(p => p.enabled).map(p => (
-                              <option key={p.alias} value={p.alias}>
-                                {p.alias} ({p.status})
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger className="h-7 px-2 text-xs bg-app-bg/50 border-app-border/50 outline-none focus:ring-1 focus:ring-app-accent rounded-md cursor-pointer transition-colors max-w-[150px]">
+                              <SelectValue placeholder="Router" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-app-panel text-xs text-app-text border-app-border">
+                              {routerProviders.filter(p => p.enabled).map(p => (
+                                <SelectItem key={p.alias} value={p.alias} className="text-xs cursor-pointer focus:bg-white/10">
+                                  {p.alias} ({p.status})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           {pendingSwitch && (
                             <span className="text-xs text-yellow-400/80 animate-pulse font-medium">
                               Switched to: {pendingSwitch.newProvider}
@@ -678,7 +684,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                   </div>
                   
                   <div className="flex items-end gap-2.5">
-                    <textarea
+                    <Textarea
                       ref={inputRef}
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
@@ -690,7 +696,7 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
                       }
                       disabled={(useRouter ? !selectedRouterProvider : !activeEngine) || isStreaming}
                       rows={1}
-                      className="flex-1 bg-app-bg/60 text-sm text-app-text placeholder-app-text-muted/60 resize-none outline-none px-3.5 py-2.5 max-h-32 min-h-[44px] rounded-xl border border-app-border focus:border-app-accent/70 focus:ring-1 focus:ring-app-accent/30 shadow-inner disabled:opacity-50 transition-all custom-scrollbar"
+                      className="flex-1 bg-app-bg/60 text-sm placeholder:text-app-text-muted/60 resize-none px-3.5 py-2.5 max-h-32 min-h-[44px] border-app-border focus-visible:ring-1 focus-visible:ring-app-accent/30 shadow-inner disabled:opacity-50 transition-all custom-scrollbar"
                     />
                     <div className="flex flex-col gap-2">
                        {isStreaming ? (

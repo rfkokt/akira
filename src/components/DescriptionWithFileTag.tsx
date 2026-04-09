@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { FileCode, Loader2 } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 
 interface FileEntry {
   name: string
@@ -147,12 +148,12 @@ export function DescriptionWithFileTag({
   return (
     <div className="relative">
       <div className="relative">
-        <textarea
+        <Textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          className="w-full px-3 py-2 rounded text-sm bg-[#3c3c3c] text-white placeholder-white/40 border border-white/10 focus:outline-none focus:border-[#0e639c] resize-none"
+          className="bg-app-sidebar border-app-border focus-visible:ring-1 focus-visible:ring-app-accent placeholder:text-app-text-muted resize-none min-h-[80px]"
           rows={rows}
           placeholder={placeholder}
         />

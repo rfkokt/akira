@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Calendar } from 'lucide-react';
 import { useAssessmentStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 export function ScheduleGroupForm() {
   const {
@@ -143,12 +144,12 @@ export function ScheduleGroupForm() {
           <label className="block text-xs font-medium text-neutral-300 mb-1.5">
             Nama Group
           </label>
-          <input
+          <Input
             type="text"
             value={formData.groupName || ''}
             onChange={(e) => setFormData({ groupName: e.target.value })}
             placeholder="Contoh: Group A - Pagi"
-            className="w-full px-3 py-2 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 text-sm"
+            className="bg-app-sidebar border-app-border focus-visible:ring-1 focus-visible:ring-app-accent placeholder:text-app-text-muted"
             autoFocus
           />
         </div>
@@ -159,13 +160,13 @@ export function ScheduleGroupForm() {
             Tanggal Pelaksanaan
           </label>
           <div className="relative">
-            <input
+            <Input
               type="date"
               value={formData.scheduledDate ? new Date(formData.scheduledDate).toISOString().split('T')[0] : ''}
               onChange={(e) => setFormData({ scheduledDate: new Date(e.target.value) })}
               min={validDateRange ? new Date(validDateRange.startDate).toISOString().split('T')[0] : undefined}
               max={validDateRange ? new Date(validDateRange.endDate).toISOString().split('T')[0] : undefined}
-              className="w-full px-3 py-2 pr-10 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 text-sm"
+              className="pr-10 bg-app-sidebar border-app-border focus-visible:ring-1 focus-visible:ring-app-accent text-white"
             />
             <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
           </div>
@@ -182,7 +183,7 @@ export function ScheduleGroupForm() {
             Peserta
           </label>
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               value={participantInput}
               onChange={(e) => setParticipantInput(e.target.value)}
@@ -193,7 +194,7 @@ export function ScheduleGroupForm() {
                 }
               }}
               placeholder="Nama atau NIP peserta"
-              className="flex-1 px-3 py-2 bg-[#1e1e1e] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 text-sm"
+              className="flex-1 bg-app-sidebar border-app-border focus-visible:ring-1 focus-visible:ring-app-accent placeholder:text-app-text-muted"
             />
             <Button
               type="button"

@@ -285,27 +285,31 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
 
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase()
+    
+    // VSCode-like File Icons
+    const iconClass = "w-[14px] h-[14px]"
     switch (ext) {
       case 'js':
-      case 'ts':
       case 'jsx':
+        return <File className={`${iconClass} text-[#f0e059]`} />
+      case 'ts':
       case 'tsx':
-        return <File className="w-4 h-4 text-cyan-400" />
+        return <File className={`${iconClass} text-[#3178c6]`} />
       case 'json':
-        return <File className="w-4 h-4 text-yellow-500" />
+        return <File className={`${iconClass} text-[#cbcd30]`} />
       case 'md':
-        return <File className="w-4 h-4 text-neutral-300" />
+        return <File className={`${iconClass} text-[#519aba]`} />
       case 'css':
       case 'scss':
-        return <File className="w-4 h-4 text-purple-400" />
+        return <File className={`${iconClass} text-[#42a5f5]`} />
       case 'html':
-        return <File className="w-4 h-4 text-orange-500" />
+        return <File className={`${iconClass} text-[#e34c26]`} />
       case 'rs':
-        return <File className="w-4 h-4 text-orange-300" />
+        return <File className={`${iconClass} text-[#dea584]`} />
       case 'py':
-        return <File className="w-4 h-4 text-blue-400" />
+        return <File className={`${iconClass} text-[#3572A5]`} />
       default:
-        return <File className="w-4 h-4 text-neutral-500" />
+        return <File className={`${iconClass} text-neutral-500`} />
     }
   }
 
@@ -320,55 +324,53 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     const isExpanded = expandedDirs.has(node.path)
     const isSelected = selectedPath === node.path
     const isLoading = loadingDirs.has(node.path)
-    const paddingLeft = depth * 12 + 12
+    // VSCode usually indents ~12px to 14px per depth level (starting with 12px padding for the root elements)
+    const paddingLeft = depth * 12 + 16
 
     return (
       <div key={node.path}>
-        <Button
-          variant="ghost"
-          className={`w-full justify-start h-auto py-1 text-left group transition-none rounded-none h-7 ${isSelected ? 'bg-white/10 text-white' : 'text-neutral-400 hover:bg-white/5 hover:text-neutral-200'}`}
+        <div
+          role="button"
+          tabIndex={0}
+          className={`group flex items-center justify-start h-[22px] w-full text-left cursor-pointer select-none transition-none ${isSelected ? 'bg-app-accent/20 text-white' : 'text-neutral-400 hover:bg-white/10 hover:text-neutral-200'}`}
           style={{ paddingLeft: `${paddingLeft}px` }}
           onClick={() => toggleDir(node)}
         >
-          {node.is_dir && (
-            <span className="text-neutral-500 w-3 flex-shrink-0">
-              {isLoading ? (
-                <div className="w-3 h-3 border-2 border-neutral-600 border-t-transparent rounded-full animate-spin" />
-              ) : isExpanded ? (
-                <ChevronDown className="w-3 h-3" />
-              ) : (
-                <ChevronRight className="w-3 h-3" />
-              )}
-            </span>
-          )}
-          {!node.is_dir && <span className="w-3 flex-shrink-0" />}
-          {node.is_dir ? (
-            isExpanded ? (
-              <FolderOpenDot className="w-4 h-4 text-app-accent" />
+          {/* Caret/Chevron */}
+          <div className="flex items-center justify-center w-[18px] flex-shrink-0">
+            {node.is_dir ? (
+              <span className="text-neutral-500 transition-colors">
+                {isLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : isExpanded ? (
+                  <ChevronDown className="w-[14px] h-[14px]" />
+                ) : (
+                  <ChevronRight className="w-[14px] h-[14px]" />
+                )}
+              </span>
             ) : (
-              <Folder className="w-4 h-4 text-app-accent" />
-            )
-          ) : (
-            getFileIcon(node.name)
-          )}
+              <span className="w-3" />
+            )}
+          </div>
+          
+          {/* Icon */}
+          <div className={`flex items-center justify-center mr-1.5 flex-shrink-0 ${node.is_dir ? 'text-[#e8a317]' : ''}`}>
+            {node.is_dir ? (
+              <Folder className="w-[14px] h-[14px] fill-current opacity-80" />
+            ) : (
+              getFileIcon(node.name)
+            )}
+          </div>
+
+          {/* Label */}
           <span
-            className={`flex-1 truncate text-xs ${
-              isSelected
-                ? 'text-white font-medium'
-                : node.is_dir
-                ? 'text-neutral-300 group-hover:text-neutral-200'
-                : 'text-neutral-400 group-hover:text-neutral-300'
-            }`}
+            className={`flex-1 truncate text-[13px] leading-[22px] ${isSelected ? 'text-white font-medium' : 'text-[#ececec]'}`}
             title={node.name}
+            style={{ fontFamily: "Inter, sans-serif" }}
           >
             {node.name}
           </span>
-          {!node.is_dir && node.size !== undefined && (
-            <span className="text-xs text-neutral-600 pr-2">
-              {formatSize(node.size)}
-            </span>
-          )}
-        </Button>
+        </div>
         
         {node.is_dir && isExpanded && node.children && (
           <div>
@@ -440,9 +442,11 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
           ) : (
             <div>
               {/* Root Folder */}
-              <Button
-                variant="ghost"
-                className="w-full justify-start h-auto py-1 px-3"
+              <div
+                role="button"
+                tabIndex={0}
+                className="group flex items-center justify-start h-[22px] w-full text-left cursor-pointer select-none transition-none hover:bg-white/10"
+                style={{ paddingLeft: '4px' }}
                 onClick={() => {
                   const newExpanded = new Set(expandedDirs)
                   if (newExpanded.has(rootPath)) {
@@ -453,18 +457,22 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
                   setExpandedDirs(newExpanded)
                 }}
               >
-                <span className="text-app-text-muted w-3 flex-shrink-0">
-                  {expandedDirs.has(rootPath) ? (
-                    <ChevronDown className="w-3 h-3" />
-                  ) : (
-                    <ChevronRight className="w-3 h-3" />
-                  )}
-                </span>
-                <FolderOpen className="w-4 h-4 text-app-accent drop-shadow-[0_0_5px_var(--app-accent)]" />
-                <span className="flex-1 truncate text-xs font-medium text-app-text">
+                <div className="flex items-center justify-center w-[18px] flex-shrink-0">
+                  <span className="text-neutral-500 transition-colors">
+                    {expandedDirs.has(rootPath) ? (
+                      <ChevronDown className="w-[14px] h-[14px]" />
+                    ) : (
+                      <ChevronRight className="w-[14px] h-[14px]" />
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-center mr-1.5 flex-shrink-0 text-app-accent">
+                  <Folder className="w-[14px] h-[14px] fill-current opacity-80" />
+                </div>
+                <span className="flex-1 truncate text-[13px] leading-[22px] font-bold text-white tracking-wide" style={{ fontFamily: "Inter, sans-serif" }}>
                   {rootName || rootPath.split('/').pop() || rootPath}
                 </span>
-              </Button>
+              </div>
               
               {/* Children */}
               {expandedDirs.has(rootPath) && (

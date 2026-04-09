@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react'
-import { X, MessageSquare } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useTaskStore, useAIChatStore, useWorkspaceStore } from '@/store'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TaskChatBox } from '@/components/Chat/TaskChatBox'
 import { DiffViewer } from '@/components/DiffViewer/DiffViewer'
 import { DescriptionWithFileTag } from '@/components/DescriptionWithFileTag'
-import { TaskCreatorChat } from './TaskCreatorChat'
 import { TaskCard } from './TaskCard'
 import { TaskDetailModal } from './TaskDetailModal'
 import { GitPushFlow } from '@/components/AI/AIWorkflowPanel'
@@ -36,7 +37,6 @@ export function KanbanBoard() {
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
-  const [showTaskCreator, setShowTaskCreator] = useState(true)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [processingTasks, setProcessingTasks] = useState<Set<string>>(new Set())
   const [mergeLoadingTasks, setMergeLoadingTasks] = useState<Set<string>>(new Set())
@@ -177,22 +177,7 @@ export function KanbanBoard() {
 
   return (
     <div className="flex flex-1 min-h-0 h-full w-full overflow-x-auto overflow-y-hidden bg-app-bg relative">
-      {showTaskCreator && (
-        <div className="w-[480px] shrink-0 h-full sticky left-0 z-20 shadow-2xl bg-app-bg border-r border-app-border">
-          <TaskCreatorChat onHide={() => setShowTaskCreator(false)} />
-        </div>
-      )}
-
       <div className="flex flex-col min-w-max h-full relative">
-        {!showTaskCreator && (
-          <div className="px-5 py-2 border-b border-app-border bg-app-bg shrink-0 sticky top-0 z-10 w-full flex items-center">
-            <Button variant="ghost" size="sm" onClick={() => setShowTaskCreator(true)} className="h-7 px-2 text-xs">
-              <MessageSquare className="w-3.5 h-3.5 mr-1" />
-              Show Task Creator
-            </Button>
-          </div>
-        )}
-
         <div className="flex-1 min-h-0">
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="flex gap-5 p-5 w-max h-full">
@@ -254,18 +239,18 @@ export function KanbanBoard() {
               </div>
               <form onSubmit={handleCreateTask} className="p-4 space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1">Title</label>
-                  <input
+                  <label className="block text-xs font-medium text-neutral-400 mb-1.5">Title</label>
+                  <Input
                     type="text"
                     value={newTask.title}
                     onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white placeholder-white/40 border border-app-border focus:outline-none focus:border-app-accent"
+                    className="bg-app-sidebar border-app-border focus-visible:ring-1 focus-visible:ring-app-accent placeholder:text-app-text-muted"
                     placeholder="Enter task title..."
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1">
+                  <label className="block text-xs font-medium text-neutral-400 mb-1.5">
                     Description<span className="text-neutral-600 ml-1">(type @ to tag files)</span>
                   </label>
                   <DescriptionWithFileTag
@@ -276,16 +261,20 @@ export function KanbanBoard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1">Priority</label>
-                  <select
+                  <label className="block text-xs font-medium text-neutral-400 mb-1.5">Priority</label>
+                  <Select
                     value={newTask.priority}
-                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })}
-                    className="w-full px-3 py-2 rounded text-sm bg-app-sidebar text-white border border-app-border focus:outline-none focus:border-app-accent"
+                    onValueChange={(val) => setNewTask({ ...newTask, priority: val as Task['priority'] })}
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
+                    <SelectTrigger className="w-full bg-app-sidebar border-app-border focus:ring-1 focus:ring-app-accent h-9 rounded-md text-white">
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-app-panel border-app-border rounded-md shadow-xl text-white">
+                      <SelectItem value="low" className="focus:bg-white/10 cursor-pointer">Low</SelectItem>
+                      <SelectItem value="medium" className="focus:bg-white/10 cursor-pointer">Medium</SelectItem>
+                      <SelectItem value="high" className="focus:bg-white/10 cursor-pointer">High</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>

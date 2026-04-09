@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal, X, File } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal, X, File, MessageSquare } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
 import { dbService } from '@/lib/db'
@@ -8,6 +8,7 @@ import { initializeInternalServers } from '@/lib/mcp'
 import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { KanbanBoard } from './components/Kanban/Board'
+import { TaskCreatorChat } from './components/Kanban/TaskCreatorChat'
 import { FileTree } from './components/Editor/FileTree'
 import { FileViewer } from './components/Editor/FileViewer'
 import { GitSourceControl } from './components/Git/GitSourceControl'
@@ -44,6 +45,9 @@ function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const [showRecovery, setShowRecovery] = useState(false)
+  const [showGlobalChat, setShowGlobalChat] = useState(true)
+  const [chatWidth, setChatWidth] = useState(480)
+  const isResizingRef = useRef(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFileIndex, setActiveFileIndex] = useState<number | null>(null)
@@ -61,6 +65,32 @@ function App() {
   // RTK Status
   const [rtkInstalled, setRtkInstalled] = useState(false)
   const [rtkStats, setRtkStats] = useState<{ total_saved: number; avg_savings: number } | null>(null)
+
+  // Resizable Chat Handler
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return
+      // 56px is the left sidebar width
+      const newWidth = e.clientX - 56
+      if (newWidth > 300 && newWidth < 900) {
+        setChatWidth(newWidth)
+      }
+    }
+
+    const handleMouseUp = () => {
+      if (isResizingRef.current) {
+        isResizingRef.current = false
+        document.body.style.cursor = 'default'
+      }
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
 
   // Check for saved running task on mount
   useEffect(() => {
@@ -563,7 +593,7 @@ function App() {
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Navigation Sidebar (Left) */}
-        <nav className="w-14 shrink-0 bg-app-sidebar backdrop-blur-md flex flex-col items-center py-4 gap-2 border-r border-app-border z-10">
+        <nav className="w-12 shrink-0 bg-app-sidebar flex flex-col items-center py-0 gap-0 border-r border-app-border z-10">
           {menuItems.map((item) => {
             const Icon = item.icon
             const isActive = currentPage === item.id
@@ -571,23 +601,65 @@ function App() {
             return (
               <Tooltip key={item.id}>
                 <TooltipTrigger
-                  className="inline-flex items-center justify-center rounded-xl transition-all duration-300"
+                  className="w-full h-12 flex items-center justify-center relative transition-none cursor-pointer group"
                   onClick={() => setCurrentPage(item.id)}
                 >
-                  <div className={`size-10 rounded-xl flex items-center justify-center relative transition-all duration-300 ${isActive ? 'bg-app-accent-glow text-app-accent shadow-[0_0_15px_var(--app-accent-glow)]' : 'text-app-text-muted hover:text-app-text hover:bg-app-panel'}`}>
-                    <Icon className="size-[22px]" />
+                  <div className={`p-2 flex items-center justify-center relative ${isActive ? 'text-white' : 'text-neutral-500 group-hover:text-white'}`}>
+                    <Icon className="w-6 h-6 stroke-[1.5px]" />
                     {isActive && (
-                      <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-app-accent rounded-r-full shadow-[0_0_8px_var(--app-accent)]" />
+                      <div className="absolute -left-3 top-0 bottom-0 w-[2px] bg-app-accent" />
                     )}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="right">
+                <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md">
                   {item.label}
                 </TooltipContent>
               </Tooltip>
             )
           })}
+
+          <div className="w-full flex justify-center py-2">
+            <Separator className="w-6 bg-app-border" />
+          </div>
+
+          {/* Global Chat Toggle */}
+          <Tooltip>
+            <TooltipTrigger
+              className="w-full h-12 flex items-center justify-center relative transition-none cursor-pointer group"
+              onClick={() => setShowGlobalChat(!showGlobalChat)}
+            >
+              <div className={`p-2 flex items-center justify-center relative ${showGlobalChat ? 'text-white' : 'text-neutral-500 group-hover:text-white'}`}>
+                <MessageSquare className="w-6 h-6 stroke-[1.5px]" />
+                {showGlobalChat && (
+                  <div className="absolute -left-3 top-0 bottom-0 w-[2px] bg-app-accent" />
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md">Toggle Chat Panel</TooltipContent>
+          </Tooltip>
+
+          <div className="flex-1" />
         </nav>
+
+        {/* Global Chat Panel */}
+        {showGlobalChat && (
+          <div 
+            style={{ width: `${chatWidth}px` }}
+            className="shrink-0 h-full z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] bg-app-bg border-r border-app-border relative flex flex-col"
+          >
+            <TaskCreatorChat onHide={() => setShowGlobalChat(false)} />
+            
+            {/* Resizer Handle */}
+            <div 
+              className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-app-accent/50 active:bg-app-accent z-30 transition-colors pointer-events-auto"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                isResizingRef.current = true
+                document.body.style.cursor = 'col-resize'
+              }}
+            />
+          </div>
+        )}
 
         {/* Main Content Area */}
         <div 

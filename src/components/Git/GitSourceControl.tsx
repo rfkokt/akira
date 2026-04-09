@@ -4,6 +4,7 @@ import { Plus, Minus, ChevronDown, ChevronRight, RefreshCw, RotateCcw, GitBranch
 import { useWorkspaceStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { getGitBranches, getLatestAlphaTag, mergeTaskToBranch, getDefaultRemote } from '@/lib/git';
 import { generateCommitMessage, generateCommitMessageFromFiles } from '@/lib/commitMessage';
@@ -571,11 +572,11 @@ const handleStashDrop = useCallback(async (stashId: string) => {
       {/* Commit Message Input */}
       <div className="px-3 py-2 border-b border-app-border shrink-0 bg-app-sidebar">
         <div className="flex items-center gap-1.5 mb-2">
-          <textarea
+          <Textarea
             value={commitInputMessage}
             onChange={(e) => setCommitInputMessage(e.target.value)}
             placeholder="Message (press Ctrl+Enter to commit)"
-            className="flex-1 px-3 py-2 bg-app-bg border border-app-border rounded-lg text-xs text-app-text font-mono resize-none focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent-glow min-h-[64px]"
+            className="flex-1 bg-app-bg border-app-border text-xs focus-visible:ring-1 focus-visible:ring-app-accent min-h-[64px]"
             rows={3}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

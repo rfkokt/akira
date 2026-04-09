@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, ChevronRight, Loader2, GitBranch, User, Clock, Hash } from 'lucide-react';
 import { useWorkspaceStore } from '@/store';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface GitLogEntry {
   hash: string;
@@ -46,7 +47,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
-  const [expandedCommit, setExpandedCommit] = useState<string | null>(null);
   const [hoveredCommit, setHoveredCommit] = useState<string | null>(null);
   const [commitFiles, setCommitFiles] = useState<Record<string, CommitFile[]>>({});
   const [branches, setBranches] = useState<string[]>([]);
@@ -107,13 +107,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
     }
   }, [activeWorkspace, commitFiles]);
 
-  const handleExpandCommit = useCallback((hash: string) => {
-    setExpandedCommit(prev => prev === hash ? null : hash);
-    if (hash !== expandedCommit) {
-      fetchCommitFiles(hash);
-    }
-  }, [expandedCommit, fetchCommitFiles]);
-
   const getBranchColor = (refs: string[], index: number) => {
     if (refs.includes('main') || refs.includes('master')) {
       return BRANCH_COLORS[0]; // Green for main/master
@@ -122,7 +115,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
   };
 
   const formatDate = (dateStr: string) => {
-    // If it's already a relative date like "2 hours ago", return it
     if (dateStr.includes('ago') || dateStr.includes('yesterday') || dateStr.includes('days')) {
       return dateStr;
     }
@@ -151,7 +143,6 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
 
   return (
     <div className="border-t border-app-border">
-      {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-white/5"
         onClick={() => setExpanded(!expanded)}
@@ -165,200 +156,183 @@ export function GitGraph({ onCommitSelect, onFileSelect, maxEntries = 30 }: GitG
         {loading && <Loader2 className="w-3 h-3 animate-spin text-neutral-500" />}
       </div>
 
-      {/* Content */}
       {expanded && (
         <div className="pb-2">
-          {/* Branch Filter */}
           {branches.length > 0 && (
             <div className="px-3 py-1 flex items-center gap-2">
-              <GitBranch className="w-3 h-3 text-neutral-500" />
-              <select
-                value={selectedBranch || ''}
-                onChange={(e) => setSelectedBranch(e.target.value || null)}
-                className="text-xs bg-transparent border border-app-border rounded px-2 py-0.5 text-neutral-300 focus:outline-none focus:border-app-accent"
+              <GitBranch className="w-3.5 h-3.5 text-neutral-500" />
+              <Select
+                value={selectedBranch || 'all'}
+                onValueChange={(val) => setSelectedBranch(val === 'all' ? null : val)}
               >
-                <option value="">All Branches</option>
-                {branches.map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
+                <SelectTrigger className="h-6 px-2 text-xs bg-transparent border-app-border focus:ring-1 focus:ring-app-accent rounded w-[140px]">
+                  <SelectValue placeholder="All Branches" />
+                </SelectTrigger>
+                <SelectContent className="bg-app-panel border-app-border rounded shadow-xl text-neutral-300 min-w-max">
+                  <SelectItem value="all" className="focus:bg-white/10 text-xs py-1">All Branches</SelectItem>
+                  {branches.map(b => (
+                    <SelectItem key={b} value={b} className="focus:bg-white/10 text-xs py-1">{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div className="px-3 py-2 text-xs text-red-400">
               {error}
             </div>
           )}
 
-          {/* Commits */}
           <div className="overflow-auto max-h-80">
             {commits.map((commit, index) => {
-              const isExpanded = expandedCommit === commit.hash;
               const color = getBranchColor(commit.refs, index);
               
               return (
                 <div key={commit.hash}>
-                  {/* Commit Row */}
                   <div
-                    className={`flex items-start gap-2 px-3 py-1.5 cursor-pointer hover:bg-white/5 ${isExpanded ? 'bg-white/5' : ''}`}
-                    onClick={() => handleExpandCommit(commit.hash)}
+                    className="relative group/commit"
+                    onMouseEnter={() => {
+                      setHoveredCommit(commit.hash);
+                      fetchCommitFiles(commit.hash);
+                    }}
+                    onMouseLeave={() => setHoveredCommit(null)}
                   >
-                    {/* Graph Column */}
-                    <div className="w-4 flex-shrink-0 flex flex-col items-center relative">
-                      {/* Vertical line */}
-                      {index < commits.length - 1 && (
-                        <div className="absolute top-3 left-1/2 w-0.5 h-full bg-neutral-700" />
-                      )}
-                      {/* Commit dot */}
-                      <div
-                        className="w-3 h-3 rounded-full border-2 flex-shrink-0 relative z-10"
-                        style={{
-                          borderColor: color,
-                          backgroundColor: commit.refs.length > 0 ? color : 'transparent',
-                          boxShadow: commit.refs.length > 0 ? `0 0 6px ${color}40` : 'none',
-                        }}
-                        onMouseEnter={() => {
-                          setHoveredCommit(commit.hash);
-                          fetchCommitFiles(commit.hash);
-                        }}
-                        onMouseLeave={() => setHoveredCommit(null)}
-                      />
-                      {/* Merge indicator */}
-                      {commit.is_merge && (
-                        <div className="absolute top-3 left-3 w-2 h-0.5 bg-purple-500" />
-                      )}
-                    </div>
-
-                    {/* Content Column */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-white truncate font-medium">
-                          {commit.message.split('\n')[0].slice(0, 50)}
-                          {commit.message.length > 50 && '...'}
-                        </span>
-                        {/* Branch refs */}
-                        {commit.refs.length > 0 && (
-                          <div className="flex items-center gap-1">
-                            {commit.refs.slice(0, 2).map((ref, i) => (
-                              <span
-                                key={i}
-                                className="text-xs px-1.5 py-0.5 rounded-full truncate max-w-20"
-                                style={{
-                                  backgroundColor: `${color}20`,
-                                  color: color,
-                                  border: `1px solid ${color}40`,
-                                }}
-                              >
-                                {ref}
-                              </span>
-                            ))}
-                          </div>
+                    <div className={`flex items-stretch gap-1.5 px-3 py-1 cursor-default transition-none ${hoveredCommit === commit.hash ? 'bg-white/5' : ''}`}>
+                      {/* Graph Column */}
+                      <div className="w-5 flex flex-col items-center justify-center relative flex-shrink-0">
+                        {/* Upper vertical line */}
+                        {index > 0 && (
+                          <div className="absolute bottom-1/2 left-1/2 w-[2px] h-full bg-[#3c3c3c] -translate-x-1/2" />
                         )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-xs text-neutral-500">
-                        <span className="font-mono">{shortenHash(commit.hash)}</span>
-                        <span>•</span>
-                        <span className="truncate">{commit.author}</span>
-                        <span>•</span>
-                        <span>{formatDate(commit.date)}</span>
-                      </div>
-                    </div>
-                  </div>
+                        {/* Lower vertical line */}
+                        {index < commits.length - 1 && (
+                          <div className="absolute top-1/2 left-1/2 w-[2px] h-full bg-[#3c3c3c] -translate-x-1/2" />
+                        )}
 
-                  {/* Files tooltip on hover */}
-                  {hoveredCommit === commit.hash && commitFiles[commit.hash] && (
-                    <div className="ml-8 mr-3 mb-1 p-2 bg-app-bg border border-app-border rounded text-xs">
-                      <div className="space-y-0.5">
-                        {commitFiles[commit.hash].slice(0, 5).map((file, idx) => (
-                          <div 
-                            key={idx} 
-                            className="flex items-center justify-between gap-2 py-0.5 px-1 -mx-1 rounded hover:bg-white/5 cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onFileSelect?.(commit.full_hash, file.path);
-                            }}
-                          >
-                            <span className="text-neutral-300 truncate flex-1">{file.path}</span>
-                            <div className="flex items-center gap-2 text-xs flex-shrink-0">
-                              {file.additions > 0 && (
-                                <span className="text-green-400">+{file.additions}</span>
-                              )}
-                              {file.deletions > 0 && (
-                                <span className="text-red-400">-{file.deletions}</span>
-                              )}
-                              <span className={`w-4 text-center ${
-                                file.status === 'A' ? 'text-green-400' :
-                                file.status === 'D' ? 'text-red-400' :
-                                'text-yellow-400'
-                              }`}>
-                                {file.status}
-                              </span>
+                        {/* Commit dot */}
+                        <div
+                          className="w-2.5 h-2.5 rounded-full relative z-10 box-content"
+                          style={{
+                            backgroundColor: color,
+                            border: `2.5px solid var(--app-bg)`
+                          }}
+                        />
+                      </div>
+
+                      {/* Content Column */}
+                      <div className="flex-1 min-w-0 py-0.5 flex flex-col pl-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[13px] text-[#ececec] truncate font-medium tracking-wide">
+                            {commit.message.split('\n')[0].slice(0, 60)}
+                            {commit.message.length > 60 && '...'}
+                          </span>
+                          {/* Branch refs */}
+                          {commit.refs.length > 0 && (
+                            <div className="flex items-center gap-1.5 mt-0.5 mb-0.5 flex-shrink-0">
+                              {commit.refs.slice(0, 2).map((ref, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[10px] px-1.5 py-[1px] rounded-[3px] truncate max-w-28 whitespace-nowrap border"
+                                  style={{
+                                    borderColor: `${color}80`,
+                                    color: color,
+                                    backgroundColor: 'transparent'
+                                  }}
+                                >
+                                  {ref}
+                                </span>
+                              ))}
                             </div>
-                          </div>
-                        ))}
-                        {commitFiles[commit.hash].length > 5 && (
-                          <div className="text-neutral-500 text-xs pt-1">
-                            +{commitFiles[commit.hash].length - 5} more files
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Expanded Commit Detail */}
-                  {isExpanded && (
-                    <div className="ml-8 mr-3 mb-1 p-2 bg-app-bg border border-app-border rounded text-xs">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-neutral-400">
-                          <User className="w-3 h-3" />
-                          <span>{commit.author} &lt;{commit.email}&gt;</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-neutral-400">
-                          <Clock className="w-3 h-3" />
-                          <span>{commit.date}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-neutral-400 font-mono">
-                          <Hash className="w-3 h-3" />
-                          <span>{commit.full_hash}</span>
-                        </div>
-                        
-                        {/* Commit Message (full) */}
-                        {commit.message.includes('\n') && (
-                          <div className="mt-2 pt-2 border-t border-app-border">
-                            <p className="text-neutral-300 whitespace-pre-wrap text-[11px]">
-                              {commit.message}
-                            </p>
-                          </div>
-                        )}
-                        
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-app-border">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(commit.full_hash);
-                            }}
-                            className="text-neutral-500 hover:text-white transition-colors text-xs"
-                          >
-                            Copy Hash
-                          </button>
-                          {onCommitSelect && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onCommitSelect(commit.full_hash);
-                              }}
-                              className="text-neutral-500 hover:text-white transition-colors text-xs"
-                            >
-                              View Diff
-                            </button>
                           )}
                         </div>
+                        <div className="flex items-center gap-2 text-[11px] text-neutral-500 mt-0.5">
+                          <span className="font-mono text-neutral-400">{shortenHash(commit.hash)}</span>
+                          <span className="text-[#3c3c3c]">|</span>
+                          <span className="truncate max-w-[120px]">{commit.author}</span>
+                          <span className="text-[#3c3c3c]">|</span>
+                          <span>{formatDate(commit.date)}</span>
+                        </div>
                       </div>
                     </div>
-                  )}
+
+                    {/* Unified Hover Tooltip */}
+                    {hoveredCommit === commit.hash && (
+                      <div 
+                        className="absolute left-10 top-full mt-1 z-50 w-80 bg-app-panel border border-app-border rounded-md shadow-2xl p-3 flex flex-col gap-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Upper Section: Author & Hash Actions */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-neutral-300 text-xs">
+                            <User className="w-3.5 h-3.5 text-neutral-500" />
+                            <span className="font-medium">{commit.author}</span>
+                            <span className="text-neutral-500">&lt;{commit.email}&gt;</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-neutral-300 text-xs">
+                            <Clock className="w-3.5 h-3.5 text-neutral-500" />
+                            <span>{commit.date}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 justify-between mt-2 pt-2 border-t border-app-border">
+                             <div className="flex items-center gap-1.5 text-neutral-400 font-mono text-[10px] truncate max-w-[160px]">
+                              <Hash className="w-3 h-3 text-neutral-500" />
+                              <span className="truncate">{commit.full_hash}</span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => navigator.clipboard.writeText(commit.full_hash)}
+                                  className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded text-neutral-300 transition-colors border border-white/5"
+                                >
+                                  Copy
+                                </button>
+                                {onCommitSelect && (
+                                  <button
+                                    onClick={() => onCommitSelect(commit.full_hash)}
+                                    className="text-[10px] bg-app-accent/20 hover:bg-app-accent/30 text-app-accent px-2 py-1 rounded transition-colors"
+                                  >
+                                    View
+                                  </button>
+                                )}
+                             </div>
+                          </div>
+                        </div>
+
+                        {/* Lower Section: File Changes */}
+                        {commitFiles[commit.hash] && (
+                          <div className="border-t border-app-border pt-2">
+                            <div className="text-[10px] font-semibold text-neutral-500 mb-1.5 uppercase tracking-wider">File Changes</div>
+                            <div className="space-y-0.5 max-h-32 overflow-y-auto pr-1">
+                              {commitFiles[commit.hash].slice(0, 10).map((file, idx) => (
+                                <div 
+                                  key={idx} 
+                                  className="flex items-center justify-between gap-2 py-1 px-1.5 -mx-1.5 rounded hover:bg-white/5 cursor-pointer group"
+                                  onClick={() => onFileSelect?.(commit.full_hash, file.path)}
+                                >
+                                  <span className="text-neutral-300 text-xs truncate flex-1 group-hover:text-white transition-colors">{file.path}</span>
+                                  <div className="flex items-center gap-1.5 text-[10px] flex-shrink-0">
+                                    {file.additions > 0 && <span className="text-[#89d185]">+{file.additions}</span>}
+                                    {file.deletions > 0 && <span className="text-[#f14c4c]">-{file.deletions}</span>}
+                                    <span className={`w-3.5 text-center font-bold ${
+                                      file.status === 'A' ? 'text-[#89d185]' :
+                                      file.status === 'D' ? 'text-[#f14c4c]' : 'text-[#cca700]'
+                                    }`}>
+                                      {file.status}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                              {commitFiles[commit.hash].length > 10 && (
+                                <div className="text-neutral-500 text-[10px] pt-1 text-center bg-white/5 rounded py-1 mt-1">
+                                  + {commitFiles[commit.hash].length - 10} more files
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

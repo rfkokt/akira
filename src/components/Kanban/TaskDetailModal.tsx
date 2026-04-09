@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { AIActivityIndicator } from './AIActivityIndicator'
+import { STATUS_COLORS, STATUS_LABELS } from './constants'
 
 interface TaskDetailModalProps {
   task: Task

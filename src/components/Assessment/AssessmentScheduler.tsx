@@ -3,6 +3,7 @@ import { Calendar, AlertCircle } from 'lucide-react';
 import { useAssessmentStore } from '@/store';
 import { ScheduleGroupForm } from './ScheduleGroupForm';
 import { ScheduleGroupList } from './ScheduleGroupList';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export function AssessmentScheduler() {
   const {
@@ -48,18 +49,21 @@ export function AssessmentScheduler() {
         <label className="block text-sm font-medium text-neutral-300 mb-2">
           Pilih Periode Assessment
         </label>
-        <select
-          value={selectedPeriodId || ''}
-          onChange={(e) => setSelectedPeriod(e.target.value || null)}
-          className="w-full px-4 py-2.5 bg-[#252526] text-white border border-white/10 rounded-lg focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 text-sm"
+        <Select
+          value={selectedPeriodId || undefined}
+          onValueChange={(val) => setSelectedPeriod(val)}
         >
-          <option value="">-- Pilih Periode --</option>
-          {assessmentPeriods.map((period) => (
-            <option key={period.id} value={period.id}>
-              {period.name} ({period.code})
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full h-[42px] bg-app-panel text-white border-app-border rounded-lg focus:ring-1 focus:ring-app-accent text-sm">
+             <SelectValue placeholder="-- Pilih Periode --" />
+          </SelectTrigger>
+          <SelectContent className="bg-app-panel border-app-border rounded-lg shadow-xl text-white">
+             {assessmentPeriods.map((period) => (
+               <SelectItem key={period.id} value={period.id} className="cursor-pointer focus:bg-white/10">
+                 {period.name} ({period.code})
+               </SelectItem>
+             ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Selected Period Info */}
