@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import { invoke } from '@tauri-apps/api/core';
+import { MarkdownPreview, MarkdownViewToggle } from './MarkdownPreview';
 
 interface FileViewerProps {
   filePath: string;
@@ -10,6 +11,17 @@ export function FileViewer({ filePath }: FileViewerProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'code' | 'preview'>('preview');
+  
+  const isMarkdown = filePath.toLowerCase().endsWith('.md') || 
+                     filePath.toLowerCase().endsWith('.markdown');
+
+  // Reset view mode when file changes
+  useEffect(() => {
+    if (isMarkdown) {
+      setViewMode('preview');
+    }
+  }, [filePath, isMarkdown]);
 
   useEffect(() => {
     let isMounted = true;
@@ -60,46 +72,54 @@ export function FileViewer({ filePath }: FileViewerProps) {
       case 'css': return 'css';
       case 'html': return 'html';
       case 'rs': return 'rust';
-      case 'md': return 'markdown';
+      case 'md':
+      case 'markdown': return 'markdown';
       case 'py': return 'python';
       default: return 'plaintext';
     }
   }
 
   if (loading) {
-     return <div className="h-full w-full flex items-center justify-center text-xs text-neutral-500 font-geist">Loading file...</div>;
+    return <div className="h-full w-full flex items-center justify-center text-xs text-neutral-500 font-geist">Loading file...</div>;
   }
 
   if (error) {
-     return <div className="h-full w-full flex items-center justify-center text-xs text-red-500 font-geist break-all px-6 text-center">Failed to load file: {error}</div>;
+    return <div className="h-full w-full flex items-center justify-center text-xs text-red-500 font-geist break-all px-6 text-center">Failed to load file: {error}</div>;
   }
 
   return (
     <div className="h-full w-full flex flex-col relative bg-transparent overflow-hidden">
-      <div className="px-5 py-2.5 border-b border-app-border flex items-center shrink-0 bg-black/10">
-         <div className="flex items-center gap-2">
-           <span className="text-xs font-semibold text-neutral-300 font-geist tracking-wide">{filePath.split('/').pop()}</span>
-           <span className="text-[10px] text-neutral-600 font-geist truncate max-w-[400px]">{filePath.split('/').slice(0,-1).join('/')}</span>
-         </div>
+      <div className="px-5 py-2.5 border-b border-app-border flex items-center justify-between shrink-0 bg-black/10">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-neutral-300 font-geist tracking-wide">{filePath.split('/').pop()}</span>
+          <span className="text-[10px] text-neutral-600 font-geist truncate max-w-[400px]">{filePath.split('/').slice(0,-1).join('/')}</span>
+        </div>
+        {isMarkdown && (
+          <MarkdownViewToggle viewMode={viewMode} onChange={(mode) => setViewMode(mode as 'code' | 'preview')} />
+        )}
       </div>
-      <div className="flex-1 relative">
-        <Editor
-          height="100%"
-          language={getLanguage(filePath)}
-          value={content}
-          beforeMount={handleBeforeMount}
-          theme="akira-dark"
-          options={{
-            fontSize: 13,
-            fontFamily: 'JetBrains Mono, monospace',
-            readOnly: true,
-            minimap: { enabled: true },
-            wordWrap: 'off',
-            scrollBeyondLastLine: false,
-            padding: { top: 16 }
-          }}
-          loading={<div className="h-full w-full flex items-center justify-center text-xs text-neutral-500 font-geist">Preparing editor...</div>}
-        />
+      <div className="flex-1 relative overflow-hidden">
+        {isMarkdown && viewMode === 'preview' ? (
+          <MarkdownPreview content={content} viewMode={viewMode} />
+        ) : (
+          <Editor
+            height="100%"
+            language={getLanguage(filePath)}
+            value={content}
+            beforeMount={handleBeforeMount}
+            theme="akira-dark"
+            options={{
+              fontSize: 13,
+              fontFamily: 'JetBrains Mono, monospace',
+              readOnly: true,
+              minimap: { enabled: true },
+              wordWrap: 'off',
+              scrollBeyondLastLine: false,
+              padding: { top: 16 }
+            }}
+            loading={<div className="h-full w-full flex items-center justify-center text-xs text-neutral-500 font-geist">Preparing editor...</div>}
+          />
+        )}
       </div>
     </div>
   );

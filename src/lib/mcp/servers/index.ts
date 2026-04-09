@@ -23,15 +23,11 @@ class InternalServerRegistry {
    */
   initialize(): void {
     if (this.initialized) {
-      console.log('[InternalServers] Already initialized');
       return;
     }
     
-    console.log('[InternalServers] Initializing internal MCP servers...');
-    
     const register = (tool: InternalTool) => {
       useToolRegistry.getState().registerInternalTool(tool);
-      console.log(`[InternalServers] Registered tool: ${tool.name}`);
     };
     
     // Register all servers
@@ -41,7 +37,8 @@ class InternalServerRegistry {
     registerBashServerTools(register);
     
     this.initialized = true;
-    console.log('[InternalServers] Initialization complete');
+    
+    console.log('[InternalServers] Initialized. Tools:', this.getTools().length);
   }
   
   /**

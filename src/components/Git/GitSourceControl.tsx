@@ -1,11 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Minus, ChevronDown, ChevronRight, RefreshCw, RotateCcw, GitBranch, Merge, X, Loader2, AlertCircle, Archive, Inbox, Trash2 } from 'lucide-react';
+import { Plus, Minus, ChevronDown, ChevronRight, RefreshCw, RotateCcw, GitBranch, Merge, X, Loader2, AlertCircle, Archive, Inbox, Trash2, Sparkles, GitCommit, Rocket, Pencil } from 'lucide-react';
 import { useWorkspaceStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { getGitBranches, getLatestAlphaTag, mergeTaskToBranch, getDefaultRemote } from '@/lib/git';
+import { generateCommitMessage, generateCommitMessageFromFiles } from '@/lib/commitMessage';
+import { GitGraph } from './GitGraph';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 interface GitFileStatus {
   path: string;
@@ -27,9 +36,10 @@ interface StashEntry {
 interface GitSourceControlProps {
   onFileSelect: (path: string) => void;
   selectedFile: string | null;
+  onShowDiff?: (commitHash: string, filePath: string) => void;
 }
 
-export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceControlProps) {
+export function GitSourceControl({ onFileSelect, selectedFile, onShowDiff }: GitSourceControlProps) {
   const { activeWorkspace } = useWorkspaceStore();
   const [status, setStatus] = useState<GitStatusResult>({ staged: [], unstaged: [] });
   const [loading, setLoading] = useState(false);
@@ -57,6 +67,11 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [stashMessage, setStashMessage] = useState('');
   const [isStashing, setIsStashing] = useState(false);
+
+// Commit message state
+  const [commitInputMessage, setCommitInputMessage] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(false);
 
   // Calculate next tag when createTag or bumpType changes
   useEffect(() => {
@@ -405,7 +420,7 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
     }
   }, [activeWorkspace, fetchStatus, loadStashes]);
 
-  const handleStashDrop = useCallback(async (stashId: string) => {
+const handleStashDrop = useCallback(async (stashId: string) => {
     if (!activeWorkspace?.folder_path) return;
     if (!confirm(`Delete ${stashId}? This cannot be undone.`)) return;
     
@@ -427,6 +442,83 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
       toast.error(`Drop failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, [activeWorkspace, loadStashes]);
+
+  const handleGenerateCommitMessage = useCallback(async () => {
+    if (!activeWorkspace?.folder_path) return;
+    if (status.staged.length === 0) {
+      toast.error('No staged changes to generate message for');
+      return;
+    }
+    
+    setIsGenerating(true);
+    try {
+      const result = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+        command: 'git',
+        args: ['diff', '--cached', '--stat'],
+        cwd: activeWorkspace.folder_path
+      });
+      
+      if (result.success) {
+        const message = await generateCommitMessage({ diff: result.stdout });
+        setCommitInputMessage(message);
+      } else {
+        const fallbackMessage = generateCommitMessageFromFiles(status.staged);
+        setCommitInputMessage(fallbackMessage);
+      }
+    } catch (error) {
+      console.error('Failed to generate commit message:', error);
+      const fallbackMessage = generateCommitMessageFromFiles(status.staged);
+      setCommitInputMessage(fallbackMessage);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [activeWorkspace, status.staged]);
+
+  const handleCommit = useCallback(async (message: string, push: boolean = false, amend: boolean = false) => {
+    if (!activeWorkspace?.folder_path) return;
+    if (!message.trim()) {
+      toast.error('Please enter a commit message');
+      return;
+    }
+    
+    if (status.staged.length === 0 && !amend) {
+      toast.error('No staged changes to commit');
+      return;
+    }
+    
+    setIsCommitting(true);
+    try {
+      if (amend) {
+        await invoke('git_commit_amend', { cwd: activeWorkspace.folder_path, message: message.trim() });
+        toast.success('Commit amended');
+      } else {
+        await invoke('git_commit', { cwd: activeWorkspace.folder_path, message: message.trim() });
+        
+        if (push) {
+          const remote = await getDefaultRemote(activeWorkspace.folder_path);
+          const branchResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+            command: 'git',
+            args: ['branch', '--show-current'],
+            cwd: activeWorkspace.folder_path
+          });
+          const branch = branchResult.success ? branchResult.stdout.trim() : 'main';
+          await invoke('git_push', { cwd: activeWorkspace.folder_path, remote, branch });
+          toast.success('Committed and pushed');
+        } else {
+          toast.success('Committed successfully');
+        }
+      }
+      
+      setCommitInputMessage('');
+      fetchStatus();
+      loadCurrentBranch();
+    } catch (error) {
+      console.error('Commit failed:', error);
+      toast.error(`Commit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsCommitting(false);
+    }
+  }, [activeWorkspace, status.staged, fetchStatus, loadCurrentBranch]);
 
   const getBadgeColor = (type: string) => {
     switch(type.trim()) {
@@ -473,6 +565,76 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
           <button onClick={fetchStatus} className="text-neutral-500 hover:text-white transition-colors">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+      </div>
+      
+      {/* Commit Message Input */}
+      <div className="px-3 py-2 border-b border-app-border shrink-0">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <textarea
+            value={commitInputMessage}
+            onChange={(e) => setCommitInputMessage(e.target.value)}
+            placeholder="Message (press Ctrl+Enter to commit)"
+            className="flex-1 px-2 py-1.5 bg-app-bg border border-app-border rounded text-xs text-white font-mono resize-none focus:outline-none focus:border-app-accent min-h-[60px]"
+            rows={3}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                handleCommit(commitInputMessage, false, false);
+              }
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={handleGenerateCommitMessage}
+            disabled={isGenerating || status.staged.length === 0}
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-neutral-400 hover:text-app-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isGenerating ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Sparkles className="w-3 h-3" />
+            )}
+            Generate
+          </button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <button
+                disabled={isCommitting || (status.staged.length === 0 && !commitInputMessage.trim())}
+                className="flex items-center gap-1 px-3 py-1 bg-app-accent/20 hover:bg-app-accent/30 text-app-accent text-xs rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isCommitting ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Committing...</span>
+                  </>
+                ) : (
+                  <>
+                    <GitCommit className="w-3 h-3" />
+                    <span>Commit</span>
+                    <ChevronDown className="w-3 h-3" />
+                  </>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => handleCommit(commitInputMessage, false, false)}>
+                <GitCommit className="w-3.5 h-3.5 mr-2" />
+                Commit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleCommit(commitInputMessage, true, false)}>
+                <Rocket className="w-3.5 h-3.5 mr-2" />
+                Commit & Push
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleCommit(commitInputMessage, false, true)}>
+                <Pencil className="w-3.5 h-3.5 mr-2" />
+                Amend Last Commit
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       
@@ -885,6 +1047,16 @@ export function GitSourceControl({ onFileSelect, selectedFile }: GitSourceContro
           </div>
         </div>
       )}
+      
+      {/* Git Graph */}
+      <GitGraph 
+        onFileSelect={(commitHash, filePath) => {
+          // Show diff in main content area
+          if (onShowDiff) {
+            onShowDiff(commitHash, filePath);
+          }
+        }}
+      />
     </div>
   );
 }

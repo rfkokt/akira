@@ -91,6 +91,12 @@ fn main() {
             commands::git::git_unstage,
             commands::git::git_show_head,
             commands::git::git_discard_changes,
+            commands::git::git_log,
+            commands::git::git_commit_amend,
+            commands::git::git_show_files,
+            commands::git::git_show_file,
+            commands::git::git_show_file_diff,
+            commands::git::git_show_file_diff_patch,
             // Chat
             commands::chat::create_chat_message,
             commands::chat::get_chat_history,

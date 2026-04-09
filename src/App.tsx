@@ -12,6 +12,7 @@ import { FileTree } from './components/Editor/FileTree'
 import { FileViewer } from './components/Editor/FileViewer'
 import { GitSourceControl } from './components/Git/GitSourceControl'
 import { MonacoDiffViewer } from './components/Git/MonacoDiffViewer'
+import { CommitDiffViewer } from './components/Git/CommitDiffViewer'
 import { GitBranchSelector } from './components/Git/GitBranchSelector'
 import { RecoveryModal } from './components/RecoveryModal'
 import { TerminalPanel } from './components/TerminalPanel'
@@ -34,6 +35,11 @@ interface OpenFile {
   name: string
 }
 
+interface CommitDiff {
+  commitHash: string
+  filePath: string
+}
+
 function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
@@ -42,7 +48,8 @@ function App() {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFileIndex, setActiveFileIndex] = useState<number | null>(null)
   const [selectedGitFile, setSelectedGitFile] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'normal' | 'diff'>('normal')
+  const [viewMode, setViewMode] = useState<'normal' | 'diff' | 'commitDiff'>('normal')
+  const [commitDiffInfo, setCommitDiffInfo] = useState<CommitDiff | null>(null)
   const { engines, activeEngine, setActiveEngine, fetchEngines, seedDefaultEngines, isLoading } = useEngineStore()
   const { activeWorkspace, loadActiveWorkspace, loadWorkspaces } = useWorkspaceStore()
   const { setCurrentWorkspace } = useTaskStore()
@@ -74,11 +81,16 @@ function App() {
 
   // Load active workspace on mount
   useEffect(() => {
+    console.log('[App] useEffect running, initializing...');
     const init = async () => {
+      console.log('[App] loadActiveWorkspace...');
       await loadActiveWorkspace()
+      console.log('[App] loadWorkspaces...');
       await loadWorkspaces()
+      console.log('[App] Calling initializeInternalServers...');
       // Initialize internal MCP servers (task, project, skill tools)
       initializeInternalServers()
+      console.log('[App] initializeInternalServers complete');
     }
     init()
     
@@ -306,6 +318,12 @@ function App() {
               {/* Content Area */}
               {viewMode === 'diff' && selectedGitFile && activeWorkspace ? (
                 <MonacoDiffViewer filePath={selectedGitFile} workspacePath={activeWorkspace.folder_path} />
+              ) : viewMode === 'commitDiff' && commitDiffInfo && activeWorkspace ? (
+                <CommitDiffViewer 
+                  commitHash={commitDiffInfo.commitHash} 
+                  filePath={commitDiffInfo.filePath}
+                  workspacePath={activeWorkspace.folder_path}
+                />
               ) : viewMode === 'normal' && activeFile ? (
                 <FileViewer filePath={activeFile} />
               ) : (
@@ -330,7 +348,11 @@ function App() {
                   onFileSelect={(path) => {
                     setSelectedGitFile(path)
                     setViewMode('diff')
-                  }} 
+                  }}
+                  onShowDiff={(commitHash, filePath) => {
+                    setCommitDiffInfo({ commitHash, filePath })
+                    setViewMode('commitDiff')
+                  }}
                 />
               </div>
             )}

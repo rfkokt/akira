@@ -9,6 +9,20 @@ pub struct GitBranchesResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GitLogEntry {
+    pub hash: String,
+    pub full_hash: String,
+    pub message: String,
+    pub author: String,
+    pub email: String,
+    pub date: String,
+    pub date_iso: String,
+    pub parents: Vec<String>,
+    pub refs: Vec<String>,
+    pub is_merge: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct GitDiffResult {
     pub diff: String,
     pub has_changes: bool,
@@ -403,4 +417,253 @@ pub fn git_discard_changes(cwd: String, paths: Vec<String>) -> Result<(), String
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn git_log(
+    cwd: String,
+    count: Option<u32>,
+    branch: Option<String>,
+) -> Result<Vec<GitLogEntry>, String> {
+    let count = count.unwrap_or(50);
+
+    let mut args = vec![
+        "log".to_string(),
+        "--format=%H|%h|%s|%an|%ae|%ar|%aI|%P|%D".to_string(),
+        format!("-{}", count),
+    ];
+
+    // Add branch filter if specified, otherwise use --all
+    if let Some(b) = branch {
+        args.push(b);
+    } else {
+        args.push("--all".to_string());
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to run git log: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to get git log: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut entries = Vec::new();
+
+    for line in stdout.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        // Parse format: %H|%h|%s|%an|%ae|%ar|%aI|%P|%D
+        let parts: Vec<&str> = line.split('|').collect();
+
+        if parts.len() < 8 {
+            continue;
+        }
+
+        let full_hash = parts[0].to_string();
+        let hash = parts[1].to_string();
+        let message = parts[2].to_string();
+        let author = parts[3].to_string();
+        let email = parts[4].to_string();
+        let date = parts[5].to_string();
+        let date_iso = parts[6].to_string();
+        let parents: Vec<String> = parts
+            .get(7)
+            .map(|p| p.split_whitespace().map(|s| s.to_string()).collect())
+            .unwrap_or_default();
+        let refs_str = parts.get(8).unwrap_or(&"");
+        let refs: Vec<String> = refs_str
+            .split(", ")
+            .filter(|s| !s.is_empty() && !s.starts_with("HEAD"))
+            .map(|s| {
+                // Clean up ref names: "origin/main" -> "main", "tag: v1.0" -> "v1.0"
+                let s = s.trim();
+                if s.starts_with("origin/") {
+                    s.strip_prefix("origin/").unwrap_or(s).to_string()
+                } else if s.starts_with("tag: ") {
+                    s.strip_prefix("tag: ").unwrap_or(s).to_string()
+                } else {
+                    s.to_string()
+                }
+            })
+            .collect();
+
+        let is_merge = parents.len() > 1;
+
+        entries.push(GitLogEntry {
+            hash,
+            full_hash,
+            message,
+            author,
+            email,
+            date,
+            date_iso,
+            parents,
+            refs,
+            is_merge,
+        });
+    }
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn git_commit_amend(cwd: String, message: String) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["commit", "--amend", "-m", &message])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to amend commit: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Failed to amend commit: {}", stderr))
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct CommitFile {
+    pub path: String,
+    pub status: String,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+#[tauri::command]
+pub fn git_show_files(cwd: String, hash: String) -> Result<Vec<CommitFile>, String> {
+    let output = Command::new("git")
+        .args(["show", "--stat", "--format=", &hash])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to show commit: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to show commit: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files = Vec::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("commit ") {
+            continue;
+        }
+
+        // Parse lines like: " src/file.ts |  12 +++++---"
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() >= 2 {
+            let path = parts[0].trim();
+            if path.is_empty() {
+                continue;
+            }
+
+            // Determine status based on diff output
+            let status = if line.starts_with(" create mode") || line.contains("new file") {
+                "A"
+            } else if line.starts_with(" delete mode") || line.contains("deleted") {
+                "D"
+            } else if line.contains("rename") {
+                "R"
+            } else {
+                "M"
+            };
+
+            // Parse additions/deletions from the stats part
+            let stats_part = parts.get(1).unwrap_or(&"").trim();
+            let mut additions = 0u32;
+            let mut deletions = 0u32;
+
+            // Count + and - characters
+            for c in stats_part.chars() {
+                if c == '+' {
+                    additions += 1;
+                } else if c == '-' {
+                    deletions += 1;
+                }
+            }
+
+            files.push(CommitFile {
+                path: path.to_string(),
+                status: status.to_string(),
+                additions,
+                deletions,
+            });
+        }
+    }
+
+    Ok(files)
+}
+
+#[tauri::command]
+pub fn git_show_file(cwd: String, commit: String, path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["show", &format!("{}:{}", commit, path)])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to show file: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to show file: {}", stderr));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[tauri::command]
+pub fn git_show_file_diff(cwd: String, hash: String, file_path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["show", "--format=", &format!("{}:{}", hash, file_path)])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to show file: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to show file: {}", stderr));
+    }
+
+    let content = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(content)
+}
+
+#[tauri::command]
+pub fn git_show_file_diff_patch(
+    cwd: String,
+    commit: String,
+    file_path: String,
+) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["diff", &format!("{}^", commit), &commit, "--", &file_path])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to show diff: {}", e))?;
+
+    if !output.status.success() {
+        // Try without parent (for initial commits)
+        let output = Command::new("git")
+            .args(["show", &commit, "--", &file_path])
+            .current_dir(&cwd)
+            .output()
+            .map_err(|e| format!("Failed to show diff: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to show diff: {}", stderr));
+        }
+
+        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
