@@ -89,7 +89,7 @@ function buildCompactToolPrompt(tools: InternalTool[]): string {
     }
     
     for (const tool of categoryTools) {
-      const parsed = parseToolName(tool.name)
+
       
       let params = ''
       if (tool.parameters && tool.parameters.properties) {
