@@ -26,6 +26,7 @@ import {
   extractToolCallsFromResponse,
   executeToolCalls,
   formatToolResultsForPrompt,
+  formatToolResultsForChat,
 } from '@/lib/mcp/aiIntegration';
 import { trackToolCall } from '@/lib/mcp/analytics';
 import { injectToolsIntoPrompt } from '@/lib/mcp';
@@ -246,7 +247,7 @@ async function processToolCallsFromResponse(
   taskId?: string,
   _onToolCallStart?: (toolCallId: string, toolName: string) => void,
   onToolCallComplete?: (toolCallId: string, success: boolean, result?: string, error?: string) => void
-): Promise<{ hasToolCalls: boolean; toolResults?: string }> {
+): Promise<{ hasToolCalls: boolean; toolResults?: string; toolResultsDisplay?: string }> {
   const toolCalls = extractToolCallsFromResponse(response);
   
   if (toolCalls.length === 0) {
@@ -295,12 +296,14 @@ async function processToolCallsFromResponse(
     }
   }
   
-  // Format results for AI
-  const formattedResults = formatToolResultsForPrompt(results);
+  // Format results: one for AI prompt, one for chat display  
+  const formattedResultsForPrompt = formatToolResultsForPrompt(results);
+  const formattedResultsForChat = formatToolResultsForChat(results);
   
   return {
     hasToolCalls: true,
-    toolResults: formattedResults,
+    toolResults: formattedResultsForPrompt,
+    toolResultsDisplay: formattedResultsForChat,
   };
 }
 
@@ -952,18 +955,18 @@ Please respond concisely. Use 'rtk' for any commands.`;
       const toolResult = await processToolCallsFromResponse(result.content, taskId);
       
       if (toolResult.hasToolCalls && toolResult.toolResults) {
-        // Add tool results as system message
+        // Add tool results as system message - use display format (no AI instructions)
         addMessage(get, set, taskId, {
           id: `msg-${Date.now()}-tools`,
           taskId,
           role: 'system',
-          content: toolResult.toolResults,
+          content: toolResult.toolResultsDisplay || toolResult.toolResults,
           timestamp: Date.now(),
         });
         
         // Save tool results to DB
         try {
-          await dbService.createChatMessage(taskId, 'system', toolResult.toolResults, 'tool-execution');
+          await dbService.createChatMessage(taskId, 'system', toolResult.toolResultsDisplay || toolResult.toolResults, 'tool-execution');
         } catch { /* non-critical */ }
       }
 
@@ -1143,18 +1146,18 @@ Please respond concisely. Use 'rtk' for any commands.`;
       const toolResult = await processToolCallsFromResponse(result.content, taskId);
       
       if (toolResult.hasToolCalls && toolResult.toolResults) {
-        // Add tool results as system message
+        // Add tool results as system message - use display format (no AI instructions)
         addMessage(get, set, taskId, {
           id: `msg-${Date.now()}-tools`,
           taskId,
           role: 'system',
-          content: toolResult.toolResults,
+          content: toolResult.toolResultsDisplay || toolResult.toolResults,
           timestamp: Date.now(),
         });
         
         // Save tool results to DB
         try {
-          await dbService.createChatMessage(taskId, 'system', toolResult.toolResults, 'tool-execution');
+          await dbService.createChatMessage(taskId, 'system', toolResult.toolResultsDisplay || toolResult.toolResults, 'tool-execution');
         } catch { /* non-critical */ }
       }
 

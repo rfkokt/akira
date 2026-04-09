@@ -266,7 +266,31 @@ export function formatToolResultsForPrompt(results: ToolResultInfo[]): string {
     }
   }
   
-  lines.push('[/TOOL RESULTS]\n');
+  lines.push('[/TOOL RESULTS]');
+  return lines.join('\n');
+}
+
+// Display-only version shown in chat UI (no AI instructions leaking through)
+export function formatToolResultsForChat(results: ToolResultInfo[]): string {
+  const lines: string[] = ['[TOOL RESULTS]'];
+  
+  for (const result of results) {
+    const parsed = parseToolName(result.toolName);
+    const icon = parsed.source === 'internal' ? '🔧' : '🔌';
+    
+    if (result.success) {
+      lines.push(`${icon} ${result.toolName}: Success`);
+      if (result.result) {
+        const resultStr = String(result.result);
+        const MAX_LEN = 15000;
+        lines.push(`  Result: ${resultStr.substring(0, MAX_LEN)}${resultStr.length > MAX_LEN ? '...[truncated]' : ''}`);
+      }
+    } else {
+      lines.push(`${icon} ${result.toolName}: Error - ${result.error}`);
+    }
+  }
+  
+  lines.push('[/TOOL RESULTS]');
   return lines.join('\n');
 }
 
@@ -366,9 +390,8 @@ You have access to these tools. Use them by mentioning the tool name in your res
 
 ${toolDefs}
 
-To invoke a tool, use format: [Tool: tool_name {"param1": "value"}]. 
-Include JSON arguments if required by the parameters definition.
-The tool will be executed and results will be provided.
+To use a tool, include exactly: [Tool: tool_name {"arg": "value"}]
+After getting tool results, respond CONVERSATIONALLY in plain language. Never dump raw JSON to the user. Summarize and explain results naturally.
 [/AVAILABLE TOOLS]
 `;
 }

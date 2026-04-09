@@ -14,6 +14,12 @@ import {
 } from '@/lib/mcp/types';
 import * as mcpClient from '@/lib/mcp/client';
 
+// Cache for external server URLs (not stored in McpServerDto)
+const externalUrlCache = new Map<string, string>();
+export function setExternalServerUrl(serverId: string, url: string) {
+  externalUrlCache.set(serverId, url);
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -215,12 +221,39 @@ export const useMcpStore = create<McpState>((set, get) => ({
   },
   
   connectServer: async (serverId) => {
-    const { updateServerStatus, setServerTools } = get();
-    
+    const { updateServerStatus, setServerTools, servers } = get();
+    const server = servers.find(s => s.id === serverId);
+    if (!server) { throw new Error('Server not found'); }
+
     // Optimistically update status
     updateServerStatus(serverId, 'connecting');
-    
+
     try {
+      // Use frontend externalManager for SSE/HTTP transports (Context7, etc.)
+      if (server.transportType === 'sse' || server.transportType === 'http') {
+        const { connectExternalServer } = await import('@/lib/mcp/externalManager');
+        
+        // Get URL from externalUrlCache (set when server was created)
+        const url = externalUrlCache.get(serverId) || '';
+
+        const transport = {
+          type: server.transportType as 'sse' | 'http',
+          url,
+          headers: {} as Record<string, string>,
+        };
+
+        const result = await connectExternalServer(serverId, server.name, transport);
+        
+        setServerTools(serverId, result.tools.map(t => ({
+          name: t.name,
+          description: t.description || '',
+          inputSchema: t.inputSchema || {},
+        })));
+        updateServerStatus(serverId, 'connected');
+        return;
+      }
+
+      // Fallback to Rust backend (stdio or legacy)
       const tools = await mcpClient.connectMcpServer(serverId);
       setServerTools(serverId, tools);
       updateServerStatus(serverId, 'connected');
@@ -231,18 +264,38 @@ export const useMcpStore = create<McpState>((set, get) => ({
       throw err;
     }
   },
-  
+
   disconnectServer: async (serverId) => {
     try {
-      await mcpClient.disconnectMcpServer(serverId);
+      // Disconnect from externalManager if active
+      const { disconnectExternalServer } = await import('@/lib/mcp/externalManager');
+      await disconnectExternalServer(serverId).catch(() => {/* ignore if not connected */});
+      
+      await mcpClient.disconnectMcpServer(serverId).catch(() => {/* ignore rust errors */});
       get().updateServerStatus(serverId, 'disabled');
     } catch (err) {
       console.error('Failed to disconnect from MCP server:', err);
       throw err;
     }
   },
-  
+
   testConnection: async (transport, auth) => {
+    // For SSE/HTTP, test directly from frontend
+    if (transport.type === 'sse' || transport.type === 'http') {
+      try {
+        const { createExternalMcpClient } = await import('@/lib/mcp/externalClient');
+        const client = createExternalMcpClient({
+          type: transport.type,
+          url: (transport as { url?: string }).url || '',
+        });
+        await client.listTools();
+        client.disconnect();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     try {
       const result = await mcpClient.testMcpConnection(transport, auth);
       return result.success;
