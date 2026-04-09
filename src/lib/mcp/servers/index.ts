@@ -22,12 +22,16 @@ class InternalServerRegistry {
    * Initialize all internal servers by registering their tools
    */
   initialize(): void {
-    if (this.initialized) {
-      return;
+    const registry = useToolRegistry.getState();
+
+    // Unregister existing internal tools first (supports HMR re-init without duplicates)
+    const existingTools = registry.getAllInternalTools();
+    for (const tool of existingTools) {
+      registry.unregisterInternalTool(tool.name);
     }
     
     const register = (tool: InternalTool) => {
-      useToolRegistry.getState().registerInternalTool(tool);
+      registry.registerInternalTool(tool);
     };
     
     // Register all servers

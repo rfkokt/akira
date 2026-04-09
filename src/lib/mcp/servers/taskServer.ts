@@ -15,7 +15,7 @@ export function createTaskServerTools(): InternalTool[] {
   return [
     {
       name: 'task_list',
-      description: 'List all tasks in a workspace, optionally filtered by status',
+      description: 'List all tasks in a workspace. Status values: backlog, todo, in-progress, review, done (= completed/finished), failed',
       parameters: {
         type: 'object',
         properties: {
@@ -26,7 +26,7 @@ export function createTaskServerTools(): InternalTool[] {
           status: {
             type: 'string',
             enum: ['backlog', 'todo', 'in-progress', 'review', 'done', 'failed'],
-            description: 'Filter by task status',
+            description: 'Filter by task status. Use "done" for completed/finished tasks. NEVER use "completed".',
           },
           priority: {
             type: 'string',
@@ -34,27 +34,73 @@ export function createTaskServerTools(): InternalTool[] {
             description: 'Filter by priority',
           },
         },
-        required: ['workspaceId'],
+        required: [],
       },
       category: 'task',
       handler: async (args) => {
-        const { workspaceId, status, priority } = args as {
-          workspaceId: string;
+        const { status, priority } = args as {
+          workspaceId?: string;
           status?: string;
           priority?: string;
         };
-        
+
+        const { useTaskStore } = await import('@/store/taskStore');
+        const { useWorkspaceStore } = await import('@/store/workspaceStore');
+
+        // Resolve workspaceId
+        let { workspaceId } = args as { workspaceId?: string };
+        const taskState = useTaskStore.getState();
+        const activeWs = useWorkspaceStore.getState().activeWorkspace;
+
+        if (!workspaceId) {
+          workspaceId = activeWs?.id || taskState.currentWorkspaceId || undefined;
+        }
+
+        console.log('[task_list] workspaceId resolved:', workspaceId);
+        console.log('[task_list] store tasks count:', taskState.tasks.length);
+        console.log('[task_list] currentWorkspaceId in store:', taskState.currentWorkspaceId);
+        console.log('[task_list] activeWorkspace id:', activeWs?.id);
+        if (taskState.tasks.length > 0) {
+          console.log('[task_list] sample task workspace_ids:', taskState.tasks.slice(0, 3).map(t => t.workspace_id));
+        }
+
         try {
-          const { dbService } = await import('@/lib/db');
-          let tasks = await dbService.getTasksByWorkspace(workspaceId);
-          
-          if (status) {
-            tasks = tasks.filter(t => t.status === status);
+          let tasks = taskState.tasks;
+
+          // If store is empty, fetch from DB
+          if (tasks.length === 0 && workspaceId) {
+            console.log('[task_list] store empty, fetching from DB...');
+            await taskState.fetchTasks(workspaceId);
+            tasks = useTaskStore.getState().tasks;
+            console.log('[task_list] after fetch, tasks count:', tasks.length);
           }
+
+          // Filter by workspace_id if workspaceId is available
+          if (workspaceId) {
+            const before = tasks.length;
+            tasks = tasks.filter(t => t.workspace_id === workspaceId);
+            console.log('[task_list] after workspace filter:', tasks.length, '(was', before, ')');
+          }
+
+        // Normalize natural language status aliases → actual status values
+        const statusAliasMap: Record<string, string> = {
+          'completed': 'done',
+          'finish': 'done',
+          'finished': 'done',
+          'complete': 'done',
+          'in_progress': 'in-progress',
+          'inprogress': 'in-progress',
+          'wip': 'in-progress',
+        };
+        const normalizedStatus = status ? (statusAliasMap[status.toLowerCase()] || status) : undefined;
+
+        if (normalizedStatus) {
+          tasks = tasks.filter(t => t.status === normalizedStatus);
+        }
           if (priority) {
             tasks = tasks.filter(t => t.priority === priority);
           }
-          
+
           return {
             success: true,
             count: tasks.length,
@@ -149,16 +195,26 @@ export function createTaskServerTools(): InternalTool[] {
             description: 'Task priority (default: medium)',
           },
         },
-        required: ['workspaceId', 'title'],
+        required: ['title'],
       },
       category: 'task',
       handler: async (args) => {
-        const { workspaceId, title, description, priority } = args as {
-          workspaceId: string;
+        const { title, description, priority } = args as {
+          workspaceId?: string;
           title: string;
           description?: string;
           priority?: string;
         };
+        
+        // Auto-resolve workspaceId
+        let { workspaceId } = args as { workspaceId?: string };
+        if (!workspaceId) {
+          const { useWorkspaceStore } = await import('@/store/workspaceStore');
+          workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
+        }
+        if (!workspaceId) {
+          return { success: false, error: 'No active workspace. Please specify workspaceId.' };
+        }
         
         try {
           const { useTaskStore } = await import('@/store/taskStore');
@@ -335,14 +391,24 @@ export function createTaskServerTools(): InternalTool[] {
             description: 'The search query',
           },
         },
-        required: ['workspaceId', 'query'],
+        required: ['query'],
       },
       category: 'task',
       handler: async (args) => {
-        const { workspaceId, query } = args as {
-          workspaceId: string;
+        const { query } = args as {
+          workspaceId?: string;
           query: string;
         };
+        
+        // Auto-resolve workspaceId
+        let { workspaceId } = args as { workspaceId?: string };
+        if (!workspaceId) {
+          const { useWorkspaceStore } = await import('@/store/workspaceStore');
+          workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
+        }
+        if (!workspaceId) {
+          return { success: false, error: 'No active workspace.' };
+        }
         
         try {
           const { dbService } = await import('@/lib/db');

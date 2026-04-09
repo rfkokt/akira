@@ -132,6 +132,14 @@ function App() {
       console.log('[App] initializeInternalServers complete');
     }
     init()
+
+    // Re-initialize MCP servers on HMR updates (dev only)
+    if ((import.meta as any).hot) {
+      (import.meta as any).hot.on('vite:afterUpdate', () => {
+        console.log('[HMR] Re-initializing internal MCP servers...')
+        initializeInternalServers()
+      })
+    }
     
     // Cleanup on unmount
     return () => {
