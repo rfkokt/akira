@@ -47,7 +47,8 @@ export function createFileServerTools(): InternalTool[] {
         const { path } = args as { path: string };
         
         try {
-          const content = await invoke<string>('read_file', { path });
+          const resolvedPath = await resolvePath(path);
+          const content = await invoke<string>('read_file', { path: resolvedPath });
           
           return {
             success: true,
@@ -57,7 +58,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to read file',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to read file'),
           };
         }
       },
@@ -87,7 +88,8 @@ export function createFileServerTools(): InternalTool[] {
         };
         
         try {
-          await invoke('write_file', { path, content });
+          const resolvedPath = await resolvePath(path);
+          await invoke('write_file', { path: resolvedPath, content });
           
           return {
             success: true,
@@ -96,7 +98,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to write file',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to write file'),
           };
         }
       },
@@ -136,8 +138,9 @@ export function createFileServerTools(): InternalTool[] {
         };
         
         try {
+          const resolvedPath = await resolvePath(path);
           // Read current content
-          const content = await invoke<string>('read_file', { path });
+          const content = await invoke<string>('read_file', { path: resolvedPath });
           
           // Perform replacement
           let newContent: string;
@@ -156,7 +159,7 @@ export function createFileServerTools(): InternalTool[] {
           }
           
           // Write back
-          await invoke('write_file', { path, content: newContent });
+          await invoke('write_file', { path: resolvedPath, content: newContent });
           
           return {
             success: true,
@@ -165,7 +168,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to edit file',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to edit file'),
           };
         }
       },
@@ -195,7 +198,7 @@ export function createFileServerTools(): InternalTool[] {
         };
         
         try {
-          const workspacePath = path || await getWorkspacePath();
+          const workspacePath = path ? await resolvePath(path) : await getWorkspacePath();
           
           const results = await invoke<SearchResult[]>('search_files', {
             rootPath: workspacePath,
@@ -210,7 +213,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to search files',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to search files'),
           };
         }
       },
@@ -233,7 +236,8 @@ export function createFileServerTools(): InternalTool[] {
         const { path } = args as { path: string };
         
         try {
-          const entries = await invoke<FileEntry[]>('read_directory', { path });
+          const resolvedPath = await resolvePath(path);
+          const entries = await invoke<FileEntry[]>('read_directory', { path: resolvedPath });
           
           return {
             success: true,
@@ -246,7 +250,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to list directory',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to list directory'),
           };
         }
       },
@@ -276,7 +280,7 @@ export function createFileServerTools(): InternalTool[] {
         };
         
         try {
-          const workspacePath = path || await getWorkspacePath();
+          const workspacePath = path ? await resolvePath(path) : await getWorkspacePath();
           
           const results = await invoke<SearchResult[]>('search_in_files', {
             rootPath: workspacePath,
@@ -295,7 +299,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to search content',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to search content'),
           };
         }
       },
@@ -318,7 +322,8 @@ export function createFileServerTools(): InternalTool[] {
         const { path } = args as { path: string };
         
         try {
-          await invoke('create_directory', { path });
+          const resolvedPath = await resolvePath(path);
+          await invoke('create_directory', { path: resolvedPath });
           
           return {
             success: true,
@@ -327,7 +332,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to create directory',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to create directory'),
           };
         }
       },
@@ -350,7 +355,8 @@ export function createFileServerTools(): InternalTool[] {
         const { path } = args as { path: string };
         
         try {
-          await invoke('delete_file', { path });
+          const resolvedPath = await resolvePath(path);
+          await invoke('delete_file', { path: resolvedPath });
           
           return {
             success: true,
@@ -359,7 +365,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to delete file',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to delete file'),
           };
         }
       },
@@ -382,7 +388,8 @@ export function createFileServerTools(): InternalTool[] {
         const { path } = args as { path: string };
         
         try {
-          await invoke('delete_directory', { path });
+          const resolvedPath = await resolvePath(path);
+          await invoke('delete_directory', { path: resolvedPath });
           
           return {
             success: true,
@@ -391,7 +398,7 @@ export function createFileServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to delete directory',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to delete directory'),
           };
         }
       },
@@ -412,6 +419,26 @@ async function getWorkspacePath(): Promise<string> {
   }
   
   return activeWorkspace.folder_path;
+}
+
+async function resolvePath(targetPath: string): Promise<string> {
+  if (targetPath.startsWith('/')) {
+    return targetPath;
+  }
+  if (/^[a-zA-Z]:\\/.test(targetPath) || /^[a-zA-Z]:\//.test(targetPath)) {
+    return targetPath;
+  }
+  
+  const workspacePath = await getWorkspacePath();
+  const cleanWorkspace = workspacePath.endsWith('/') || workspacePath.endsWith('\\') 
+    ? workspacePath.slice(0, -1) 
+    : workspacePath;
+    
+  const cleanTarget = targetPath.startsWith('/') || targetPath.startsWith('\\')
+    ? targetPath.substring(1)
+    : targetPath;
+    
+  return `${cleanWorkspace}/${cleanTarget}`;
 }
 
 // ============================================================================

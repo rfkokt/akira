@@ -349,6 +349,22 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
   };
 
   try {
+    // 0. Check for uncommitted changes and auto-stash
+    const statusRes = await runGit(['status', '--porcelain'], cwd);
+    const hasUncommittedChanges = statusRes.success && statusRes.output.trim().length > 0;
+    let stashed = false;
+    
+    if (hasUncommittedChanges) {
+      fullLog += `[Uncommitted changes detected. Auto-stashing...]\n`;
+      // -u includes untracked files
+      const stashRes = await exec(['stash', 'push', '-u', '-m', `Auto-stash before AI merge of ${featureBranch}`], true);
+      if (stashRes.success) {
+        stashed = true;
+      } else {
+        fullLog += `[Warning] Failed to stash changes, continuing might fail...\n`;
+      }
+    }
+
     // 1. Fetch remote changes to keep up to date (optional, may fail if no remote)
     await exec(['fetch', remote, targetBranch], true);
 
@@ -405,13 +421,23 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
 
     // 8. Delete feature branch if requested
     if (options && options.deleteBranch) {
-      await exec(['branch', '-d', featureBranch], true); // local
+      await exec(['branch', '-D', featureBranch], true); // Force delete local (it's already pushed/merged)
       await exec(['push', remote, '--delete', featureBranch], true); // remote
+    }
+
+    // 9. Restore uncommitted changes
+    if (stashed) {
+      fullLog += `\n[Restoring uncommitted changes...]\n`;
+      await exec(['stash', 'pop'], true);
     }
 
     return { success: true, log: fullLog, mergedToBranch: targetBranch };
   } catch (error: any) {
-    return { success: false, log: error.message || String(error) };
+    let errMessage = error.message || String(error);
+    if (errMessage.includes('Auto-stashing')) {
+      errMessage += `\n[ACTION REQUIRED] Your uncommitted changes were safely stashed to prevent data loss. You can retrieve them later by running 'git stash pop' once any conflicts are resolved.\n`;
+    }
+    return { success: false, log: errMessage };
   }
 }
 

@@ -143,8 +143,10 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
       }, 1000);
 
       try {
-        if (prBranch || taskState?.prBranch) {
-          const branch = (prBranch || taskState!.prBranch) as string;
+        let targetBranch = prBranch || task?.pr_branch || task?.merge_source_branch || taskState?.prBranch;
+
+        if (targetBranch) {
+          const branch = targetBranch as string;
           setLoadingStep('fetching');
           setLoadingMessage(`Mengambil diff dari branch: ${branch}...`);
 
@@ -597,13 +599,13 @@ function SummaryView({
                       <div
                         key={lineIdx}
                         className={`
-                          font-mono text-xs px-3 py-0.5 rounded
+                          font-mono text-xs px-3 py-0.5 rounded whitespace-pre-wrap break-all
                           ${line.type === 'added' ? 'bg-green-500/10 text-green-300' : ''}
                           ${line.type === 'removed' ? 'bg-red-500/10 text-red-300' : ''}
                           ${line.type === 'context' ? 'text-neutral-400' : ''}
                         `}
                       >
-                        <span className="inline-block w-4 text-neutral-600">
+                        <span className="inline-block w-4 shrink-0 text-neutral-600">
                           {line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}
                         </span>
                         {line.content || ' '}
@@ -675,20 +677,20 @@ function DetailView({
                           ${line.type === 'context' && !showContext ? 'hidden' : ''}
                         `}
                       >
-                        <span className="w-12 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
+                        <span className="w-12 shrink-0 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
                           {line.oldLineNum || ''}
                         </span>
-                        <span className="w-12 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
+                        <span className="w-12 shrink-0 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
                           {line.newLineNum || ''}
                         </span>
-                        <span className="w-6 text-center py-0.5 text-neutral-600">
+                        <span className="w-6 shrink-0 text-center py-0.5 text-neutral-600">
                           {line.type === 'added' && <span className="text-green-500">+</span>}
                           {line.type === 'removed' && <span className="text-red-500">-</span>}
                           {line.type === 'context' && <span className="text-neutral-600"> </span>}
                         </span>
                         <span
                           className={`
-                            px-2 py-0.5 whitespace-pre
+                            flex-1 px-2 py-0.5 whitespace-pre-wrap break-all
                             ${line.type === 'added' ? 'text-green-300' : ''}
                             ${line.type === 'removed' ? 'text-red-300' : ''}
                             ${line.type === 'context' ? 'text-neutral-300' : ''}

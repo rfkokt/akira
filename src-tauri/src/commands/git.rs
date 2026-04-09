@@ -540,7 +540,7 @@ pub struct CommitFile {
 #[tauri::command]
 pub fn git_show_files(cwd: String, hash: String) -> Result<Vec<CommitFile>, String> {
     let output = Command::new("git")
-        .args(["show", "--stat", "--format=", &hash])
+        .args(["show", "--stat=4096,4096", "--format=", &hash])
         .current_dir(&cwd)
         .output()
         .map_err(|e| format!("Failed to show commit: {}", e))?;

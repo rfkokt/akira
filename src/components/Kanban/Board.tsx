@@ -143,9 +143,9 @@ export function KanbanBoard() {
     setMergeTask(task)
   }
 
-  const handleMergeComplete = async () => {
-    if (mergeTask) {
-      const taskId = mergeTask.id
+  const handleMergeComplete = async (passedTaskId?: string) => {
+    const taskId = passedTaskId || mergeTask?.id
+    if (taskId) {
       setMergeTask(null)
       setMergeLoadingTasks(prev => {
         const next = new Set(prev)

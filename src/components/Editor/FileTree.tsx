@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Folder, FolderOpen, File, ChevronRight, ChevronDown, FolderOpenDot, Search, X, FileSearch, Loader2, Upload } from 'lucide-react'
+import { Folder, File, ChevronRight, ChevronDown, Search, X, FileSearch, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 
@@ -276,12 +276,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     })
   }
 
-  const formatSize = (bytes?: number) => {
-    if (bytes === undefined) return ''
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+
 
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase()

@@ -81,11 +81,22 @@ function buildCompactToolPrompt(tools: InternalTool[]): string {
     lines.push(`\n${categoryName}:`)
     for (const tool of categoryTools) {
       const parsed = parseToolName(tool.name)
-      lines.push(`  ${parsed.name} - ${tool.description.split('.')[0]}`)
+      
+      let params = ''
+      if (tool.parameters && tool.parameters.properties) {
+        const props = tool.parameters.properties as Record<string, unknown>
+        const required = (tool.parameters.required as string[]) || []
+        const args = Object.keys(props).map(key => `${key}${required.includes(key) ? '' : '?'}`)
+        if (args.length > 0) {
+          params = `({ ${args.join(', ')} })`
+        }
+      }
+      
+      lines.push(`  ${parsed.name}${params} - ${tool.description.split('.')[0]}`)
     }
   }
   
-  lines.push('\nTo use a tool, include: [Tool: tool_name]')
+  lines.push('\nTo use a tool, include exactly: [Tool: tool_name {"arg": "value"}]')
   lines.push('[/AVAILABLE TOOLS]')
   
   return lines.join('\n')

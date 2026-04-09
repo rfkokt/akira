@@ -845,14 +845,36 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     });
     set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId } });
 
+    // Calculate previous chat for context awareness in all modes
+    const relevantMessages = existingMessages.filter(m => m.role !== 'system');
+    let previousChat = '';
+    
+    if (relevantMessages.length > 5) {
+      const compressed = compressHistory(relevantMessages, 1500);
+      previousChat = compressed.summary
+        ? `${compressed.summary}\n\n${compressed.recentMessages}`
+        : compressed.recentMessages;
+    } else if (relevantMessages.length > 0) {
+      previousChat = relevantMessages.slice(-5).map(m => {
+        let msgContent = m.content;
+        const analysisMatch = msgContent.match(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/);
+        if (analysisMatch) {
+          msgContent = msgContent.replace(analysisMatch[0], '[Image attached]\n');
+        }
+        const displayContent = msgContent.substring(0, 500) + (msgContent.length > 500 ? '...[truncated]' : '');
+        return `${m.role === 'user' ? 'User' : 'Assistant'}: ${displayContent}`;
+      }).join('\n');
+    }
+
     // Build prompt
     let chatPrompt: string;
     const workspaceName = useWorkspaceStore.getState().activeWorkspace?.name || 'this project';
     const miniIdentity = `[IDENTITY] Assistant for Akira. Project: ${workspaceName}.`;
 
     if (smallTalk) {
-      // COMPACT PATH: Still knows who/where it is, but skips heavy rules
-      chatPrompt = `${miniIdentity} Briefly answer: ${content}`;
+      // COMPACT PATH: Still knows who/where it is, but includes recent trace
+      chatPrompt = `[CONTEXT AWARE]
+${previousChat ? `Recent History:\n${previousChat}\n\n` : ''}${miniIdentity} Briefly answer: ${content}`;
     } else if (isRevisionMode) {
       // Check if rules are already embedded (auto-generated task)
       const hasEmbeddedRules = task?.description?.includes('<!-- auto-rules-embedded -->');
@@ -874,6 +896,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
 REVISION FOR TASK: "${taskTitle}"
 ${cleanDesc ? `CONTEXT: ${cleanDesc}` : ''}
 
+${previousChat ? `PREVIOUS CHAT:\n${previousChat}\n` : ''}
 USER FEEDBACK:
 ${content}
 
@@ -885,42 +908,13 @@ Please implement the requested changes. Be concise and use 'rtk' for all termina
       let sysPrompt = '';
       try { sysPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* */ }
 
-      // ✅ P2: Compress history for long conversations
-      const relevantMessages = existingMessages.filter(m => m.role !== 'system');
-      let previousChat: string;
-      
-      if (relevantMessages.length > 5) {
-        // Use compression for long conversations
-        const compressed = compressHistory(relevantMessages, 1500);
-        logCompression(
-          relevantMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
-          compressed
-        );
-        previousChat = compressed.summary
-          ? `${compressed.summary}\n\n${compressed.recentMessages}`
-          : compressed.recentMessages;
-      } else {
-        // Short conversation - use as is
-        previousChat = relevantMessages.slice(-5).map(m => {
-          let msgContent = m.content;
-          const analysisMatch = msgContent.match(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/);
-          if (analysisMatch) {
-            msgContent = msgContent.replace(analysisMatch[0], '[Image attached]\n');
-          }
-          const displayContent = msgContent.substring(0, 500) + (msgContent.length > 500 ? '...[truncated]' : '');
-          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${displayContent}`;
-        }).join('\n');
-      }
-
       chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}
 
 ---
 
 TASK: "${taskTitle}"
 
-PREVIOUS CHAT:
-${previousChat}
-
+${previousChat ? `PREVIOUS CHAT:\n${previousChat}\n` : ''}
 USER QUESTION:
 ${content}
 

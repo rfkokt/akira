@@ -64,28 +64,6 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
     editorRef.current = editor;
   }, []);
 
-  // Cleanup editor on unmount
-  useEffect(() => {
-    return () => {
-      if (editorRef.current) {
-        editorRef.current.dispose();
-        editorRef.current = null;
-      }
-    };
-  }, []);
-
-  // Reset editor when file changes
-  useEffect(() => {
-    return () => {
-      if (editorRef.current) {
-        const originalModel = editorRef.current.getOriginalEditor().getModel();
-        const modifiedModel = editorRef.current.getModifiedEditor().getModel();
-        if (originalModel) originalModel.dispose();
-        if (modifiedModel) modifiedModel.dispose();
-      }
-    };
-  }, [filePath]);
-
   const getLanguage = (path: string) => {
     const ext = path.split('.').pop()?.toLowerCase();
     switch(ext) {

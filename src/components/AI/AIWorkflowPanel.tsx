@@ -257,7 +257,7 @@ case 'done':
 export interface GitPushFlowProps {
   task: Task;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (taskId?: string) => void;
   workspacePath?: string;
 }
 
@@ -366,7 +366,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
         console.warn('[GitPushFlow] Failed to emit branch-changed event:', e);
       }
       setTimeout(() => {
-        onComplete();
+        onComplete(task.id);
       }, 1500);
     } else {
       setExecLog(prev => prev + '\n❌ ERROR: ' + result.log);

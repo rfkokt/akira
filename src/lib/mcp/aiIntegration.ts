@@ -75,30 +75,54 @@ export function getToolSchemas(options?: ToolCallingOptions): ToolSchema[] {
 // ============================================================================
 
 const TOOL_CALL_PATTERNS = [
-  /\[Tool:\s*([^\]]+)\]/,
+  /\[Tool:\s*([^\]]+)\]/i,
   /tool_use.*?"name"\s*:\s*"([^"]+)"/,
-  /Calling tool:\s*(\S+)/,
-  /Using tool:\s*(\S+)/,
+  /Calling tool:\s*(.+)/i,
+  /Using tool:\s*(.+)/i,
 ];
 
 export function detectToolCallFromOutput(output: string): ToolCallInfo | null {
   for (const pattern of TOOL_CALL_PATTERNS) {
     const match = output.match(pattern);
     if (match) {
-      const toolName = match[1].trim();
+      let rawContent = match[1].trim();
+      let toolName = rawContent;
+      let argsObj: Record<string, unknown> = {};
+
+      const spaceIdx = rawContent.indexOf(' ');
+      if (spaceIdx !== -1) {
+        toolName = rawContent.substring(0, spaceIdx).trim();
+        const jsonPart = rawContent.substring(spaceIdx).trim();
+        
+        // Sometimes the AI might output backticks, clean them
+        const cleanedJsonPart = jsonPart.replace(/^`+|`+$/g, '');
+        
+        if (cleanedJsonPart.startsWith('{') && cleanedJsonPart.endsWith('}')) {
+          try {
+            argsObj = JSON.parse(cleanedJsonPart);
+          } catch (e) {
+            console.warn('[ToolDetection] Failed to parse JSON args:', cleanedJsonPart);
+            argsObj = { __parse_error: true, raw: cleanedJsonPart };
+          }
+        } else if (cleanedJsonPart.length > 0) {
+          // It didn't look like JSON at all, maybe they just passed raw string
+          argsObj = { __parse_error: true, raw: cleanedJsonPart };
+        }
+      }
+      
       const parsed = parseToolName(toolName);
       
       console.log('[ToolDetection] Found tool call:', {
         rawMatch: match[0],
-        toolName,
-        parsedName: parsed.name,
+        toolName: parsed.name,
+        arguments: argsObj,
         source: parsed.source,
       });
       
       return {
         id: `call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         name: parsed.name,
-        arguments: {},
+        arguments: argsObj,
       };
     }
   }
@@ -107,13 +131,48 @@ export function detectToolCallFromOutput(output: string): ToolCallInfo | null {
 
 export function extractToolCallsFromResponse(response: string): ToolCallInfo[] {
   const toolCalls: ToolCallInfo[] = [];
-  const lines = response.split('\n');
   
-  for (const line of lines) {
-    const toolCall = detectToolCallFromOutput(line);
-    if (toolCall) {
-      toolCalls.push(toolCall);
+  // Use regex to find all tool calls in the entire multi-line response
+  // We use [\s\S]*? to match across newlines lazily
+  const pattern = /\[Tool:\s*([\s\S]*?)\]/gi;
+  let match;
+  
+  while ((match = pattern.exec(response)) !== null) {
+    const rawContent = match[1].trim();
+    let toolName = rawContent;
+    let argsObj: Record<string, unknown> = {};
+
+    const wsMatch = rawContent.match(/\s/);
+    const spaceIdx = wsMatch && wsMatch.index !== undefined ? wsMatch.index : -1;
+    
+    if (spaceIdx !== -1) {
+      toolName = rawContent.substring(0, spaceIdx).trim();
+      let jsonPart = rawContent.substring(spaceIdx).trim();
+      
+      // Clean leading and trailing backticks that AI sometimes adds
+      jsonPart = jsonPart.replace(/^`+|`+$/g, '').trim();
+      if (jsonPart.startsWith("```json")) {
+         jsonPart = jsonPart.substring(7);
+      }
+      jsonPart = jsonPart.replace(/```$/, '').trim();
+      
+      if (jsonPart.startsWith('{') && jsonPart.endsWith('}')) {
+        try {
+          argsObj = JSON.parse(jsonPart);
+        } catch (e) {
+          argsObj = { __parse_error: true, raw: jsonPart };
+        }
+      } else if (jsonPart.length > 0) {
+        argsObj = { __parse_error: true, raw: jsonPart };
+      }
     }
+    
+    const parsed = parseToolName(toolName);
+    toolCalls.push({
+      id: `call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: parsed.name,
+      arguments: argsObj,
+    });
   }
   
   return toolCalls;
@@ -137,6 +196,17 @@ export async function executeToolCalls(
   for (const call of toolCalls) {
     console.log('[ToolExecution] Calling tool:', call.name, 'with args:', call.arguments);
     
+    if (call.arguments.__parse_error) {
+      results.push({
+        toolCallId: call.id,
+        toolName: call.name,
+        success: false,
+        error: `Syntax Error: Invalid JSON arguments provided for tool. Ensure your tool call uses strict double-quoted JSON. You provided: ${call.arguments.raw}`,
+        duration_ms: 0,
+      });
+      continue;
+    }
+
     try {
       const result = await Promise.race([
         executeTool(call.name, call.arguments),
@@ -152,7 +222,9 @@ export async function executeToolCalls(
         toolCallId: call.id,
         toolName: call.name,
         success: result.success,
-        result: result.result !== undefined ? String(result.result) : undefined,
+        result: result.result !== undefined 
+          ? (typeof result.result === 'object' ? JSON.stringify(result.result, null, 2) : String(result.result)) 
+          : undefined,
         error: result.error,
         duration_ms: result.duration_ms,
       });
@@ -186,7 +258,8 @@ export function formatToolResultsForPrompt(results: ToolResultInfo[]): string {
       lines.push(`${icon} ${result.toolName}: Success`);
       if (result.result) {
         const resultStr = String(result.result);
-        lines.push(`  Result: ${resultStr.substring(0, 500)}${resultStr.length > 500 ? '...' : ''}`);
+        const MAX_LEN = 15000;
+        lines.push(`  Result: ${resultStr.substring(0, MAX_LEN)}${resultStr.length > MAX_LEN ? '...[truncated]' : ''}`);
       }
     } else {
       lines.push(`${icon} ${result.toolName}: Error - ${result.error}`);
@@ -242,7 +315,8 @@ export function injectToolsIntoPrompt(
       return `- ${schema.name}: ${schema.description}\n  Parameters: ${params}`;
     }),
     '',
-    'To use a tool, mention it in your response with: [Tool: tool_name] or describe what you need.',
+    'To use a tool, mention it in your response with EXACTLY this format: [Tool: tool_name {"param1": "value"}]',
+    'Include the JSON arguments snippet inside the brackets if parameters are required.',
     'The tool will be executed and results will be provided.',
     '[/AVAILABLE TOOLS]',
     '',
@@ -292,7 +366,8 @@ You have access to these tools. Use them by mentioning the tool name in your res
 
 ${toolDefs}
 
-To invoke a tool, use format: [Tool: tool_name] or describe what you need and mention the tool.
+To invoke a tool, use format: [Tool: tool_name {"param1": "value"}]. 
+Include JSON arguments if required by the parameters definition.
 The tool will be executed and results will be provided.
 [/AVAILABLE TOOLS]
 `;

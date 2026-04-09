@@ -626,8 +626,9 @@ const userMsg = message
       let internalPrompt: string
       
       if (isSmallTalkLocal) {
-        // ✅ MINIMAL: Ultra-light prompt without project rules
-        internalPrompt = `Answer briefly and directly: ${finalMessage}`;
+        // ✅ MINIMAL: Ultra-light prompt without project rules but WITH history context
+        internalPrompt = `[CONTEXT AWARE ASSISTANT]
+${historyMsg ? 'Recent History:\n' + historyMsg + '\n\n' : ''}Briefly answer: ${finalMessage}`;
       } else if (yoloMode) {
         // YOLO Mode: Direct execution with full tool access
         const rtkInstruction = `
