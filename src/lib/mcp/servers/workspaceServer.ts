@@ -8,6 +8,9 @@ import type { InternalTool } from '../types'
 import { WorkspaceScanner, type ScanResult } from '../scanners'
 import { useToolRegistry } from '../registry'
 
+// Singleton map - one server per workspace
+const workspaceServers = new Map<string, WorkspaceMCPServer>()
+
 class WorkspaceMCPServer {
   private workspaceId: string
   private scanner: WorkspaceScanner
@@ -187,9 +190,6 @@ class WorkspaceMCPServer {
     }
   }
 }
-
-// Singleton map - one server per workspace
-const workspaceServers = new Map<string, WorkspaceMCPServer>()
 
 /**
  * Get or create workspace MCP server

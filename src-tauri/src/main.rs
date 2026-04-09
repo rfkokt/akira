@@ -44,7 +44,10 @@ fn main() {
             let mut pty_manager = PtyManager::new();
             pty_manager.set_app_handle(app.handle().clone());
 
-            app.manage(AppState::new(conn, cli_router, pty_manager));
+            let db_conn = Arc::new(std::sync::Mutex::new(conn));
+            let mcp_manager = Arc::new(mcp::McpConnectionManager::new(db_conn.clone()));
+            
+            app.manage(AppState::new(db_conn, cli_router, pty_manager, mcp_manager));
 
             Ok(())
         })

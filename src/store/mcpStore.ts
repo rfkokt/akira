@@ -13,6 +13,7 @@ import {
   McpAuth,
 } from '@/lib/mcp/types';
 import * as mcpClient from '@/lib/mcp/client';
+import { useToolRegistry } from '@/lib/mcp/registry';
 
 // Cache for external server URLs (not stored in McpServerDto)
 const externalUrlCache = new Map<string, string>();
@@ -169,6 +170,14 @@ export const useMcpStore = create<McpState>((set, get) => ({
       const servers = await mcpClient.listMcpServers(workspaceId);
       get().setServers(servers);
       set({ currentWorkspaceId: workspaceId });
+
+      // Auto-connect enabled servers
+      const enabledServers = servers.filter((s) => s.enabled);
+      if (enabledServers.length > 0) {
+        await Promise.allSettled(
+          enabledServers.map((s) => get().connectServer(s.id))
+        );
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load MCP servers';
       set({ error: errorMessage });
@@ -256,6 +265,49 @@ export const useMcpStore = create<McpState>((set, get) => ({
       // Fallback to Rust backend (stdio or legacy)
       const tools = await mcpClient.connectMcpServer(serverId);
       setServerTools(serverId, tools);
+      
+      // Register tools into the unified AI tool registry
+      const registry = useToolRegistry.getState();
+      for (const mcpTool of tools) {
+        const registryName = `ext:${serverId}:${mcpTool.name}`;
+        registry.registerInternalTool({
+          name: registryName,
+          description: `[${server.name}] ${mcpTool.description || mcpTool.name}`,
+          parameters: (mcpTool.inputSchema as any) || {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+          category: 'external',
+          handler: async (args) => {
+            try {
+              const result = await mcpClient.callMcpTool({
+                serverId,
+                toolName: mcpTool.name,
+                arguments: args as Record<string, unknown>,
+              });
+              
+              const textContent = result.content
+                ?.filter((c) => c.type === 'text')
+                .map((c) => c.type === 'text' ? c.text : '')
+                .join('\n') || JSON.stringify(result);
+
+              return {
+                success: !result.isError,
+                result: textContent,
+                server: server.name,
+                tool: mcpTool.name,
+              };
+            } catch (err) {
+              return {
+                success: false,
+                error: err instanceof Error ? err.message : String(err),
+              };
+            }
+          },
+        });
+      }
+
       updateServerStatus(serverId, 'connected');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect';
@@ -271,6 +323,16 @@ export const useMcpStore = create<McpState>((set, get) => ({
       const { disconnectExternalServer } = await import('@/lib/mcp/externalManager');
       await disconnectExternalServer(serverId).catch(() => {/* ignore if not connected */});
       
+      // Unregister tools from the unified AI tool registry
+      const registry = useToolRegistry.getState();
+      const server = get().servers.find(s => s.id === serverId);
+      if (server && server.tools) {
+        for (const tool of server.tools) {
+          const registryName = `ext:${serverId}:${tool.name}`;
+          registry.unregisterInternalTool(registryName);
+        }
+      }
+
       await mcpClient.disconnectMcpServer(serverId).catch(() => {/* ignore rust errors */});
       get().updateServerStatus(serverId, 'disabled');
     } catch (err) {

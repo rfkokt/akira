@@ -198,6 +198,7 @@ export function McpSettings() {
   const [activeServers, setActiveServersState] = useState(getActiveServers());
   const [selectedServer, setSelectedServer] = useState<RegistryServer | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const { servers, isLoading, error, hasMore, loadMore, refetch } = useRegistryCatalog(searchQuery);
@@ -214,33 +215,56 @@ export function McpSettings() {
 
   const handleConnect = async (
     server: RegistryServer,
-    headerValues: Record<string, string>,
+    inputs: Record<string, string>,
   ) => {
     const remote = server.remotes?.[0];
-    if (!remote) return;
-
+    const pkg = server.packages?.[0];
+    
     setConnectingId(server.name);
+    setConnectError(null);
+
     try {
-      const transportType: ExternalMcpTransport['type'] =
-        remote.type === 'streamable-http' ? 'http' : remote.type;
+      if (remote) {
+        // HTTP/SSE Remote Server via externalManager
+        const transportType: ExternalMcpTransport['type'] =
+          remote.type === 'streamable-http' ? 'http' : remote.type;
 
-      const transport: ExternalMcpTransport = {
-        type: transportType,
-        url: remote.url,
-        // Auto-prefix Bearer for Authorization headers
-        headers: Object.fromEntries(
-          Object.entries(headerValues).map(([k, v]) => [
-            k,
-            k === 'Authorization' && !v.startsWith('Bearer ') ? `Bearer ${v}` : v,
-          ]),
-        ),
-      };
+        const transport: ExternalMcpTransport = {
+          type: transportType,
+          url: remote.url,
+          headers: Object.fromEntries(
+            Object.entries(inputs).map(([k, v]) => [
+              k,
+              k === 'Authorization' && !v.startsWith('Bearer ') ? `Bearer ${v}` : v,
+            ]),
+          ),
+        };
 
-      await connectExternalServer(server.name, server.title || server.name, transport);
-      refreshActive();
+        await connectExternalServer(server.name, server.title || server.name, transport);
+        refreshActive();
+      } else if (pkg) {
+        if (!activeWorkspace?.id) {
+          throw new Error('Please select or create a workspace first before installing local MCP servers.');
+        }
+        // Stdio Server via Tauri backend
+        const mcpStore = useMcpStore.getState();
+        const serverId = await mcpStore.createServer({
+          workspaceId: activeWorkspace.id,
+          name: server.name,
+          description: server.description,
+          transport: {
+            type: 'stdio',
+            command: 'npx',
+            args: ['-y', pkg.identifier],
+            env: inputs,
+          },
+        });
+        await mcpStore.connectServer(serverId);
+      }
       setSelectedServer(null);
     } catch (err) {
       console.error('[McpSettings] connect failed', err);
+      setConnectError(err instanceof Error ? err.message : String(err));
     } finally {
       setConnectingId(null);
     }
@@ -391,8 +415,12 @@ export function McpSettings() {
         <ConnectDialog
           server={selectedServer}
           isConnecting={connectingId === selectedServer.name}
+          error={connectError}
           onConnect={handleConnect}
-          onClose={() => setSelectedServer(null)}
+          onClose={() => {
+            setSelectedServer(null);
+            setConnectError(null);
+          }}
         />
       )}
     </div>
@@ -425,7 +453,7 @@ function ServerRow({ server, isConnected, isConnecting, onSelect }: ServerRowPro
         : `${pkg.registryType} install ${pkg.identifier}`
     : null;
 
-  const clickable = isRemote && !isConnected && !isConnecting;
+  const clickable = (isRemote || !!pkg) && !isConnected && !isConnecting;
 
   return (
     <div
@@ -483,6 +511,8 @@ function ServerRow({ server, isConnected, isConnecting, onSelect }: ServerRowPro
           <Loader2 className="w-4 h-4 animate-spin text-primary" />
         ) : isRemote ? (
           <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors">Connect →</span>
+        ) : pkg ? (
+          <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors">Install →</span>
         ) : (
           <span className="text-xs text-muted-foreground">Local only</span>
         )}
@@ -498,17 +528,24 @@ function ServerRow({ server, isConnected, isConnecting, onSelect }: ServerRowPro
 interface ConnectDialogProps {
   server: RegistryServer;
   isConnecting: boolean;
+  error?: string | null;
   onConnect: (server: RegistryServer, headers: Record<string, string>) => void;
   onClose: () => void;
 }
 
-function ConnectDialog({ server, isConnecting, onConnect, onClose }: ConnectDialogProps) {
+function ConnectDialog({ server, isConnecting, error, onConnect, onClose }: ConnectDialogProps) {
   const remote = server.remotes?.[0];
-  const requiredHeaders = remote?.headers?.filter((h) => h.isRequired) || [];
-  const [headerValues, setHeaderValues] = useState<Record<string, string>>({});
+  const pkg = server.packages?.[0];
+  
+  // Consolidate required inputs from headers OR env vars
+  const requiredInputs = remote 
+    ? (remote.headers?.filter((h) => h.isRequired) || [])
+    : (pkg?.environmentVariables?.filter((e) => e.isRequired) || []);
 
-  const allFilled = requiredHeaders.every((h) => headerValues[h.name]?.trim());
-  const canConnect = requiredHeaders.length === 0 || allFilled;
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+
+  const allFilled = requiredInputs.every((h) => inputValues[h.name]?.trim());
+  const canConnect = requiredInputs.length === 0 || allFilled;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -545,26 +582,26 @@ function ConnectDialog({ server, isConnecting, onConnect, onClose }: ConnectDial
           </div>
         )}
 
-        {/* Required headers / API keys */}
-        {requiredHeaders.length > 0 ? (
+        {/* Required Inputs */}
+        {requiredInputs.length > 0 ? (
           <div className="space-y-3">
-            {requiredHeaders.map((header) => (
-              <div key={header.name} className="space-y-1.5">
-                <Label htmlFor={`hdr-${header.name}`}>
-                  {header.name}
+            {requiredInputs.map((input) => (
+              <div key={input.name} className="space-y-1.5">
+                <Label htmlFor={`hdr-${input.name}`}>
+                  {input.name}
                   <span className="text-red-400 ml-0.5">*</span>
                 </Label>
                 <Input
-                  id={`hdr-${header.name}`}
-                  type={header.isSecret ? 'password' : 'text'}
-                  placeholder={header.description || `Enter ${header.name}`}
-                  value={headerValues[header.name] || ''}
+                  id={`hdr-${input.name}`}
+                  type={input.isSecret ? 'password' : 'text'}
+                  placeholder={input.description || `Enter ${input.name}`}
+                  value={inputValues[input.name] || ''}
                   onChange={(e) =>
-                    setHeaderValues((prev) => ({ ...prev, [header.name]: e.target.value }))
+                    setInputValues((prev) => ({ ...prev, [input.name]: e.target.value }))
                   }
                 />
-                {header.description && (
-                  <p className="text-xs text-muted-foreground">{header.description}</p>
+                {input.description && (
+                  <p className="text-xs text-muted-foreground">{input.description}</p>
                 )}
               </div>
             ))}
@@ -588,11 +625,17 @@ function ConnectDialog({ server, isConnecting, onConnect, onClose }: ConnectDial
           </div>
         )}
 
+        {error && (
+          <div className="p-3 text-sm rounded-lg bg-red-500/10 border border-red-500/20 text-red-500">
+            {error}
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isConnecting}>
             Cancel
           </Button>
-          <Button onClick={() => onConnect(server, headerValues)} disabled={isConnecting || !canConnect}>
+          <Button onClick={() => onConnect(server, inputValues)} disabled={isConnecting || !canConnect}>
             {isConnecting ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (

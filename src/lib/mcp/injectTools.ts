@@ -77,8 +77,17 @@ function buildCompactToolPrompt(tools: InternalTool[]): string {
   const lines: string[] = ['[AVAILABLE TOOLS]']
   
   for (const [category, categoryTools] of Object.entries(grouped)) {
-    const categoryName = category.toUpperCase()
+    const isExternal = category.toLowerCase() === 'external'
+    const categoryName = isExternal 
+      ? 'EXTERNAL (live MCP connections)'
+      : category.toUpperCase()
+    
     lines.push(`\n${categoryName}:`)
+    
+    if (isExternal) {
+      lines.push('  Hint: External tools connect to remote/local services. Use them when the user asks about libraries, docs, search, etc.')
+    }
+    
     for (const tool of categoryTools) {
       const parsed = parseToolName(tool.name)
       
@@ -92,7 +101,7 @@ function buildCompactToolPrompt(tools: InternalTool[]): string {
         }
       }
       
-      lines.push(`  ${parsed.name}${params} - ${tool.description.split('.')[0]}`)
+      lines.push(`  ${tool.name}${params} - ${tool.description.split('.')[0]}`)
     }
   }
   

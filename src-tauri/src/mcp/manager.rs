@@ -10,7 +10,7 @@ use crate::db::mcp_queries::{self, McpServerConfig};
 use rusqlite::Connection;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
 /// Connection state for an MCP server
@@ -59,20 +59,21 @@ struct ManagedConnection {
     last_error: Option<String>,
 }
 
-/// MCP Connection Manager (Simplified)
+/// MCP Connection Manager
+#[derive(Clone)]
 pub struct McpConnectionManager {
     #[allow(dead_code)]
     connections: Arc<RwLock<HashMap<String, ManagedConnection>>>,
     #[allow(dead_code)]
-    db_connection: Arc<RwLock<Connection>>,
+    db_connection: Arc<Mutex<Connection>>,
 }
 
 impl McpConnectionManager {
     /// Create a new connection manager
-    pub fn new(db_connection: Connection) -> Self {
+    pub fn new(db_connection: Arc<Mutex<Connection>>) -> Self {
         Self {
-            connections: Arc::new(RwLock::new(HashMap::new())),
-            db_connection: Arc::new(RwLock::new(db_connection)),
+            connections: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            db_connection,
         }
     }
 
@@ -88,43 +89,113 @@ impl McpConnectionManager {
         Ok(())
     }
 
-    /// Connect to a server (Simplified)
-    pub async fn connect_server(&self, _server_id: &str) -> Result<Vec<McpTool>, McpManagerError> {
-        // Simplified: return empty list
-        Ok(Vec::new())
+    /// Connect to a server
+    pub async fn connect_server(&self, server_id: &str) -> Result<Vec<McpTool>, McpManagerError> {
+        let config = {
+            let db = self.db_connection.lock().unwrap();
+            mcp_queries::get_mcp_server(&db, server_id).map_err(|e| McpManagerError::Database(e.to_string()))?
+        };
+
+        let config = config.ok_or_else(|| McpManagerError::ServerNotFound(server_id.to_string()))?;
+
+        // Parse transport config
+        let transport_config: Value = serde_json::from_str(&config.config_json)
+            .unwrap_or_else(|_| serde_json::json!({}));
+
+        let transport = create_transport(&config.transport_type, &transport_config)
+            .map_err(|e| McpManagerError::Connection(e.to_string()))?;
+
+        let mut client = McpClient::new(transport);
+        
+        let init_result = client.initialize("Akira", "1.0.0").await
+            .map_err(|e| McpManagerError::Connection(e.to_string()))?;
+
+        let tools = client.list_tools().await
+            .unwrap_or_else(|_| Vec::new()); // Tools are optional for a connection
+
+        // Update state in manager
+        let state = ConnectionState::Connected {
+            server_info: init_result.server_info.clone(),
+            capabilities: init_result.capabilities.clone(),
+            tools: tools.clone(),
+            connected_at: chrono::Utc::now().timestamp_millis(),
+        };
+
+        {
+            let mut connections = self.connections.write().await;
+            connections.insert(server_id.to_string(), ManagedConnection {
+                config: config.clone(),
+                client: Some(client),
+                state: state.clone(),
+                last_error: None,
+            });
+        }
+
+        // Update status in DB
+        {
+            let db = self.db_connection.lock().unwrap();
+            mcp_queries::update_server_status(&db, server_id, "connected", None)
+                .map_err(|e| McpManagerError::Database(e.to_string()))?;
+        }
+
+        Ok(tools)
     }
 
-    /// Disconnect from a server (Simplified)
-    pub async fn disconnect_server(&self, _server_id: &str) -> Result<(), McpManagerError> {
-        // Simplified: nothing to do
+    /// Disconnect from a server
+    pub async fn disconnect_server(&self, server_id: &str) -> Result<(), McpManagerError> {
+        let mut connections = self.connections.write().await;
+        if let Some(conn) = connections.get_mut(server_id) {
+            if let Some(mut client) = conn.client.take() {
+                let _ = client.disconnect().await;
+            }
+            conn.state = ConnectionState::Disconnected;
+            
+            // Update status in DB
+            let db = self.db_connection.lock().unwrap();
+            let _ = mcp_queries::update_server_status(&db, server_id, "disabled", None);
+        }
         Ok(())
     }
 
-    /// Call a tool on a server (Simplified)
+    /// Call a tool on a server
     pub async fn call_tool(
         &self,
-        _server_id: &str,
-        _tool_name: &str,
-        _arguments: Value,
+        server_id: &str,
+        tool_name: &str,
+        arguments: Value,
     ) -> Result<ToolCallResult, McpManagerError> {
-        // Simplified: return error
-        Err(McpManagerError::NotConnected("Not implemented".to_string()))
+        let mut connections: tokio::sync::RwLockWriteGuard<'_, std::collections::HashMap<std::string::String, ManagedConnection>> = self.connections.write().await;
+        let conn = connections.get_mut(server_id)
+            .ok_or_else(|| McpManagerError::ServerNotFound(server_id.to_string()))?;
+            
+        let client = conn.client.as_mut()
+            .ok_or_else(|| McpManagerError::NotConnected(server_id.to_string()))?;
+
+        client.call_tool(tool_name, arguments).await
+            .map_err(|e| McpManagerError::Client(e.to_string()))
     }
 
-    /// Read a resource from a server (Simplified)
+    /// Read a resource from a server
     pub async fn read_resource(
         &self,
-        _server_id: &str,
-        _uri: &str,
+        server_id: &str,
+        uri: &str,
     ) -> Result<super::client::ResourceContent, McpManagerError> {
-        // Simplified: return error
-        Err(McpManagerError::NotConnected("Not implemented".to_string()))
+        let mut connections: tokio::sync::RwLockWriteGuard<'_, std::collections::HashMap<std::string::String, ManagedConnection>> = self.connections.write().await;
+        let conn = connections.get_mut(server_id)
+            .ok_or_else(|| McpManagerError::ServerNotFound(server_id.to_string()))?;
+            
+        let client = conn.client.as_mut()
+            .ok_or_else(|| McpManagerError::NotConnected(server_id.to_string()))?;
+
+        client.read_resource(uri).await
+            .map_err(|e| McpManagerError::Client(e.to_string()))
     }
 
-    /// Get connection state (Simplified)
-    pub async fn get_connection_state(&self, _server_id: &str) -> Option<ConnectionState> {
-        // Simplified: return None
-        None
+    /// Get connection state
+    pub async fn get_connection_state(&self, server_id: &str) -> Option<ConnectionState> {
+        let connections: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<std::string::String, ManagedConnection>> = self.connections.read().await;
+        connections.get(server_id).map(|c| c.state.clone())
     }
 
     /// Test connection to a server (Simplified)

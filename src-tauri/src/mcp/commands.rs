@@ -327,44 +327,11 @@ pub async fn mcp_connect_server(
     server_id: String,
 ) -> Result<Vec<McpTool>, String> {
     let state = app.state::<crate::AppState>();
-    let db = state.db.lock().unwrap();
-    let conn = &*db;
-
-    // Get server config
-    let server = mcp_queries::get_mcp_server(conn, &server_id)
-        .map_err(|e| e.to_string())?
-        .ok_or("Server not found")?;
-
-    if !server.enabled {
-        return Err("Server is disabled".to_string());
-    }
-
-    // Update status to connecting
-    mcp_queries::update_server_status(conn, &server_id, "connecting", None)
-        .map_err(|e| e.to_string())?;
-
-    // Fallback: Simple connection test
-    // Parse transport config
-    let transport_config: serde_json::Value = serde_json::from_str(&server.config_json)
-        .map_err(|e| format!("Invalid transport config: {}", e))?;
-
-    // Test transport creation
-    match transport::create_transport(&server.transport_type, &transport_config) {
-        Ok(_) => {
-            // For now, just mark as failed since full connection isn't implemented
-            // In the real implementation, this would actually connect
-            let error_msg = "Full MCP connection not yet implemented. Transport created successfully but protocol handshake pending.";
-            mcp_queries::update_server_status(conn, &server_id, "failed", Some(error_msg))
-                .map_err(|e| e.to_string())?;
-            Err(error_msg.to_string())
-        }
-        Err(e) => {
-            let error_msg = format!("Failed to create transport: {}", e);
-            mcp_queries::update_server_status(conn, &server_id, "failed", Some(&error_msg))
-                .map_err(|e| e.to_string())?;
-            Err(error_msg)
-        }
-    }
+    
+    state.mcp_manager
+        .connect_server(&server_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Disconnect from an MCP server
@@ -374,14 +341,11 @@ pub async fn mcp_disconnect_server(
     server_id: String,
 ) -> Result<(), String> {
     let state = app.state::<crate::AppState>();
-    let db = state.db.lock().unwrap();
-    let conn = &*db;
-
-    // Update status to disabled
-    mcp_queries::update_server_status(conn, &server_id, "disabled", None)
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
+    
+    state.mcp_manager
+        .disconnect_server(&server_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Test connection to an MCP server (without saving)
@@ -444,34 +408,11 @@ pub async fn mcp_call_tool(
     request: CallToolRequest,
 ) -> Result<ToolCallResult, String> {
     let state = app.state::<crate::AppState>();
-    let db = state.db.lock().unwrap();
-    let conn = &*db;
-
-    // Check if server is connected
-    let runtime = mcp_queries::get_runtime_state(conn, &request.server_id)
-        .map_err(|e| e.to_string())?;
-
-    match runtime {
-        Some(rt) if rt.status == "connected" => {
-            // TODO: Implement actual tool call via manager
-            let error_msg = "Tool calling not yet fully implemented (Phase 1.2)";
-
-            // Record failed attempt
-            let args_json = serde_json::to_string(&request.arguments).ok();
-            let _ = mcp_queries::record_tool_call(
-                conn,
-                &request.server_id,
-                &request.tool_name,
-                args_json.as_deref(),
-                None,
-                Some(error_msg),
-                0,
-            );
-
-            Err(error_msg.to_string())
-        }
-        _ => Err("Server is not connected".to_string()),
-    }
+    
+    state.mcp_manager
+        .call_tool(&request.server_id, &request.tool_name, request.arguments)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Read a resource from an MCP server
@@ -479,22 +420,13 @@ pub async fn mcp_call_tool(
 pub async fn mcp_read_resource(
     app: AppHandle,
     request: ReadResourceRequest,
-) -> Result<String, String> {
+) -> Result<ResourceContent, String> {
     let state = app.state::<crate::AppState>();
-    let db = state.db.lock().unwrap();
-    let conn = &*db;
-
-    // Check if server is connected
-    let runtime = mcp_queries::get_runtime_state(conn, &request.server_id)
-        .map_err(|e| e.to_string())?;
-
-    match runtime {
-        Some(rt) if rt.status == "connected" => {
-            // TODO: Implement actual resource reading via manager
-            Err("Resource reading not yet fully implemented (Phase 1.2)".to_string())
-        }
-        _ => Err("Server is not connected".to_string()),
-    }
+    
+    state.mcp_manager
+        .read_resource(&request.server_id, &request.uri)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Get recent tool calls for a server

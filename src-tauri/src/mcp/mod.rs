@@ -136,6 +136,7 @@ pub enum McpAuth {
 
 /// Request to add a new MCP server
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddMcpServerRequest {
     pub workspace_id: String,
     pub name: String,
@@ -146,6 +147,7 @@ pub struct AddMcpServerRequest {
 
 /// Request to update an MCP server
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateMcpServerRequest {
     pub server_id: String,
     pub name: Option<String>,
@@ -157,6 +159,7 @@ pub struct UpdateMcpServerRequest {
 
 /// MCP Server response DTO
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpServerDto {
     pub id: String,
     pub workspace_id: String,
@@ -173,6 +176,7 @@ pub struct McpServerDto {
 
 /// Tool call request
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CallToolRequest {
     pub server_id: String,
     pub tool_name: String,
@@ -181,49 +185,9 @@ pub struct CallToolRequest {
 
 /// Resource read request
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadResourceRequest {
     pub server_id: String,
     pub uri: String,
 }
 
-/// Global MCP manager state (shared across Tauri)
-pub struct McpManagerState {
-    pub manager: Arc<RwLock<Option<McpConnectionManager>>>,
-}
-
-impl McpManagerState {
-    pub fn new() -> Self {
-        Self {
-            manager: Arc::new(RwLock::new(None)),
-        }
-    }
-
-    pub async fn initialize(&self, db_connection: rusqlite::Connection) -> Result<(), String> {
-        let manager = McpConnectionManager::new(db_connection);
-        manager.initialize().await.map_err(|e| e.to_string())?;
-        
-        let mut guard = self.manager.write().await;
-        *guard = Some(manager);
-        Ok(())
-    }
-
-    pub async fn get_manager(&self) -> Option<Arc<McpConnectionManager>> {
-        let guard = self.manager.read().await;
-        guard.as_ref().map(|m| Arc::new(m.clone()))
-    }
-}
-
-impl Default for McpManagerState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// Make McpConnectionManager cloneable for Arc usage
-impl Clone for McpConnectionManager {
-    fn clone(&self) -> Self {
-        // This is a simplified clone - in practice you might want to share the connections
-        // For now, create a new manager with same db connection
-        Self::new(rusqlite::Connection::open_in_memory().unwrap())
-    }
-}
