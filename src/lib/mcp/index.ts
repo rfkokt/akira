@@ -42,7 +42,8 @@ export {
   executeToolCalls,
   formatToolResultsForPrompt,
   formatToolResultsForDisplay,
-  injectToolsIntoPrompt,
+  buildToolPromptForChat,
+  shouldInjectTools,
 } from './aiIntegration';
 
 export type {
@@ -52,6 +53,18 @@ export type {
   ToolSchema,
 } from './aiIntegration';
 
+// Tool Injection
+export {
+  injectToolsIntoPrompt,
+  getAvailableToolsForPrompt,
+  buildToolPrompt,
+  buildContextualToolPrompt,
+  getToolSuggestionsForTask,
+  formatToolSuggestions,
+} from './injectTools';
+
+export type { ToolPromptOptions } from './injectTools';
+
 // Adapters
 export {
   createSkillTools,
@@ -60,3 +73,29 @@ export {
 } from './adapters';
 
 export type { SkillToolContext } from './adapters';
+
+// Internal Servers
+export {
+  internalServerRegistry,
+  initializeInternalServers,
+} from './servers';
+
+export {
+  createTaskServerTools,
+  registerTaskServerTools,
+} from './servers/taskServer';
+
+export {
+  createProjectServerTools,
+  registerProjectServerTools,
+} from './servers/projectServer';
+
+export {
+  createFileServerTools,
+  registerFileServerTools,
+} from './servers/fileServer';
+
+export {
+  createBashServerTools,
+  registerBashServerTools,
+} from './servers/bashServer';

@@ -4,6 +4,7 @@ import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, Zoo
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
 import { dbService } from '@/lib/db'
+import { initializeInternalServers } from '@/lib/mcp'
 import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { KanbanBoard } from './components/Kanban/Board'
@@ -76,8 +77,21 @@ function App() {
     const init = async () => {
       await loadActiveWorkspace()
       await loadWorkspaces()
+      // Initialize internal MCP servers (task, project, skill tools)
+      initializeInternalServers()
     }
     init()
+    
+    // Cleanup on unmount
+    return () => {
+      try {
+        const { clearAllWorkspaceServers } = require('@/lib/mcp/servers/workspaceServer')
+        clearAllWorkspaceServers()
+        console.log('[App] Cleaned up Dynamic MCP servers')
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
   }, [loadActiveWorkspace, loadWorkspaces])
 
   // Show welcome screen if no active workspace and set current workspace for tasks

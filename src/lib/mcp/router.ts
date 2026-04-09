@@ -44,6 +44,13 @@ export class ToolRouter {
     const startTime = Date.now();
     const parsed = parseToolName(name);
     
+    console.log('[ToolRouter] Executing tool:', { 
+      rawName: name, 
+      parsedName: parsed.name, 
+      source: parsed.source, 
+      serverId: parsed.serverId 
+    });
+    
     let result: ToolExecutionResult;
     
     if (parsed.source === 'internal') {

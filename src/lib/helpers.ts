@@ -92,7 +92,7 @@ export function isSmallTalk(message: string, hasAttachments: boolean = false): b
   
   if (idSmallTalkPatterns.some(pattern => pattern.test(msg))) return true;
   
-  // Technical keywords that should always trigger project rules
+// Technical keywords that should always trigger project rules
   const technicalKeywords = [
     'code', 'build', 'fix', 'add', 'create', 'implement', 'error', 'bug', 
     'file', 'refactor', 'function', 'component', 'style', 'route',
@@ -100,11 +100,26 @@ export function isSmallTalk(message: string, hasAttachments: boolean = false): b
     'setup', 'config', 'run', 'install', 'npm', 'cargo', 'rust', 'react',
     'component', 'hook', 'state', 'props', 'interface', 'type', 'const',
     'let', 'var', 'import', 'export', 'from', 'return', 'async', 'await',
-    'unit test', 'integration test', 'e2e test', 'test file', 'testing'  // Contextual test keywords only
+    'unit test', 'integration test', 'e2e test', 'test file', 'testing',  // Contextual test keywords only
+    // Tool-related keywords - should not be small talk
+    'tool', 'tools', 'skill', 'skills', 'mcp', 'utility', 'utilities',
+    'available', 'list', 'show me', 'what is', 'tech stack', 'technology',
+    'project', 'workspace', 'task', 'tasks', 'feature', 'features',
   ];
   
   const hasTechnicalKeyword = technicalKeywords.some(kw => msg.includes(kw));
   if (hasTechnicalKeyword) return false;
+  
+  // Questions about capabilities should not be small talk
+  const questionPatterns = [
+    /what (can|do|is|are) you/i,
+    /how (do|can|to) i/i,
+    /help (me |with)?/i,
+    /show (me |my |available)/i,
+    /list (all |my |available)/i,
+  ];
+  
+  if (questionPatterns.some(p => p.test(msg))) return false;
   
   // If it's short and has no technical keywords, it's likely small talk
   return true;

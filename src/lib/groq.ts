@@ -115,7 +115,8 @@ function evaluateMath(expr: string): number | null {
  */
 export async function sendGroqSmallTalk(
   apiKey: string,
-  userMessage: string
+  userMessage: string,
+  systemPromptOverride?: string
 ): Promise<{ content: string; usage?: GroqResponse['usage']; model: string } | null> {
   const model = 'llama-3.1-8b-instant';
   
@@ -130,10 +131,13 @@ export async function sendGroqSmallTalk(
     };
   }
   
+  // Use custom system prompt if provided, otherwise use default
+  const systemPrompt = systemPromptOverride || 'You are a helpful assistant. Answer briefly and directly. Always respond in the same language as the user (Bahasa Indonesia if user speaks Indonesian, English if user speaks English).';
+  
   const result = await sendGroqChat(apiKey, [
     {
       role: 'system',
-      content: 'You are a helpful assistant. Answer briefly and directly. Always respond in the same language as the user (Bahasa Indonesia if user speaks Indonesian, English if user speaks English).',
+      content: systemPrompt,
     },
     {
       role: 'user',

@@ -18,6 +18,7 @@ import {
   McpTransport,
     McpServerDto,
   } from '@/lib/mcp/types';
+import { McpToolsList } from './McpToolsList';
 import {
   Card,
   CardContent,
@@ -144,6 +145,22 @@ export function McpSettings() {
           ))}
         </div>
       )}
+
+      {/* Dynamic MCP Tools */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wrench className="w-5 h-5" />
+            Dynamic Tools
+          </CardTitle>
+          <CardDescription>
+            Auto-generated tools from workspace utils, hooks, skills, and standards
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <McpToolsList />
+        </CardContent>
+      </Card>
 
       {/* Add Server Dialog */}
       <AddServerDialog

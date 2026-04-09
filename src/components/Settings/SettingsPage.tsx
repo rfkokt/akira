@@ -6,13 +6,14 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { 
   Eye, Save, Layers, Shield, Check, Copy,
-  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image, Puzzle, Download, ExternalLink, RefreshCw
+  Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image, Puzzle, Download, ExternalLink, RefreshCw, Server
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
 import { useEngineStore, useWorkspaceStore, useSkillStore } from '@/store';
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject';
 import type { CreateEngineRequest } from '@/types';
 import { MarkdownEditor } from './MarkdownBlockEditor';
+import { McpSettings } from './McpSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -35,6 +36,7 @@ const sidebarTabs = [
   { id: 'project-config', label: 'Project Config', icon: Layers, section: 'project' },
   { id: 'engines', label: 'CLI Engines', icon: Cpu, section: 'system' },
   { id: 'skills', label: 'Skills', icon: Puzzle, section: 'system' },
+  { id: 'mcp', label: 'MCP Servers', icon: Server, section: 'system' },
   { id: 'rtk', label: 'RTK Status', icon: Zap, section: 'system' },
   { id: 'router', label: 'AI Router', icon: Settings, section: 'system' },
   { id: 'git-integration', label: 'Git Integration', icon: GitPullRequest, section: 'system' },
@@ -414,6 +416,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
             <div className="px-8 py-8 max-w-4xl w-full">
               {activeTab === 'engines' && <EnginesTab />}
               {activeTab === 'skills' && <SkillsTab />}
+              {activeTab === 'mcp' && <McpSettings />}
               {activeTab === 'rtk' && <RTKTab />}
               {activeTab === 'router' && <RouterTab />}
               {activeTab === 'vision' && <VisionTab />}

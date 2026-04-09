@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { getAllTools, parseToolName } from './registry';
-import { executeTool, type ToolCallResult } from './router';
+import { executeTool } from './router';
 import type { UnifiedTool } from './types';
 
 // ============================================================================
@@ -24,7 +24,7 @@ export interface ToolResultInfo {
   toolCallId: string;
   toolName: string;
   success: boolean;
-  result?: unknown;
+  result?: string;
   error?: string;
   duration_ms: number;
 }
@@ -88,6 +88,13 @@ export function detectToolCallFromOutput(output: string): ToolCallInfo | null {
       const toolName = match[1].trim();
       const parsed = parseToolName(toolName);
       
+      console.log('[ToolDetection] Found tool call:', {
+        rawMatch: match[0],
+        toolName,
+        parsedName: parsed.name,
+        source: parsed.source,
+      });
+      
       return {
         id: `call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         name: parsed.name,
@@ -123,24 +130,34 @@ export async function executeToolCalls(
   const results: ToolResultInfo[] = [];
   const timeout = options?.timeout || 30000;
   
+  console.log('[ToolExecution] Executing', toolCalls.length, 'tool calls:', 
+    toolCalls.map(c => ({ name: c.name, id: c.id }))
+  );
+  
   for (const call of toolCalls) {
+    console.log('[ToolExecution] Calling tool:', call.name, 'with args:', call.arguments);
+    
     try {
       const result = await Promise.race([
         executeTool(call.name, call.arguments),
-        new Promise<ToolCallResult>((_, reject) =>
+        new Promise<{ success: boolean; result?: string; error?: string; duration_ms: number }>((_, reject) =>
           setTimeout(() => reject(new Error('Tool execution timeout')), timeout)
         ),
       ]);
       
+      console.log('[ToolExecution] Tool result:', call.name, result.success ? 'SUCCESS' : 'FAILED', 
+        result.error || '');
+      
       results.push({
         toolCallId: call.id,
-        toolName: result.toolName,
+        toolName: call.name,
         success: result.success,
-        result: result.result,
+        result: result.result !== undefined ? String(result.result) : undefined,
         error: result.error,
         duration_ms: result.duration_ms,
       });
     } catch (err) {
+      console.error('[ToolExecution] Tool error:', call.name, err);
       results.push({
         toolCallId: call.id,
         toolName: call.name,
@@ -168,9 +185,7 @@ export function formatToolResultsForPrompt(results: ToolResultInfo[]): string {
     if (result.success) {
       lines.push(`${icon} ${result.toolName}: Success`);
       if (result.result) {
-        const resultStr = typeof result.result === 'string' 
-          ? result.result 
-          : JSON.stringify(result.result, null, 2);
+        const resultStr = String(result.result);
         lines.push(`  Result: ${resultStr.substring(0, 500)}${resultStr.length > 500 ? '...' : ''}`);
       }
     } else {
@@ -193,9 +208,7 @@ export function formatToolResultsForDisplay(results: ToolResultInfo[]): string {
     lines.push(`${status} ${icon} ${result.toolName} (${result.duration_ms}ms)`);
     
     if (result.success && result.result) {
-      const resultStr = typeof result.result === 'string'
-        ? result.result
-        : JSON.stringify(result.result, null, 2);
+      const resultStr = String(result.result);
       const truncated = resultStr.substring(0, 200);
       lines.push(`   Result: ${truncated}${resultStr.length > 200 ? '...' : ''}`);
     } else if (!result.success && result.error) {
@@ -236,6 +249,67 @@ export function injectToolsIntoPrompt(
   ].join('\n');
   
   return toolSection + basePrompt;
+}
+
+// ============================================================================
+// Tool Prompt Builder for Chat Integration
+// ============================================================================
+
+/**
+ * Build a concise tool definition prompt for AI models
+ */
+export function buildToolPromptForChat(
+  tools: UnifiedTool[],
+  options?: { maxTools?: number; includeDescriptions?: boolean }
+): string {
+  if (tools.length === 0) return '';
+  
+  const maxTools = options?.maxTools || 20;
+  const includeDescriptions = options?.includeDescriptions ?? true;
+  const limitedTools = tools.slice(0, maxTools);
+  
+  const toolDefs = limitedTools.map(tool => {
+    const parsed = parseToolName(tool.name);
+    const categoryLabel = parsed.source === 'internal' ? '[INTERNAL]' : '[MCP]';
+    const toolName = parsed.name;
+    const desc = includeDescriptions && tool.description ? `: ${tool.description}` : '';
+    
+    let paramsStr = '';
+    if (tool.parameters && typeof tool.parameters === 'object') {
+      const params = tool.parameters as { properties?: Record<string, unknown> };
+      if (params.properties) {
+        const paramList = Object.keys(params.properties).join(', ');
+        paramsStr = paramList ? `(${paramList})` : '()';
+      }
+    }
+    
+    return `  - ${categoryLabel} ${toolName}${paramsStr}${desc}`;
+  }).join('\n');
+  
+  return `
+[AVAILABLE TOOLS]
+You have access to these tools. Use them by mentioning the tool name in your response:
+
+${toolDefs}
+
+To invoke a tool, use format: [Tool: tool_name] or describe what you need and mention the tool.
+The tool will be executed and results will be provided.
+[/AVAILABLE TOOLS]
+`;
+}
+
+/**
+ * Check if prompt mentions internal tools
+ */
+export function shouldInjectTools(prompt: string): boolean {
+  const promptLower = prompt.toLowerCase();
+  const keywords = [
+    'task', 'project', 'skill',
+    'create task', 'list task', 'update task',
+    'get project', 'workspace',
+  ];
+  
+  return keywords.some(kw => promptLower.includes(kw));
 }
 
 // ============================================================================

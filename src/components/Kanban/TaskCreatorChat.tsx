@@ -3,6 +3,7 @@ import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, Chevro
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore, useSkillStore } from '@/store'
+import { injectToolsIntoPrompt } from '@/lib/mcp'
 import { useConfigStore } from '@/store/configStore'
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject'
 import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
@@ -649,8 +650,24 @@ User: ${finalMessage}
 Assistant:`;
       }
 
+// Inject Dynamic MCP tools for non-small talk queries
+      // Both YOLO and Planning modes can benefit from tools
+      let finalPrompt = internalPrompt
+      if (!isSmallTalkLocal && activeWorkspace) {
+        finalPrompt = injectToolsIntoPrompt(internalPrompt, {
+          maxTools: 20,
+          format: 'compact',
+          workspaceId: activeWorkspace.id,
+        })
+        console.log('[DynamicMCP] Tools injected into prompt for workspace:', activeWorkspace.id, '| mode:', yoloMode ? 'YOLO' : 'Planning')
+      } else if (activeWorkspace) {
+        // For small talk, inject minimal project context only
+        finalPrompt = `[CONTEXT] Project: ${activeWorkspace.name}${internalPrompt}`
+        console.log('[DynamicMCP] Minimal context injected for small talk')
+      }
+
       console.log('[handleSend] Sending message to AI...')
-      await sendSimpleMessage(taskId, userMsg, internalPrompt)
+      await sendSimpleMessage(taskId, userMsg, finalPrompt)
       console.log('[handleSend] Message sent successfully')
     } catch (err) {
       console.error('[handleSend] Error:', err)

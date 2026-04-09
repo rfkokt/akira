@@ -22,6 +22,13 @@ import { formatSkillListing, loadSkillContent, detectSkillInvocation } from '@/l
 import { sendGroqSmallTalk } from '@/lib/groq';
 import { routeQuery, logRoutingDecision } from '@/lib/queryRouter';
 import { compressHistory, logCompression } from '@/lib/promptCompression';
+import {
+  extractToolCallsFromResponse,
+  executeToolCalls,
+  formatToolResultsForPrompt,
+} from '@/lib/mcp/aiIntegration';
+import { trackToolCall } from '@/lib/mcp/analytics';
+import { injectToolsIntoPrompt } from '@/lib/mcp';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -40,7 +47,7 @@ export interface ToolCallRecord {
   name: string;
   arguments?: Record<string, unknown>;
   status: 'pending' | 'running' | 'success' | 'error';
-  result?: unknown;
+  result?: string;
   error?: string;
   durationMs?: number;
   timestamp: number;
@@ -108,6 +115,12 @@ interface AIChatState {
   setRouterProvider: (provider: string | null) => void;
   addInvokedSkill: (taskId: string, skill: InvokedSkill) => void;
   getInvokedSkills: (taskId: string) => InvokedSkill[];
+  
+  // Tool Call Actions
+  addToolCall: (taskId: string, toolCall: ToolCallRecord) => void;
+  updateToolCall: (taskId: string, toolCallId: string, updates: Partial<ToolCallRecord>) => void;
+  getToolCalls: (taskId: string) => ToolCallRecord[];
+  clearToolCalls: (taskId: string) => void;
 }
 
 // ─── Exports ────────────────────────────────────────────────────────────
@@ -206,14 +219,89 @@ function buildTaskPrompt(taskTitle: string, taskDescription?: string, skillListi
   const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
   const invokedSkillsSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
 
-  return `${systemPrompt ? systemPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSkillsSection}
+  let prompt = `${systemPrompt ? systemPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSkillsSection}
 
 ---
 
 TASK: ${taskTitle}
 ${cleanDescription ? `CONTEXT: ${cleanDescription}` : ''}
 
-Please analyze and implement this task. Be concise and always use 'rtk' for terminal commands to save tokens.`;
+Please analyze and implement this task. Be concise and always use 'rtk' for terminal commands to save tokens.`;  // Inject Dynamic MCP tools
+  const workspace = useWorkspaceStore.getState().activeWorkspace;
+  if (workspace) {
+    prompt = injectToolsIntoPrompt(prompt, {
+      maxTools: 30,
+      format: 'compact',
+      workspaceId: workspace.id,
+    });
+    console.log('[DynamicMCP] Tools injected into task prompt');
+  }
+
+  return prompt;
+}
+
+/** Detect and execute tool calls from AI response */
+async function processToolCallsFromResponse(
+  response: string,
+  taskId?: string,
+  _onToolCallStart?: (toolCallId: string, toolName: string) => void,
+  onToolCallComplete?: (toolCallId: string, success: boolean, result?: string, error?: string) => void
+): Promise<{ hasToolCalls: boolean; toolResults?: string }> {
+  const toolCalls = extractToolCallsFromResponse(response);
+  
+  if (toolCalls.length === 0) {
+    return { hasToolCalls: false };
+  }
+
+  console.log(`[ToolExecution] Detected ${toolCalls.length} tool calls in response`);
+  
+  // Track tool calls if taskId provided
+  if (taskId) {
+    for (const call of toolCalls) {
+      useAIChatStore.getState().addToolCall(taskId, {
+        id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+        status: 'pending',
+        timestamp: Date.now(),
+      });
+    }
+  }
+  
+  // Execute all tool calls
+  const results = await executeToolCalls(toolCalls, { timeout: 30000 });
+  
+  // Update status for each result
+  for (const result of results) {
+    if (taskId) {
+      useAIChatStore.getState().updateToolCall(taskId, result.toolCallId, {
+        status: result.success ? 'success' : 'error',
+        result: result.result,
+        error: result.error,
+        durationMs: result.duration_ms,
+      });
+    }
+    
+    // Track tool call analytics
+    trackToolCall(
+      result.toolName,
+      result.success,
+      result.duration_ms || 0,
+      { error: result.error }
+    );
+    
+    if (onToolCallComplete) {
+      onToolCallComplete(result.toolCallId, result.success, result.result, result.error);
+    }
+  }
+  
+  // Format results for AI
+  const formattedResults = formatToolResultsForPrompt(results);
+  
+  return {
+    hasToolCalls: true,
+    toolResults: formattedResults,
+  };
 }
 
 /** Post-task completion: capture diff, create PR, move to review */
@@ -839,6 +927,17 @@ ${content}
 Please respond concisely. Use 'rtk' for any commands.`;
     }
 
+    // Inject Dynamic MCP tools for task chat
+    const workspace = useWorkspaceStore.getState().activeWorkspace;
+    if (workspace) {
+      chatPrompt = injectToolsIntoPrompt(chatPrompt, {
+        maxTools: 30,
+        format: 'compact',
+        workspaceId: workspace.id,
+      });
+      console.log('[DynamicMCP] Tools injected into chat prompt');
+    }
+
     const cwd = getWorkspaceCwd();
 
     try {
@@ -854,6 +953,25 @@ Please respond concisely. Use 'rtk' for any commands.`;
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
         },
       });
+
+      // Check for tool calls in response and execute them
+      const toolResult = await processToolCallsFromResponse(result.content, taskId);
+      
+      if (toolResult.hasToolCalls && toolResult.toolResults) {
+        // Add tool results as system message
+        addMessage(get, set, taskId, {
+          id: `msg-${Date.now()}-tools`,
+          taskId,
+          role: 'system',
+          content: toolResult.toolResults,
+          timestamp: Date.now(),
+        });
+        
+        // Save tool results to DB
+        try {
+          await dbService.createChatMessage(taskId, 'system', toolResult.toolResults, 'tool-execution');
+        } catch { /* non-critical */ }
+      }
 
       // Save to DB
       if (result.content.trim()) {
@@ -935,7 +1053,9 @@ Please respond concisely. Use 'rtk' for any commands.`;
       set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: aiMessageId } });
 
       try {
-        const groqResult = await sendGroqSmallTalk(groqApiKey, prompt);
+        // Use internalPrompt (with tools) if available, otherwise plain prompt
+        const systemPrompt = internalPrompt || undefined;
+        const groqResult = await sendGroqSmallTalk(groqApiKey, prompt, systemPrompt);
 
         if (groqResult) {
           const { content, usage, model } = groqResult;
@@ -947,11 +1067,21 @@ Please respond concisely. Use 'rtk' for any commands.`;
             `[Model: ${model}]`
           );
 
+          // Check for tool calls in Groq response and execute them
+          const toolResult = await processToolCallsFromResponse(content, taskId);
+          
+          let finalContent = content;
+          if (toolResult.hasToolCalls && toolResult.toolResults) {
+            // Add tool results to response
+            finalContent = content + '\n\n' + toolResult.toolResults;
+            console.log('[Groq] Tool calls executed:', toolResult.hasToolCalls);
+          }
+
           // Build content with token info for display and storage
           const tokenInfo = usage 
             ? ` [${usage.total_tokens} tokens | ${model}]`
             : ` [${model}]`;
-          const contentWithTokenInfo = content + tokenInfo;
+          const contentWithTokenInfo = finalContent + tokenInfo;
 
           // Update message with Groq response (with token info)
           const state = get();
@@ -974,7 +1104,7 @@ Please respond concisely. Use 'rtk' for any commands.`;
             );
           } catch { /* non-critical */ }
 
-          return content;
+          return finalContent;
         }
       } catch (error) {
       console.error('[sendSimpleMessage] Groq failed:', error);
@@ -1014,6 +1144,25 @@ Please respond concisely. Use 'rtk' for any commands.`;
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
         },
       });
+
+      // Check for tool calls in response and execute them
+      const toolResult = await processToolCallsFromResponse(result.content, taskId);
+      
+      if (toolResult.hasToolCalls && toolResult.toolResults) {
+        // Add tool results as system message
+        addMessage(get, set, taskId, {
+          id: `msg-${Date.now()}-tools`,
+          taskId,
+          role: 'system',
+          content: toolResult.toolResults,
+          timestamp: Date.now(),
+        });
+        
+        // Save tool results to DB
+        try {
+          await dbService.createChatMessage(taskId, 'system', toolResult.toolResults, 'tool-execution');
+        } catch { /* non-critical */ }
+      }
 
       if (result.content.trim()) {
         try {
@@ -1119,4 +1268,62 @@ Please respond concisely. Use 'rtk' for any commands.`;
   setUseRouter: (useRouter) => set({ useRouter }),
 
   setRouterProvider: (provider) => set({ routerProvider: provider }),
+
+  // ── Tool Call Management ──────────────────────────────────────────────
+
+  addToolCall: (taskId, toolCall) => {
+    set((state) => {
+      const taskState = state.taskStates[taskId] || defaultTaskState();
+      return {
+        taskStates: {
+          ...state.taskStates,
+          [taskId]: {
+            ...taskState,
+            toolCalls: [...taskState.toolCalls, toolCall],
+          },
+        },
+      };
+    });
+  },
+
+  updateToolCall: (taskId, toolCallId, updates) => {
+    set((state) => {
+      const taskState = state.taskStates[taskId];
+      if (!taskState) return state;
+
+      return {
+        taskStates: {
+          ...state.taskStates,
+          [taskId]: {
+            ...taskState,
+            toolCalls: taskState.toolCalls.map((tc) =>
+              tc.id === toolCallId ? { ...tc, ...updates } : tc
+            ),
+          },
+        },
+      };
+    });
+  },
+
+  getToolCalls: (taskId) => {
+    const state = get();
+    return state.taskStates[taskId]?.toolCalls || [];
+  },
+
+  clearToolCalls: (taskId) => {
+    set((state) => {
+      const taskState = state.taskStates[taskId];
+      if (!taskState) return state;
+
+      return {
+        taskStates: {
+          ...state.taskStates,
+          [taskId]: {
+            ...taskState,
+            toolCalls: [],
+          },
+        },
+      };
+    });
+  },
 }));

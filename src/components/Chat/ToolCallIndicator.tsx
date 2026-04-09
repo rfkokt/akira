@@ -6,16 +6,14 @@
 
 import { useState } from 'react'
 import {
-  Wrench,
+Wrench,
   CheckCircle2,
   XCircle,
   Loader2,
   ChevronDown,
-  ChevronUp,
   ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ToolCallResult } from '@/lib/mcp'
 import { parseToolName } from '@/lib/mcp'
 import {
   Collapsible,
@@ -24,13 +22,13 @@ import {
 } from '@/components/ui/collapsible'
 
 export interface ToolCallDisplay {
-  id: string
-  name: string
-  arguments?: Record<string, unknown>
-  status: 'pending' | 'running' | 'success' | 'error'
-  result?: unknown
-  error?: string
-  durationMs?: number
+  id: string;
+  name: string;
+  arguments?: Record<string, unknown>;
+  status: 'pending' | 'running' | 'success' | 'error';
+  result?: string;
+  error?: string;
+  durationMs?: number;
 }
 
 interface ToolCallIndicatorProps {
@@ -139,9 +137,9 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCallDisplay }) {
                     Result
                   </span>
                   <pre className="text-[11px] font-mono text-green-400/80 bg-app-panel/50 rounded p-2 overflow-x-auto max-h-40">
-                    {typeof toolCall.result === 'string' 
+                    {String(typeof toolCall.result === 'string' 
                       ? toolCall.result 
-                      : JSON.stringify(toolCall.result, null, 2)}
+                      : JSON.stringify(toolCall.result, null, 2))}
                   </pre>
                 </div>
               )}

@@ -19,8 +19,13 @@ import { useMcpStore } from '@/store/mcpStore';
 // Types
 // ============================================================================
 
+interface WorkspaceTool extends InternalTool {
+  workspaceId: string;
+}
+
 interface ToolRegistryState {
   internalTools: Map<string, InternalTool>;
+  workspaceTools: Map<string, WorkspaceTool[]>; // workspaceId -> tools
   isLoading: boolean;
   error: string | null;
   
@@ -28,6 +33,10 @@ interface ToolRegistryState {
   unregisterInternalTool: (name: string) => void;
   getInternalTool: (name: string) => InternalTool | undefined;
   getAllInternalTools: () => InternalTool[];
+  
+  registerWorkspaceTools: (workspaceId: string, tools: WorkspaceTool[]) => void;
+  getWorkspaceTools: (workspaceId: string) => WorkspaceTool[];
+  clearWorkspaceTools: (workspaceId: string) => void;
   
   executeInternalTool: (name: string, args: Record<string, unknown>) => Promise<ToolExecutionResult>;
 }
@@ -72,6 +81,7 @@ export function parseToolName(fullName: string): { source: ToolSource; name: str
 
 export const useToolRegistry = create<ToolRegistryState>((set, get) => ({
   internalTools: new Map(),
+  workspaceTools: new Map(),
   isLoading: false,
   error: null,
   
@@ -98,24 +108,56 @@ export const useToolRegistry = create<ToolRegistryState>((set, get) => ({
     return Array.from(get().internalTools.values());
   },
   
+  registerWorkspaceTools: (workspaceId, tools) => {
+    set((state) => {
+      const newWorkspaceTools = new Map(state.workspaceTools);
+      newWorkspaceTools.set(workspaceId, tools);
+      return { workspaceTools: newWorkspaceTools };
+    });
+  },
+  
+  getWorkspaceTools: (workspaceId) => {
+    return get().workspaceTools.get(workspaceId) || [];
+  },
+  
+  clearWorkspaceTools: (workspaceId) => {
+    set((state) => {
+      const newWorkspaceTools = new Map(state.workspaceTools);
+      newWorkspaceTools.delete(workspaceId);
+      return { workspaceTools: newWorkspaceTools };
+    });
+  },
+  
   executeInternalTool: async (name, args) => {
     const tool = get().internalTools.get(name);
+    const allTools = Array.from(get().internalTools.keys());
+    
+    console.log('[ToolRegistry] Looking for tool:', name);
+    console.log('[ToolRegistry] Available tools:', allTools);
     
     if (!tool) {
+      console.error('[ToolRegistry] Tool not found:', name);
+      console.error('[ToolRegistry] Did you mean one of:', 
+        allTools.filter(t => t.includes(name) || name.includes(t))
+      );
       return {
         success: false,
-        error: `Internal tool not found: ${name}`,
+        error: `Internal tool not found: ${name}. Available tools: ${allTools.join(', ')}`,
       };
     }
     
+    console.log('[ToolRegistry] Found tool:', name, 'executing...');
+    
     try {
       const result = await tool.handler(args);
+      console.log('[ToolRegistry] Tool executed successfully:', name);
       return {
         success: true,
         data: result,
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[ToolRegistry] Tool execution failed:', name, errorMessage);
       return {
         success: false,
         error: errorMessage,
@@ -154,7 +196,7 @@ export function getConnectedServerTools(): Array<{ serverId: string; serverName:
 // ============================================================================
 
 export function getAllTools(): UnifiedTool[] {
-  const { internalTools } = useToolRegistry.getState();
+  const { internalTools, workspaceTools } = useToolRegistry.getState();
   const externalToolsWithServer = getConnectedServerTools();
   
   const internal: UnifiedTool[] = Array.from(internalTools.values()).map(tool => ({
@@ -163,6 +205,17 @@ export function getAllTools(): UnifiedTool[] {
     parameters: tool.parameters,
     source: 'internal' as const,
   }));
+  
+  // Add workspace tools
+  const workspace: UnifiedTool[] = Array.from(workspaceTools.values())
+    .flat()
+    .map(tool => ({
+      name: namespacedToolName('internal', tool.name),
+      description: tool.description,
+      parameters: tool.parameters,
+      source: 'internal' as const,
+      workspaceId: tool.workspaceId,
+    }));
   
   const external: UnifiedTool[] = externalToolsWithServer.flatMap(({ serverId, tools }) =>
     tools.map(tool => ({
@@ -174,7 +227,7 @@ export function getAllTools(): UnifiedTool[] {
     }))
   );
   
-  return [...internal, ...external];
+  return [...internal, ...workspace, ...external];
 }
 
 export function getTool(name: string): UnifiedTool | undefined {
@@ -209,4 +262,9 @@ export function categorizeTools(tools: UnifiedTool[]): Record<string, UnifiedToo
   }
   
   return categories;
+}
+
+// Export helper for getting internal tools
+export function getAllInternalTools(): InternalTool[] {
+  return useToolRegistry.getState().getAllInternalTools();
 }
