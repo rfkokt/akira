@@ -283,7 +283,7 @@ export interface InternalTool {
   description: string;
   parameters: Record<string, unknown>;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
-  category?: 'skill' | 'task' | 'project' | 'utility' | 'hooks' | 'standards' | 'tech' | 'skills' | 'utils' | 'file' | 'bash';
+  category?: 'skill' | 'task' | 'project' | 'utility' | 'hooks' | 'standards' | 'tech' | 'skills' | 'utils' | 'file' | 'bash' | 'external';
   source?: 'internal';
   workspaceId?: string;
 }

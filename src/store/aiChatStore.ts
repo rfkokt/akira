@@ -21,7 +21,7 @@ import {
 import { formatSkillListing, loadSkillContent, detectSkillInvocation } from '@/lib/skills';
 import { sendGroqSmallTalk } from '@/lib/groq';
 import { routeQuery, logRoutingDecision } from '@/lib/queryRouter';
-import { compressHistory, logCompression } from '@/lib/promptCompression';
+import { compressHistory } from '@/lib/promptCompression';
 import {
   extractToolCallsFromResponse,
   executeToolCalls,
