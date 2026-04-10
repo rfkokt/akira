@@ -46,3 +46,7 @@ lerna-debug.log*
 # Temporary
 *.tmp
 *.temp
+
+# Akira AI workspace files (local only)
+.akira
+.serena

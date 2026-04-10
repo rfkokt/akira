@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Folder, File, ChevronRight, ChevronDown, Search, X, FileSearch, Loader2, Upload } from 'lucide-react'
+import { ChevronRight, ChevronDown, Search, X, FileSearch, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
+import { getFileIcon, getFolderIcon } from './FileIcons'
 
 interface FileEntry {
   name: string
@@ -309,38 +310,6 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     })
   }
 
-
-
-  const getFileIcon = (name: string) => {
-    const ext = name.split('.').pop()?.toLowerCase()
-    
-    // VSCode-like File Icons
-    const iconClass = "w-[14px] h-[14px]"
-    switch (ext) {
-      case 'js':
-      case 'jsx':
-        return <File className={`${iconClass} text-[#f0e059]`} />
-      case 'ts':
-      case 'tsx':
-        return <File className={`${iconClass} text-[#3178c6]`} />
-      case 'json':
-        return <File className={`${iconClass} text-[#cbcd30]`} />
-      case 'md':
-        return <File className={`${iconClass} text-[#519aba]`} />
-      case 'css':
-      case 'scss':
-        return <File className={`${iconClass} text-[#42a5f5]`} />
-      case 'html':
-        return <File className={`${iconClass} text-[#e34c26]`} />
-      case 'rs':
-        return <File className={`${iconClass} text-[#dea584]`} />
-      case 'py':
-        return <File className={`${iconClass} text-[#3572A5]`} />
-      default:
-        return <File className={`${iconClass} text-neutral-500`} />
-    }
-  }
-
   const handleResultClick = (result: SearchResult) => {
     onFileSelect?.(result.path)
     setShowSearch(false)
@@ -382,9 +351,9 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
           </div>
           
           {/* Icon */}
-          <div className={`flex items-center justify-center mr-1.5 flex-shrink-0 ${node.is_dir ? 'text-[#e8a317]' : ''}`}>
+          <div className={`flex items-center justify-center mr-1.5 flex-shrink-0`}>
             {node.is_dir ? (
-              <Folder className="w-[14px] h-[14px] fill-current opacity-80" />
+              getFolderIcon(node.name, isExpanded)
             ) : (
               getFileIcon(node.name)
             )}
@@ -495,8 +464,8 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
                     )}
                   </span>
                 </div>
-                <div className="flex items-center justify-center mr-1.5 flex-shrink-0 text-app-accent">
-                  <Folder className="w-[14px] h-[14px] fill-current opacity-80" />
+                <div className="flex items-center justify-center mr-1.5 flex-shrink-0">
+                  {getFolderIcon(rootName || rootPath.split('/').pop() || rootPath, expandedDirs.has(rootPath))}
                 </div>
                 <span className="flex-1 truncate text-[13px] leading-[22px] font-bold text-white tracking-wide" style={{ fontFamily: "Inter, sans-serif" }}>
                   {rootName || rootPath.split('/').pop() || rootPath}

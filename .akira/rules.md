@@ -1,66 +1,57 @@
-# Project Overview
+# Workspace Standards
 
-## What This Project Does
-**Akira** is a native desktop application that serves as an AI-powered workspace and task manager for software developers. Each workspace represents a local project folder with its own Kanban board for task management, Project Intelligence Config (PIC) for AI context customization, and task-scoped AI chat conversations. The app enables developers to run AI coding tasks (via CLI engines like Claude, Ollama, OpenCode), automatically create Git pull requests upon task completion, review diffs, and manage task workflows through a 4-column Kanban board (TODO → IN PROGRESS → REVIEW → DONE). Tasks can be imported from JSON/Markdown/Excel, and AI conversations can be scoped per task for context continuity.
+## Overview
+AI-powered desktop workspace manager for coding projects with Kanban task boards, context-aware AI chat, and file management
 
 ## Tech Stack
-- **Runtime/Language**: TypeScript (React frontend), Rust (Tauri backend)
-- **Framework**: Tauri v2 (native desktop app), React 19, Vite
-- **UI Library**: Tailwind CSS + shadcn/ui (custom UI components), @dnd-kit for drag-and-drop
-- **Database**: SQLite via rusqlite (single `akira.db` per app installation)
-- **Key Dependencies**: 
-  - **Zustand** for state management
-  - **Monaco Editor** for code viewing
-  - **@xterm/xterm** for terminal emulation
-  - **@tauri-apps/** plugins (shell, notification, window, fs, dialog)
-  - **react-markdown** + **react-syntax-highlighter** for chat rendering
-  - **lucide-react** for icons
-  - **next-themes** for theme switching
-- **Build/Deploy**: npm + Vite dev server, Tauri bundler for native executables
+- **Runtime**: Node.js 20+ / TypeScript 5.x
+- **Framework**: Tauri v2 (Rust backend) + React 19 frontend
+- **Ui**: Base UI primitives + Tailwind CSS + custom design system
+- **State**: Zustand with per-feature stores (workspace, task, aiChat, mcp, config)
+- **Api**: Tauri invoke() for Rust commands, MCP (Model Context Protocol) for AI tools
+- **Database**: SQLite via Rust rusqlite - one DB per workspace
+- **Auth**: N/A (local desktop app)
+- **Testing**: N/A (no test framework configured)
+- **Build**: Vite 8 + esbuild
 
 ## Architecture
-The app uses a **Tauri IPC bridge architecture**: React frontend communicates with Rust backend via Tauri commands (`invoke('command_name')`). State is managed through **Zustand stores** (`workspaceStore`, `taskStore`, `aiChatStore`, `engineStore`, `configStore`), which handle business logic and persist to SQLite via the Rust backend. Each workspace has isolated data (tasks, chat history, AI config) keyed by `workspace_id`. AI engines are CLI binaries (Claude, Ollama, OpenCode) executed via Rust's `portable-pty`, with output streamed to frontend via Tauri events (`cli-output`, `cli-complete`). The app features a **CLI Router** for multi-provider AI request routing with auto-switching, cost tracking, and session management. Git operations (diff, commit, branch, PR) are handled via Rust commands with optional RTK (Rust Token Killer) integration for token optimization.
+- **Pattern**: Feature-based with domain folders (Workspaces, Kanban, Chat, Editor, Settings)
+- **Data Flow**: React components → Zustand stores → invoke() calls → Rust commands → SQLite database
+- **Key Directories**:
+  - src/components/ — Feature-based components organized by domain (Workspaces/, Kanban/, Chat/, Editor/, Settings/)
+  - src/store/ — Zustand stores (workspaceStore, taskStore, aiChatStore, mcpStore, engineStore, configStore)
+  - src/lib/ — Service layer (db.ts for Tauri commands, providers.ts for AI engines, mcp/ for MCP server management)
+  - src/hooks/ — Custom React hooks (useAnalyzeProject, useTaskDrag, useGitOperations, useAIWorkflow)
+  - src-tauri/src/ — Rust backend with commands/ and db/ modules
+  - src/components/ui/ — Reusable UI components (button, input, dialog, select, etc.)
 
-## Key Directories
-- `src/components/` — React UI components organized by feature (AI, Assessment, Chat, DiffViewer, Editor, Git, Kanban, MCP, Router, Settings, Skills, Workspaces, layout, ui)
-- `src/store/` — Zustand state management stores (aiChatStore, assessmentStore, configStore, engineStore, taskStore, terminalStore, workspaceStore, zoomStore)
-- `src/lib/` — Frontend utilities and services (db.ts for Tauri invoke wrappers, cli.ts for CLI runner, git.ts for Git operations, helpers.ts, notify.ts, providers.ts for AI providers, theme.ts, utils.ts)
-- `src/types/` — TypeScript type definitions (Task, Engine, ChatMessage, CLI events, Assessment, RTK types, Router types)
-- `src/hooks/` — Custom React hooks (useAnalyzeProject.ts)
-- `src-tauri/src/commands/` — Rust Tauri command handlers (agents, akira_config, chat, cli, engines, fs, git, import, pr, project, pty, rtk, router, shell, tasks, workspaces)
-- `src-tauri/src/db/` — SQLite database layer (mod.rs for schema/migrations, queries.rs for CRUD operations)
-- `src-tauri/src/cli_router/` — CLI router module for multi-provider AI routing
-- `src-tauri/src/models/` — Rust data models matching TypeScript types
-- `src-tauri/src/services/` — Business logic services
-- `src-tauri/src/utils/` — Rust utility functions
+## Component Patterns
+- **Reusability**: UI components in src/components/ui/ for reusability, feature components in domain folders (Chat/, Kanban/, Editor/)
+- **Naming**: PascalCase for components (TaskCard.tsx, ChatBox.tsx), camelCase for utilities (db.ts, helpers.ts)
+- **State Management**: Zustand stores with TypeScript interfaces, stores imported from @/store index, async actions with try/catch
+- **Forms**: Controlled components with useState, Base UI primitives (Input, Textarea, Select), shadcn-style components
+- **Styling**: Tailwind CSS with custom CSS variables for theming, cn() utility for className merging, CVA for variant-based styling
 
-# Code Rules
+## Code Rules
 
-## DO
-- Use **Zustand stores** for all state management - stores are the source of truth for UI state
-- Always **invoke Tauri commands via `dbService` wrapper** in `src/lib/db.ts` - never call `invoke()` directly from components
-- Follow the **4-column Kanban workflow**: `todo` → `in-progress` → `review` → `done` (also `failed` and `backlog` for edge cases)
-- **Scope AI conversations by task** - use `taskId` as the key for all chat messages stored in `aiChatStore.messages[taskId]`
-- **Wrap all AI prompts with project config rules** from `configStore.getSystemPrompt()` unless the task description contains `<!-- auto-rules-embedded -->`
-- **Use RTK (Rust Token Killer) prefix** for CLI commands in AI prompts: `rtk git <args>`, `rtk lint eslint`, `rtk test npm`, etc.
-- **Persist chat history to SQLite** via `dbService.createChatMessage()` after AI responses complete
-- **Handle workspace isolation** - always use `activeWorkspace.id` or `workspace_id` when fetching/creating tasks
-- Use **crypto.randomUUID()** for generating new entity IDs (workspaces, tasks, chat messages)
-- **Move tasks to 'review' status** after AI completion and PR creation - don't leave them in `in-progress`
-- **Use `runCLIWithStreaming()` from `src/lib/cli.ts`** for all AI engine CLI execution (handles event listeners, timeout, output aggregation)
-- **Export project rules to `.akira/rules.md`** in workspace folder for portability when saving config via `configStore.saveConfig()`
-- **Use mobile-responsive design patterns** - the Kanban board should be responsive with horizontal scrolling, chat panels should use flex layouts that adapt to viewport width, and buttons/interactive elements should be touch-friendly with adequate padding
+### DO
+- Use TypeScript strict mode with all type definitions in src/types/index.ts
+- Import from '@/store' index rather than individual store files
+- Use cn() utility from @/lib/utils for conditional className merging
+- Use Tauri invoke() from @tauri-apps/api/core for all backend communication
+- Define custom hooks for complex stateful logic (useTaskDrag, useAnalyzeProject)
+- Organize imports: external libraries → internal imports → types
+- Use async/await patterns in store actions with proper error handling
 
-## DON'T
-- Don't **bypass Zustand stores** and call Tauri commands directly from UI components - always go through the appropriate store
-- Don't **mix `project_id` and `workspace_id`** - the project renamed "projects" to "workspaces" and all references should use `workspace_id`
-- Don't **forget to handle RTK instruction injection** - all AI prompts except auto-generated tasks should include the RTK command guidelines
-- Don't **leave tasks in `in-progress` status** after AI completion - always move to `review` or `failed` based on outcome
-- Don't **create global singleton patterns** outside of Zustand stores - all shared state should be in a store
-- Don't **hardcode workspace paths** - always use `activeWorkspace.folder_path` from workspaceStore
-- Don't **use inline `invoke()` calls** without the `dbService` wrapper - the wrapper provides TypeScript types and consistency
-- Don't **skip loading config before running AI tasks** - always ensure `configStore.config` is loaded for the current workspace
-- Don't **ignore the task queue system** - tasks should be enqueued via `aiChatStore.enqueueTask()` not executed directly
-- Don't **use fixed pixel widths** for layout - use Tailwind's responsive utilities (`sm:`, `md:`, `lg:`) and flex/grid layouts
-- Don't **forget to handle `.akira/` folder import** - check for existing `.akira/rules.md` when loading workspace config via `import_akira_config` command
-- Don't **clear task state on workspace switch** without persisting - always save running state to localStorage via `saveRunningTask()`
+### DON'T
+- Don't use CSS-in-JS libraries - use Tailwind classes with custom CSS variables
+- Don't bypass Zustand stores for global state - use stores for shared state
+- Don't hardcode paths - use @/ alias for imports
+- Don't mix Rust backend code with React frontend - communicate via invoke()
+- Don't use prop drilling for deeply nested state - use Zustand context
+- Don't use class-based components - all components are functional with hooks
+
+## Security
+- **Auth Pattern**: N/A (local desktop app, no server authentication)
+- **Role Check**: N/A (single-user desktop application)
+- **Data Sanitization**: Rust backend validates file paths, TypeScript interfaces enforce type safety, AI responses handled as strings
