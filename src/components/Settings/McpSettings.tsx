@@ -6,7 +6,7 @@
  * No manual form configuration needed.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '@/store/workspaceStore';
 import { useMcpStore } from '@/store/mcpStore';
 import { McpToolsList } from './McpToolsList';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { open as openBrowser } from '@tauri-apps/plugin-shell';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,9 @@ import {
   Dna,
   AlertTriangle,
   Download,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
 } from 'lucide-react';
 import {
   connectExternalServer,
@@ -122,6 +126,7 @@ interface RegistryResponse {
 // API base: v0.1 supports ?search=<query>&version=latest&limit=<n>&cursor=<cursor>
 const REGISTRY_BASE = 'https://registry.modelcontextprotocol.io/v0.1/servers';
 const PAGE_SIZE = 50;
+const SERENA_DASHBOARD_URL = 'http://127.0.0.1:24282/dashboard/index.html';
 
 function useRegistryCatalog(searchQuery: string) {
   const [servers, setServers] = useState<RegistryServer[]>([]);
@@ -203,6 +208,7 @@ function useRegistryCatalog(searchQuery: string) {
 export function McpSettings() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
   const { loadServers, servers: mcpServers } = useMcpStore();
+  const loadedWorkspaceRef = useRef<string | null>(null);
 
   const [activeServers, setActiveServersState] = useState(getActiveServers());
   const [selectedServer, setSelectedServer] = useState<RegistryServer | null>(null);
@@ -212,6 +218,7 @@ export function McpSettings() {
 
   // Serena built-in state
   const [serenaReconnecting, setSerenaReconnecting] = useState(false);
+  const [serenaToolsOpen, setSerenaToolsOpen] = useState(false);
   const [uvAvailable, setUvAvailable] = useState<boolean | null>(null);
   const [installingUv, setInstallingUv] = useState(false);
 
@@ -222,7 +229,8 @@ export function McpSettings() {
   const { servers, isLoading, error, hasMore, loadMore, refetch } = useRegistryCatalog(searchQuery);
 
   useEffect(() => {
-    if (activeWorkspace?.id) {
+    if (activeWorkspace?.id && loadedWorkspaceRef.current !== activeWorkspace.id) {
+      loadedWorkspaceRef.current = activeWorkspace.id;
       loadServers(activeWorkspace.id).catch(() => {});
     }
   }, [activeWorkspace?.id, loadServers]);
@@ -408,8 +416,39 @@ export function McpSettings() {
             )}
           </div>
 
-          {/* Status / Action */}
-          <div className="flex-shrink-0">
+          {/* Status / Action row */}
+          <div className="flex-shrink-0 flex items-center gap-2">
+            {/* View Tools toggle */}
+            {serenaServer?.tools && serenaServer.tools.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground hover:text-violet-400 gap-1"
+                onClick={() => setSerenaToolsOpen((o) => !o)}
+              >
+                <Wrench className="w-3 h-3" />
+                {serenaServer.tools.length} tools
+                {serenaToolsOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </Button>
+            )}
+            {/* Open Serena Dashboard — only shown when connected */}
+            {serenaServer?.status === 'connected' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground hover:text-violet-400 gap-1"
+                onClick={() =>
+                  openBrowser(SERENA_DASHBOARD_URL).catch(() =>
+                    window.open(SERENA_DASHBOARD_URL, '_blank')
+                  )
+                }
+                title="Open Serena Dashboard in browser"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Dashboard
+              </Button>
+            )}
+
             {serenaServer?.status === 'connected' ? (
               <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 shrink-0">
                 <PlugZap className="w-3 h-3 mr-1" /> Active
@@ -432,6 +471,28 @@ export function McpSettings() {
             )}
           </div>
         </div>
+
+        {/* Tool list expandable */}
+        {serenaToolsOpen && serenaServer?.tools && serenaServer.tools.length > 0 && (
+          <div className="mt-3 rounded-xl border border-violet-500/20 bg-violet-500/5 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-violet-500/10">
+              <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Available Tools ({serenaServer.tools.length})</p>
+            </div>
+            <div className="max-h-64 overflow-y-auto px-4 py-3 grid grid-cols-2 gap-1.5 custom-scrollbar">
+              {serenaServer.tools.map((tool) => (
+                <div key={tool.name} className="flex items-start gap-2 p-2 rounded-lg bg-white/3 border border-white/5">
+                  <Wrench className="w-3 h-3 text-violet-400 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-mono text-white/90 truncate">{tool.name.replace(/^ext:serena:/, '')}</p>
+                    {tool.description && (
+                      <p className="text-[11px] text-neutral-500 line-clamp-2 mt-0.5">{tool.description}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Active Connections */}

@@ -10,6 +10,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { useMcpStore } from '@/store/mcpStore';
+import * as mcpClient from '@/lib/mcp/client';
 import type { McpStdioTransport } from '../types';
 
 // ============================================================================
@@ -40,6 +41,9 @@ export function getSerenaTransport(workspacePath: string): McpStdioTransport {
       'start-mcp-server',
       '--context', 'ide',
       '--project', workspacePath,
+      // No --no-open: dashboard runs at http://127.0.0.1:24282
+      // Looping is prevented by ensureSerenaServer's window-level session guard
+      // + Serena excluded from loadServers auto-connect
     ],
     env: {},
   };
@@ -105,8 +109,25 @@ export async function installUv(): Promise<boolean> {
 // Auto-Provisioning
 // ============================================================================
 
-/** Track provisioning state to avoid duplicate concurrent calls */
-const _provisioningWorkspaces = new Set<string>();
+/** Track provisioning state to avoid duplicate concurrent calls.
+ * Uses window-level storage so the guard survives Vite HMR module reloads
+ * (module-level variables reset on HMR, causing Serena to respawn).
+ */
+function getProvisioningSet(): Set<string> {
+  const win = window as any;
+  if (!win.__serena_provisioning__) {
+    win.__serena_provisioning__ = new Set<string>();
+  }
+  return win.__serena_provisioning__;
+}
+
+function getConnectedSet(): Set<string> {
+  const win = window as any;
+  if (!win.__serena_connected__) {
+    win.__serena_connected__ = new Set<string>();
+  }
+  return win.__serena_connected__;
+}
 
 /**
  * Ensure a Serena MCP server exists and is connected for the given workspace.
@@ -124,12 +145,28 @@ export async function ensureSerenaServer(
   workspaceId: string,
   workspacePath: string,
 ): Promise<{ status: 'connected' | 'created' | 'error' | 'already_connecting'; error?: string }> {
+  const provisioning = getProvisioningSet();
+  const connected = getConnectedSet();
+
+  // Fast path: already known to be connected in this browser session (survives HMR)
+  if (connected.has(workspaceId)) {
+    const mcpStore = useMcpStore.getState();
+    const existing = mcpStore.servers.find(
+      (s) => s.name === SERENA_SERVER_NAME && s.workspaceId === workspaceId,
+    );
+    if (existing?.status === 'connected') {
+      return { status: 'connected' };
+    }
+    // Stale — remove from fast-path cache and fall through
+    connected.delete(workspaceId);
+  }
+
   // Guard against concurrent provisioning for same workspace
-  if (_provisioningWorkspaces.has(workspaceId)) {
+  if (provisioning.has(workspaceId)) {
     return { status: 'already_connecting' };
   }
 
-  _provisioningWorkspaces.add(workspaceId);
+  provisioning.add(workspaceId);
 
   try {
     const mcpStore = useMcpStore.getState();
@@ -138,13 +175,33 @@ export async function ensureSerenaServer(
     );
 
     if (existing) {
-      // Server exists — connect if not already connected
+      // Server exists — check if transport config is up-to-date (e.g. --no-open was added)
+      const currentArgs = getSerenaTransport(workspacePath).args;
+      const storedArgs: string[] = (existing as any).args || [];
+      const argsNeedUpdate = JSON.stringify(currentArgs) !== JSON.stringify(storedArgs);
+
+      if (argsNeedUpdate) {
+        console.log('[Serena] Transport config changed, updating DB record...');
+        try {
+          const transport = getSerenaTransport(workspacePath);
+          await mcpClient.updateMcpServer({
+            serverId: existing.id,
+            transport,
+          });
+        } catch (e) {
+          console.warn('[Serena] Could not update transport config:', e);
+        }
+      }
+
+      // Connect if not already connected
       if (existing.status === 'connected') {
+        connected.add(workspaceId);
         return { status: 'connected' };
       }
       if (existing.status !== 'connecting') {
         try {
           await mcpStore.connectServer(existing.id);
+          connected.add(workspaceId);
           console.log('[Serena] Reconnected to existing server:', existing.id);
           return { status: 'connected' };
         } catch (err) {
@@ -177,6 +234,7 @@ export async function ensureSerenaServer(
         await updatedStore.connectServer(serverId);
       }
 
+      connected.add(workspaceId);
       return { status: 'created' };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -184,7 +242,7 @@ export async function ensureSerenaServer(
       return { status: 'error', error: errorMsg };
     }
   } finally {
-    _provisioningWorkspaces.delete(workspaceId);
+    provisioning.delete(workspaceId);
   }
 }
 

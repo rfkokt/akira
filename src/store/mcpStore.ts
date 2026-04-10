@@ -175,7 +175,11 @@ export const useMcpStore = create<McpState>((set, get) => ({
       set({ currentWorkspaceId: workspaceId });
 
       // Auto-connect enabled servers
-      const enabledServers = servers.filter((s) => s.enabled);
+      // NOTE: 'serena' is excluded here — it is managed by ensureSerenaServer
+      // which validates and updates its transport config before connecting.
+      // Letting loadServers auto-connect Serena would use the stale DB config
+      // (possibly without --no-open) and trigger an unwanted browser window.
+      const enabledServers = servers.filter((s) => s.enabled && s.name !== 'serena');
       if (enabledServers.length > 0) {
         await Promise.allSettled(
           enabledServers.map((s) => get().connectServer(s.id))

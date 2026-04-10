@@ -198,7 +198,7 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
   }
   
   // Clean up any remaining unclosed [TOOL RESULTS] at the end of the string (usually caused by AI echoing during stream)
-  displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*$/, '').trim();
+  displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*?(?:\[\/TOOL RESULTS\]|$)/g, '').trim();
 
   return (
     <div

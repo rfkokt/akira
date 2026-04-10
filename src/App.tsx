@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal, X, File, MessageSquare } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
+import { useMcpStore } from '@/store/mcpStore'
 import { dbService } from '@/lib/db'
 import { initializeInternalServers, ensureSerenaServer, checkUvInstalled } from '@/lib/mcp'
 import { SettingsPage } from './components/Settings/SettingsPage'
@@ -109,6 +110,39 @@ function App() {
     }
   }, [])
 
+  // Global UI Zoom functionality (VS Code style)
+  useEffect(() => {
+    let currentZoom = parseFloat(localStorage.getItem('akira-zoom') || '1');
+    
+    const applyZoom = (zoom: number) => {
+      currentZoom = Math.max(0.6, Math.min(zoom, 2.5));
+      document.documentElement.style.fontSize = `${16 * currentZoom}px`;
+      localStorage.setItem('akira-zoom', currentZoom.toString());
+    };
+    
+    // Apply initial zoom
+    applyZoom(currentZoom);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // MacOS uses metaKey (Cmd), Windows uses ctrlKey
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          applyZoom(currentZoom + 0.1);
+        } else if (e.key === '-') {
+          e.preventDefault();
+          applyZoom(currentZoom - 0.1);
+        } else if (e.key === '0') {
+          e.preventDefault();
+          applyZoom(1);
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Handle resume task
   const handleResumeTask = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId)
@@ -133,14 +167,6 @@ function App() {
     }
     init()
 
-    // Re-initialize MCP servers on HMR updates (dev only)
-    if ((import.meta as any).hot) {
-      (import.meta as any).hot.on('vite:afterUpdate', () => {
-        console.log('[HMR] Re-initializing internal MCP servers...')
-        initializeInternalServers()
-      })
-    }
-    
     // Cleanup on unmount
     return () => {
       try {
@@ -164,27 +190,55 @@ function App() {
     }
   }, [activeWorkspace, setCurrentWorkspace])
 
-  // Auto-provision Serena MCP server when workspace changes
+  // Auto-provision Serena MCP server when workspace changes.
+  // We load all MCP servers first so ensureSerenaServer can find existing records
+  // without trying to create a duplicate.
   useEffect(() => {
     if (!activeWorkspace) return
 
-    const provisionSerena = async () => {
-      // Check if uv/uvx is installed
+    const provisionWorkspace = async () => {
+      const cwd = activeWorkspace.folder_path
+
+      // 0. Ensure .akira and .serena are in .gitignore (silently)
+      try {
+        const ENTRIES = ['.akira', '.serena']
+        // Read current .gitignore (may not exist)
+        let existing = ''
+        try {
+          existing = await invoke<string>('read_file', { path: `${cwd}/.gitignore` })
+        } catch { /* file doesn't exist yet, that's fine */ }
+
+        const missing = ENTRIES.filter(e => !existing.split('\n').map(l => l.trim()).includes(e))
+        if (missing.length > 0) {
+          const appendBlock = `\n# Akira AI workspace files (local only)\n${missing.join('\n')}\n`
+          await invoke('run_shell_command', {
+            command: 'sh',
+            args: ['-c', `printf '${appendBlock.replace(/'/g, "'\"'\"'")}' >> .gitignore`],
+            cwd,
+          })
+          console.log('[App] Added to .gitignore:', missing)
+        }
+      } catch (e) {
+        console.warn('[App] Could not update .gitignore:', e)
+      }
+
+      // 1. Populate the MCP store so ensureSerenaServer can find the existing server
+      const mcpStore = useMcpStore.getState()
+      await mcpStore.loadServers(activeWorkspace.id)
+
+      // 2. Check uv/uvx
       const uvVersion = await checkUvInstalled()
       if (!uvVersion) {
         console.warn('[App] uv/uvx not found — Serena will not be provisioned')
         return
       }
 
-      console.log('[App] uv detected:', uvVersion)
-
+      // 3. Ensure Serena is connected (updates stale config + connects)
       const result = await ensureSerenaServer(activeWorkspace.id, activeWorkspace.folder_path)
       console.log('[App] Serena provisioning result:', result)
     }
 
-    // Small delay to let MCP store initialize first
-    const timer = setTimeout(provisionSerena, 1500)
-    return () => clearTimeout(timer)
+    provisionWorkspace()
   }, [activeWorkspace?.id])
 
   // Auto-switch or create terminal session when workspace changes

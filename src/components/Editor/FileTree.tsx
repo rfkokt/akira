@@ -126,10 +126,40 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
       return
     }
 
+    const loadExpandedRecursively = async (nodes: FileEntry[], expandedSet: Set<string>): Promise<TreeNode[]> => {
+      const promises = nodes.map(async (node) => {
+        const treeNode: TreeNode = { ...node }
+        if (node.is_dir && expandedSet.has(node.path)) {
+          treeNode.isLoaded = true
+          const childEntries = await loadDirectory(node.path)
+          treeNode.children = await loadExpandedRecursively(childEntries, expandedSet)
+        }
+        return treeNode
+      })
+      return Promise.all(promises)
+    }
+
     const loadRoot = async () => {
+      const persistedKey = `akira:file-tree:expanded:${rootPath}`
+      const saved = localStorage.getItem(persistedKey)
+      let initialExpanded = new Set([rootPath])
+      
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed)) {
+            parsed.push(rootPath)
+            initialExpanded = new Set(parsed)
+          }
+        } catch(e) {}
+      }
+
+      setExpandedDirs(initialExpanded)
+
       const entries = await loadDirectory(rootPath)
-      setTreeData(entries.map(e => ({ ...e })))
-      setExpandedDirs(new Set([rootPath]))
+      const fullTree = await loadExpandedRecursively(entries, initialExpanded)
+      
+      setTreeData(fullTree)
       loadCurrentBranch()
     }
 
@@ -255,6 +285,9 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     }
     
     setExpandedDirs(newExpanded)
+    if (rootPath) {
+      localStorage.setItem(`akira:file-tree:expanded:${rootPath}`, JSON.stringify(Array.from(newExpanded)))
+    }
   }
 
   const updateNodeChildren = (nodes: TreeNode[], targetPath: string, children: FileEntry[]): TreeNode[] => {
@@ -450,6 +483,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
                     newExpanded.add(rootPath)
                   }
                   setExpandedDirs(newExpanded)
+                  localStorage.setItem(`akira:file-tree:expanded:${rootPath}`, JSON.stringify(Array.from(newExpanded)))
                 }}
               >
                 <div className="flex items-center justify-center w-[18px] flex-shrink-0">

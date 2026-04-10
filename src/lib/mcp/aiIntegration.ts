@@ -255,14 +255,14 @@ export function formatToolResultsForPrompt(results: ToolResultInfo[]): string {
     const icon = parsed.source === 'internal' ? '🔧' : '🔌';
     
     if (result.success) {
-      lines.push(`${icon} ${result.toolName}: Success`);
+      lines.push(`${result.toolName}: Success`);
       if (result.result) {
         const resultStr = String(result.result);
         const MAX_LEN = 15000;
         lines.push(`  Result: ${resultStr.substring(0, MAX_LEN)}${resultStr.length > MAX_LEN ? '...[truncated]' : ''}`);
       }
     } else {
-      lines.push(`${icon} ${result.toolName}: Error - ${result.error}`);
+      lines.push(`${result.toolName}: Error - ${result.error}`);
     }
   }
   
@@ -279,14 +279,14 @@ export function formatToolResultsForChat(results: ToolResultInfo[]): string {
     const icon = parsed.source === 'internal' ? '🔧' : '🔌';
     
     if (result.success) {
-      lines.push(`${icon} ${result.toolName}: Success`);
+      lines.push(`${result.toolName}: Success`);
       if (result.result) {
         const resultStr = String(result.result);
         const MAX_LEN = 15000;
         lines.push(`  Result: ${resultStr.substring(0, MAX_LEN)}${resultStr.length > MAX_LEN ? '...[truncated]' : ''}`);
       }
     } else {
-      lines.push(`${icon} ${result.toolName}: Error - ${result.error}`);
+      lines.push(`${result.toolName}: Error - ${result.error}`);
     }
   }
   

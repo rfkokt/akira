@@ -9,9 +9,10 @@ import {
   Cpu, Zap, Plus, Trash2, Loader2, AlertTriangle, Settings, Sparkles, CheckCircle2, FolderOpen, GitPullRequest, KeyRound, Image, Puzzle, Download, ExternalLink, RefreshCw, Server
 } from 'lucide-react';
 import { useConfigStore } from '@/store/configStore';
-import { useEngineStore, useWorkspaceStore, useSkillStore } from '@/store';
+import { useWorkspaceStore, useSkillStore } from '@/store';
+import { useEngineStore } from '@/store';
+import { useAnalyzeStore } from '@/store/analyzeStore';
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject';
-import { useAIChatStore } from '@/store';
 import type { CreateEngineRequest } from '@/types';
 import { MarkdownEditor } from './MarkdownBlockEditor';
 import { McpSettings } from './McpSettings';
@@ -63,37 +64,16 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
   const [activeProjectTab, setActiveProjectTab] = useState<string>('rules');
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
-  const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
-  const [analysisTokens, setAnalysisTokens] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | null>(null);
   const { activeWorkspace } = useWorkspaceStore();
   const { analyzeProject, activeEngine } = useAnalyzeProject();
-  
-  // Real-time status extraction from AI messages during analysis
-  const analysisMessages = useAIChatStore(state => state.messages['__analyze_project__']) || [];
-  const liveStatus = (() => {
-    if (!isAnalyzing || analysisMessages.length === 0) return null;
-    const lastMsg = analysisMessages[analysisMessages.length - 1];
-    
-    // Check if it's currently streaming some output
-    if (lastMsg.role === 'assistant' && lastMsg.content) {
-      // Extract latest tool call if any
-      const toolMatches = [...lastMsg.content.matchAll(/\[Tool:\s*([^\s\]]+)(?:\s+(?:{[^}]*})?)?\]/g)];
-      if (toolMatches.length > 0) {
-        const lastTool = toolMatches[toolMatches.length - 1][1];
-        // Parse the tool to get a more human readable form
-        const cleanTool = lastTool.split(':').pop() || lastTool;
-        return `Using tool: ${cleanTool}...`;
-      }
-      
-      const words = lastMsg.content.trim().replace(/\n/g, ' ').split(' ');
-      const preview = words.slice(-8).join(' ');
-      return preview ? `Thinking: ${preview}...` : 'Processing...';
-    }
-    return null;
-  })();
+
+  // Global analysis state — persists across tab navigation
+  const isAnalyzing = useAnalyzeStore((s) => s.isAnalyzing);
+  const analysisStatus = useAnalyzeStore((s) => s.analysisStatus);
+  const analysisLogs = useAnalyzeStore((s) => s.analysisLogs);
+  const analysisTokens = useAnalyzeStore((s) => s.analysisTokens);
+  const { setAnalyzing, setStatus, addLog, setTokens, reset: resetAnalysis } = useAnalyzeStore.getState();
 
   // Load project config
   useEffect(() => {
@@ -138,29 +118,26 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
   const handleAnalyzeProject = useCallback(async () => {
     const cwd = activeWorkspace?.folder_path;
     if (!cwd || !activeEngine) {
-      setAnalysisStatus('No active engine or workspace selected.');
+      useAnalyzeStore.getState().setStatus('No active engine or workspace selected.');
       return;
     }
 
-    setIsAnalyzing(true);
-    setAnalysisLogs([]);
-    setAnalysisTokens(null);
+    setAnalyzing(true);
+    useAnalyzeStore.setState({ analysisLogs: [], analysisTokens: null });
     const result = await analyzeProject(cwd, (status) => {
-      setAnalysisStatus(status);
-      setAnalysisLogs(prev => [...prev, status]);
+      useAnalyzeStore.getState().setStatus(status);
+      useAnalyzeStore.getState().addLog(status);
     });
 
     if (!result.success) {
-      setAnalysisStatus(`❌ ${result.error}`);
+      useAnalyzeStore.getState().setStatus(`❌ ${result.error}`);
     } else if (result.tokens) {
-      setAnalysisTokens(result.tokens);
+      useAnalyzeStore.getState().setTokens(result.tokens);
     }
 
-    setIsAnalyzing(false);
+    setAnalyzing(false);
     setTimeout(() => {
-      setAnalysisStatus(null);
-      setAnalysisLogs([]);
-      setAnalysisTokens(null);
+      useAnalyzeStore.getState().reset();
     }, 8000);
   }, [activeWorkspace, activeEngine, analyzeProject]);
 
@@ -313,13 +290,13 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                       prose-h2:text-app-accent prose-h2:mt-10 prose-h2:border-b prose-h2:border-app-border prose-h2:pb-2 prose-h2:text-lg
                       prose-h3:text-white prose-h3:mt-8 prose-h3:text-base
                       prose-strong:text-white prose-strong:font-semibold
-                      prose-p:text-neutral-300 prose-p:text-[13px]
+                      prose-p:text-neutral-300 prose-p:text-sm
                       prose-a:text-app-accent hover:prose-a:text-app-accent-hover prose-a:no-underline hover:prose-a:underline
-                      prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-[12px]
+                      prose-code:before:content-none prose-code:after:content-none prose-code:font-mono prose-code:text-sm
                       [&_:not(pre)>code]:text-app-accent [&_:not(pre)>code]:bg-app-accent/10 [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:rounded-md
                       prose-pre:bg-app-bg prose-pre:border prose-pre:border-app-border prose-pre:shadow-2xl prose-pre:rounded-xl prose-pre:p-4 [&>pre>code]:text-neutral-300
                       prose-blockquote:border-l-2 prose-blockquote:border-l-app-accent prose-blockquote:bg-gradient-to-r prose-blockquote:from-app-accent/10 prose-blockquote:to-transparent prose-blockquote:py-1 prose-blockquote:px-5 prose-blockquote:rounded-r-xl prose-blockquote:text-neutral-300 prose-blockquote:not-italic prose-blockquote:my-6
-                      prose-ul:marker:text-neutral-600 prose-ol:marker:text-neutral-600 prose-li:text-[13px] prose-li:text-neutral-300
+                      prose-ul:marker:text-neutral-600 prose-ol:marker:text-neutral-600 prose-li:text-sm prose-li:text-neutral-300
                       prose-li:my-1
                       prose-hr:border-app-border prose-hr:my-10
                       selection:bg-app-accent/30 selection:text-white">
@@ -349,7 +326,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                                     <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
                                     <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
                                   </div>
-                                  <span className="text-xs text-neutral-400 font-mono tracking-wider uppercase ml-3">
+                                  <span className="text-sm text-neutral-400 font-mono tracking-wider uppercase ml-3">
                                     {match ? match[1] : 'code'}
                                   </span>
                                 </div>
@@ -358,7 +335,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                                   style={vscDarkPlus}
                                   language={match ? match[1] : 'text'}
                                   PreTag="div"
-                                  className="text-[12px] font-mono !m-0"
+                                  className="text-sm font-mono !m-0"
                                   customStyle={{ margin: 0, padding: '1rem', background: '#0d0d0d' }}
                                 >
                                   {String(children).replace(/\n$/, '')}
@@ -427,9 +404,9 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                   )}
                 </Button>
                 
-                <div className="flex flex-1 flex-col truncate">
+                <div className="flex flex-1 flex-col truncate ml-2">
                   {analysisTokens && !isAnalyzing && (
-                    <span className="text-[10px] text-app-accent mt-0.5 animate-in fade-in">
+                    <span className="text-xs text-app-accent mt-0.5 animate-in fade-in">
                       Status: {analysisStatus} • Cost: {analysisTokens}
                     </span>
                   )}
@@ -438,11 +415,11 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
 
               {/* Progress Checklist */}
               {isAnalyzing && analysisLogs.length > 0 && (
-                 <div className="px-8 py-4 bg-app-panel border-b border-app-border shrink-0 flex flex-col gap-2 shadow-[inset_0_-10px_20px_rgba(0,0,0,0.2)]">
+                 <div className="px-8 py-5 bg-app-panel border-b border-app-border shrink-0 flex flex-col gap-3 shadow-[inset_0_-10px_20px_rgba(0,0,0,0.2)]">
                    {analysisLogs.map((log, i) => {
                      const isActive = i === analysisLogs.length - 1;
                      return (
-                       <div key={i} className={`flex items-center gap-3 text-xs transition-all duration-300 animate-in slide-in-from-left-2 ${isActive ? 'text-white font-medium' : 'text-neutral-500'}`}>
+                       <div key={i} className={`flex items-center gap-3 text-sm transition-all duration-300 animate-in slide-in-from-left-2 ${isActive ? 'text-white font-medium' : 'text-neutral-400'}`}>
                           {isActive ? (
                              <Loader2 className="w-3.5 h-3.5 text-app-accent animate-spin" />
                           ) : (
