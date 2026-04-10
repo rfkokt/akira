@@ -11,6 +11,7 @@ import {
 import { useConfigStore } from '@/store/configStore';
 import { useEngineStore, useWorkspaceStore, useSkillStore } from '@/store';
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject';
+import { useAIChatStore } from '@/store';
 import type { CreateEngineRequest } from '@/types';
 import { MarkdownEditor } from './MarkdownBlockEditor';
 import { McpSettings } from './McpSettings';
@@ -64,9 +65,35 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
   const [copied, setCopied] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
+  const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
+  const [analysisTokens, setAnalysisTokens] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | null>(null);
   const { activeWorkspace } = useWorkspaceStore();
   const { analyzeProject, activeEngine } = useAnalyzeProject();
+  
+  // Real-time status extraction from AI messages during analysis
+  const analysisMessages = useAIChatStore(state => state.messages['__analyze_project__']) || [];
+  const liveStatus = (() => {
+    if (!isAnalyzing || analysisMessages.length === 0) return null;
+    const lastMsg = analysisMessages[analysisMessages.length - 1];
+    
+    // Check if it's currently streaming some output
+    if (lastMsg.role === 'assistant' && lastMsg.content) {
+      // Extract latest tool call if any
+      const toolMatches = [...lastMsg.content.matchAll(/\[Tool:\s*([^\s\]]+)(?:\s+(?:{[^}]*})?)?\]/g)];
+      if (toolMatches.length > 0) {
+        const lastTool = toolMatches[toolMatches.length - 1][1];
+        // Parse the tool to get a more human readable form
+        const cleanTool = lastTool.split(':').pop() || lastTool;
+        return `Using tool: ${cleanTool}...`;
+      }
+      
+      const words = lastMsg.content.trim().replace(/\n/g, ' ').split(' ');
+      const preview = words.slice(-8).join(' ');
+      return preview ? `Thinking: ${preview}...` : 'Processing...';
+    }
+    return null;
+  })();
 
   // Load project config
   useEffect(() => {
@@ -116,17 +143,25 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
     }
 
     setIsAnalyzing(true);
-    
+    setAnalysisLogs([]);
+    setAnalysisTokens(null);
     const result = await analyzeProject(cwd, (status) => {
       setAnalysisStatus(status);
+      setAnalysisLogs(prev => [...prev, status]);
     });
 
     if (!result.success) {
       setAnalysisStatus(`❌ ${result.error}`);
+    } else if (result.tokens) {
+      setAnalysisTokens(result.tokens);
     }
 
     setIsAnalyzing(false);
-    setTimeout(() => setAnalysisStatus(null), 5000);
+    setTimeout(() => {
+      setAnalysisStatus(null);
+      setAnalysisLogs([]);
+      setAnalysisTokens(null);
+    }, 8000);
   }, [activeWorkspace, activeEngine, analyzeProject]);
 
 
@@ -383,18 +418,43 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
                   size="sm"
                   onClick={handleAnalyzeProject}
                   disabled={isAnalyzing}
-                  className="bg-app-accent/10 hover:bg-app-accent/20 text-app-accent border border-app-accent/30 hover:border-app-accent/50 transition-all text-xs h-8"
+                  className="bg-app-accent/10 flex-shrink-0 hover:bg-app-accent/20 text-app-accent border border-app-accent/30 hover:border-app-accent/50 transition-all text-xs h-8"
                 >
                   {isAnalyzing ? (
-                    <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Analyzing...</>
+                    <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Generating...</>
                   ) : (
                     <><Sparkles className="w-3.5 h-3.5 mr-2" /> Generate Workspace Standards</>
                   )}
                 </Button>
-                {analysisStatus && (
-                  <span className="text-xs text-neutral-400 animate-in fade-in">{analysisStatus}</span>
-                )}
+                
+                <div className="flex flex-1 flex-col truncate">
+                  {analysisTokens && !isAnalyzing && (
+                    <span className="text-[10px] text-app-accent mt-0.5 animate-in fade-in">
+                      Status: {analysisStatus} • Cost: {analysisTokens}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* Progress Checklist */}
+              {isAnalyzing && analysisLogs.length > 0 && (
+                 <div className="px-8 py-4 bg-app-panel border-b border-app-border shrink-0 flex flex-col gap-2 shadow-[inset_0_-10px_20px_rgba(0,0,0,0.2)]">
+                   {analysisLogs.map((log, i) => {
+                     const isActive = i === analysisLogs.length - 1;
+                     return (
+                       <div key={i} className={`flex items-center gap-3 text-xs transition-all duration-300 animate-in slide-in-from-left-2 ${isActive ? 'text-white font-medium' : 'text-neutral-500'}`}>
+                          {isActive ? (
+                             <Loader2 className="w-3.5 h-3.5 text-app-accent animate-spin" />
+                          ) : (
+                             <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                          )}
+                          <span>{log}</span>
+                       </div>
+                     )
+                   })}
+                 </div>
+              )}
+
               <div className="flex-1 relative">
                 {config ? (
                   <MarkdownEditor

@@ -38,6 +38,9 @@ import {
   Globe,
   RefreshCw,
   Terminal,
+  Dna,
+  AlertTriangle,
+  Download,
 } from 'lucide-react';
 import {
   connectExternalServer,
@@ -45,6 +48,12 @@ import {
   getActiveServers,
 } from '@/lib/mcp/externalManager';
 import type { ExternalMcpTransport } from '@/lib/mcp/externalClient';
+import {
+  SERENA_SERVER_NAME,
+  ensureSerenaServer,
+  checkUvInstalled,
+  installUv,
+} from '@/lib/mcp';
 
 // ============================================================================
 // Types from MCP Registry
@@ -193,13 +202,22 @@ function useRegistryCatalog(searchQuery: string) {
 
 export function McpSettings() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
-  const { loadServers } = useMcpStore();
+  const { loadServers, servers: mcpServers } = useMcpStore();
 
   const [activeServers, setActiveServersState] = useState(getActiveServers());
   const [selectedServer, setSelectedServer] = useState<RegistryServer | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Serena built-in state
+  const [serenaReconnecting, setSerenaReconnecting] = useState(false);
+  const [uvAvailable, setUvAvailable] = useState<boolean | null>(null);
+  const [installingUv, setInstallingUv] = useState(false);
+
+  const serenaServer = mcpServers.find(
+    (s) => s.name === SERENA_SERVER_NAME && s.workspaceId === activeWorkspace?.id,
+  );
 
   const { servers, isLoading, error, hasMore, loadMore, refetch } = useRegistryCatalog(searchQuery);
 
@@ -209,7 +227,45 @@ export function McpSettings() {
     }
   }, [activeWorkspace?.id, loadServers]);
 
+  // Check uv availability on mount
+  useEffect(() => {
+    checkUvInstalled().then((v) => setUvAvailable(v !== null));
+  }, []);
+
   const refreshActive = () => setActiveServersState(getActiveServers());
+
+  // Serena reconnect handler
+  const handleSerenaReconnect = async () => {
+    if (!activeWorkspace || serenaReconnecting) return;
+    setSerenaReconnecting(true);
+    try {
+      await ensureSerenaServer(activeWorkspace.id, activeWorkspace.folder_path);
+      // Reload servers to refresh the UI
+      await loadServers(activeWorkspace.id);
+    } catch (err) {
+      console.error('[McpSettings] Serena reconnect failed:', err);
+    } finally {
+      setSerenaReconnecting(false);
+    }
+  };
+
+  const handleInstallUv = async () => {
+    setInstallingUv(true);
+    try {
+      const success = await installUv();
+      if (success) {
+        // give it a sec, then recheck
+        await new Promise(r => setTimeout(r, 1000));
+        const available = await checkUvInstalled();
+        setUvAvailable(available !== null);
+        if (available !== null && activeWorkspace) {
+           await handleSerenaReconnect();
+        }
+      }
+    } finally {
+      setInstallingUv(false);
+    }
+  };
 
   const connectedIds = new Set(activeServers.map((s) => s.id));
 
@@ -289,6 +345,93 @@ export function McpSettings() {
           <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
+      </div>
+
+      {/* Built-in: Serena */}
+      <div className="space-y-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+          Built-in Servers
+        </h3>
+        <div
+          className={`flex items-center gap-4 p-3.5 border rounded-xl transition-all ${
+            serenaServer?.status === 'connected'
+              ? 'border-violet-500/30 bg-violet-500/5'
+              : serenaServer?.status === 'connecting'
+                ? 'border-yellow-500/30 bg-yellow-500/5'
+                : 'border-border'
+          }`}
+        >
+          {/* Icon */}
+          <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 flex items-center justify-center">
+            <Dna className="w-4.5 h-4.5 text-violet-400" />
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm">Serena</span>
+              <Badge variant="outline" className="text-xs py-0 shrink-0 border-violet-500/30 text-violet-400">
+                Built-in
+              </Badge>
+              {serenaServer && serenaServer.tools.length > 0 && (
+                <Badge variant="secondary" className="text-xs py-0 shrink-0">
+                  {serenaServer.tools.length} tools
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+              Semantic code retrieval, editing & refactoring — the IDE for your coding agent
+            </p>
+            {serenaServer?.error && (
+              <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {serenaServer.error}
+              </p>
+            )}
+            {uvAvailable === false && (
+              <div className="mt-2 flex flex-col gap-2">
+                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  uv/uvx not found — required for Serena
+                </p>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-7 text-xs bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border-amber-500/30 w-fit"
+                  onClick={handleInstallUv}
+                  disabled={installingUv}
+                >
+                  {installingUv ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <Download className="w-3 h-3 mr-2" />}
+                  {installingUv ? 'Installing...' : 'Install uv Package Manager'}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Status / Action */}
+          <div className="flex-shrink-0">
+            {serenaServer?.status === 'connected' ? (
+              <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 shrink-0">
+                <PlugZap className="w-3 h-3 mr-1" /> Active
+              </Badge>
+            ) : serenaServer?.status === 'connecting' || serenaReconnecting ? (
+              <div className="flex items-center gap-1.5 text-xs text-yellow-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Connecting…
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-7"
+                onClick={handleSerenaReconnect}
+                disabled={serenaReconnecting || uvAvailable === false}
+              >
+                {serenaServer?.status === 'failed' ? 'Retry' : 'Connect'}
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Active Connections */}

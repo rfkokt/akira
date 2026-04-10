@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useEngineStore } from '@/store'
 import { useConfigStore } from '@/store/configStore'
 import { useAIChatStore } from '@/store'
+import { invoke } from '@tauri-apps/api/core'
 
 // ---------------------------------------------------------------------------
 // Deep-Scan Analysis Prompt
@@ -226,6 +227,7 @@ const cleanResponse = (raw: string): string => {
 interface AnalyzeResult {
   success: boolean
   error?: string
+  tokens?: string
 }
 
 export function useAnalyzeProject() {
@@ -243,15 +245,52 @@ export function useAnalyzeProject() {
 
     const { sendSimpleMessage, clearMessages } = useAIChatStore.getState()
 
-    const prompt = ANALYSIS_PROMPT.replace('{{CWD}}', cwd)
     const tempTaskId = '__analyze_project__'
 
     try {
-      onStatus?.('🔍 Scanning project structure...')
-      const aiResponse = await sendSimpleMessage(tempTaskId, prompt)
+      // Clear any old messages from previous runs so they don't pollute the UX
+      clearMessages(tempTaskId)
+      
+      onStatus?.('🔍 Scanning package files...')
+      let pkgInfo = '';
+      try {
+        pkgInfo = await invoke<string>('read_file', { path: `${cwd}/package.json` });
+      } catch {
+        pkgInfo = 'No package.json found.';
+      }
+
+      onStatus?.('📂 Mapping directory structure...');
+      let structure = '';
+      try {
+        const res = await invoke<{stdout: string, success: boolean}>('run_shell_command', { 
+          command: 'find', 
+          args: ['.', '-maxdepth', '2', '-not', '-path', '*/node_modules/*', '-not', '-path', '*/.git/*'],
+          cwd 
+        });
+        structure = res.stdout;
+      } catch {
+        structure = 'Could not map directory.';
+      }
+
+      onStatus?.('🧠 AI analyzing patterns...');
+      
+      const enrichedPrompt = `${ANALYSIS_PROMPT.replace('{{CWD}}', cwd)}
+
+---
+[SYSTEM CONTEXT INJECTED]
+Here is the actual project data you must use for your analysis. DO NOT GUESS.
+# package.json
+${pkgInfo.substring(0, 3000)}
+
+# directory structure
+${structure.substring(0, 2000)}
+`;
+
+      const aiResponse = await sendSimpleMessage(tempTaskId, enrichedPrompt);
       
       onStatus?.('🧠 Parsing analysis results...')
-      clearMessages(tempTaskId)
+      // We do not clear messages here immediately so the token info logic stays valid,
+      // it will be cleared at the start of the next run anyway.
 
       if (!aiResponse.trim()) {
         return { success: false, error: 'Analysis returned empty. Try again.' }
@@ -284,8 +323,15 @@ export function useAnalyzeProject() {
         await saveConfig({ ...config, md_rules: finalDocument })
       }
 
-      onStatus?.('✅ Workspace standards generated!')
-      return { success: true }
+      // Extract token usage if available
+      let tokensUsed = undefined;
+      const tokenMatch = aiResponse.match(/\[([\d,]+ tokens \| [^\]]+)\]/);
+      if (tokenMatch) {
+        tokensUsed = tokenMatch[1];
+      }
+
+      onStatus?.(tokensUsed ? `✅ Standards generated (${tokensUsed})` : '✅ Workspace standards generated!')
+      return { success: true, tokens: tokensUsed }
     } catch (err) {
       console.error('[AnalyzeProject] Failed:', err)
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }

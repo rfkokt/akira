@@ -11,6 +11,16 @@ import { registerFileServerTools } from './fileServer';
 import { registerBashServerTools } from './bashServer';
 import type { InternalTool } from '../types';
 
+// Re-export Serena server utilities for external use
+export {
+  ensureSerenaServer,
+  checkUvInstalled,
+  installUv,
+  getSerenaStatus,
+  isSerenaEnabled,
+  SERENA_SERVER_NAME,
+} from './serenaServer';
+
 // ============================================================================
 // Server Registry
 // ============================================================================

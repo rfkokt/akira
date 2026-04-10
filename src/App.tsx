@@ -4,7 +4,7 @@ import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, Zoo
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
 import { dbService } from '@/lib/db'
-import { initializeInternalServers } from '@/lib/mcp'
+import { initializeInternalServers, ensureSerenaServer, checkUvInstalled } from '@/lib/mcp'
 import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { KanbanBoard } from './components/Kanban/Board'
@@ -163,6 +163,29 @@ function App() {
       setCurrentWorkspace(activeWorkspace.id)
     }
   }, [activeWorkspace, setCurrentWorkspace])
+
+  // Auto-provision Serena MCP server when workspace changes
+  useEffect(() => {
+    if (!activeWorkspace) return
+
+    const provisionSerena = async () => {
+      // Check if uv/uvx is installed
+      const uvVersion = await checkUvInstalled()
+      if (!uvVersion) {
+        console.warn('[App] uv/uvx not found — Serena will not be provisioned')
+        return
+      }
+
+      console.log('[App] uv detected:', uvVersion)
+
+      const result = await ensureSerenaServer(activeWorkspace.id, activeWorkspace.folder_path)
+      console.log('[App] Serena provisioning result:', result)
+    }
+
+    // Small delay to let MCP store initialize first
+    const timer = setTimeout(provisionSerena, 1500)
+    return () => clearTimeout(timer)
+  }, [activeWorkspace?.id])
 
   // Auto-switch or create terminal session when workspace changes
   useEffect(() => {

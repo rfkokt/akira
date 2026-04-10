@@ -99,3 +99,12 @@ export {
   createBashServerTools,
   registerBashServerTools,
 } from './servers/bashServer';
+
+export {
+  ensureSerenaServer,
+  checkUvInstalled,
+  installUv,
+  getSerenaStatus,
+  isSerenaEnabled,
+  SERENA_SERVER_NAME,
+} from './servers/serenaServer';
