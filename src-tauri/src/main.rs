@@ -22,9 +22,34 @@ use state::AppState;
 // Re-export models for convenience
 pub use models::*;
 
+#[cfg(target_os = "macos")]
+fn fix_macos_path() {
+    // When running inside a macOS .app bundle, the PATH is often restricted.
+    // We run a login shell to extract the user's full PATH and apply it to this process.
+    if let Ok(output) = std::process::Command::new("/bin/zsh")
+        .arg("-lc")
+        .arg("/usr/bin/env")
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(env_str) = String::from_utf8(output.stdout) {
+                for line in env_str.lines() {
+                    if let Some(path) = line.strip_prefix("PATH=") {
+                        std::env::set_var("PATH", path.trim());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ============== Application Setup ==============
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    fix_macos_path();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())

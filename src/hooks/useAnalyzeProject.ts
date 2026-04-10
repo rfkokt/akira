@@ -241,21 +241,16 @@ export function useAnalyzeProject() {
       return { success: false, error: 'No active engine selected.' }
     }
 
-    const { sendSimpleMessage, getMessages, clearMessages } = useAIChatStore.getState()
+    const { sendSimpleMessage, clearMessages } = useAIChatStore.getState()
 
     const prompt = ANALYSIS_PROMPT.replace('{{CWD}}', cwd)
     const tempTaskId = '__analyze_project__'
 
     try {
       onStatus?.('🔍 Scanning project structure...')
-      await sendSimpleMessage(tempTaskId, prompt)
+      const aiResponse = await sendSimpleMessage(tempTaskId, prompt)
       
-      // Give the AI time to finish processing
-      await new Promise(r => setTimeout(r, 2000))
-
       onStatus?.('🧠 Parsing analysis results...')
-      const msgs = getMessages(tempTaskId)
-      const aiResponse = msgs.filter(m => m.role === 'assistant').pop()?.content || ''
       clearMessages(tempTaskId)
 
       if (!aiResponse.trim()) {
