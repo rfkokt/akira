@@ -48,19 +48,21 @@ export function createBashServerTools(): InternalTool[] {
         required: ['command'],
       },
       category: 'bash',
-      handler: async (args) => {
-        const { command, args: cmdArgs, cwd } = args as {
-          command: string;
-          args?: string[];
-          cwd?: string;
-        };
+      handler: async (args: any) => {
+        const command = args.command || args.cmd || args.run;
+        const cmdArgs = args.args || args.arguments || [];
+        const cwd = args.cwd || args.dir || args.directory;
+        
+        if (!command) {
+          return { success: false, error: 'Missing required argument: command' };
+        }
         
         try {
           const workspaceCwd = cwd || await getWorkspacePath();
           
           const result = await invoke<ShellResult>('run_shell_command', {
             command,
-            args: cmdArgs || [],
+            args: Array.isArray(cmdArgs) ? cmdArgs : [cmdArgs],
             cwd: workspaceCwd,
           });
           
@@ -77,7 +79,7 @@ export function createBashServerTools(): InternalTool[] {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : 'Failed to execute command',
+            error: err instanceof Error ? err.message : (typeof err === 'string' ? err : 'Failed to execute command'),
           };
         }
       },

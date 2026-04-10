@@ -154,8 +154,23 @@ export const useToolRegistry = create<ToolRegistryState>((set, get) => ({
     console.log('[ToolRegistry] Found tool:', name, 'executing...');
     
     try {
-      const result = await tool.handler(args);
+      const result = await tool.handler(args) as any;
       console.log('[ToolRegistry] Tool executed successfully:', name);
+      
+      if (result && typeof result === 'object' && 'success' in result) {
+        if (!result.success) {
+          return {
+            success: false,
+            error: result.error || 'Tool logic execution failed',
+            data: result
+          };
+        }
+        return {
+          success: true,
+          data: result,
+        };
+      }
+      
       return {
         success: true,
         data: result,

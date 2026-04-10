@@ -43,9 +43,13 @@ export function createFileServerTools(): InternalTool[] {
         required: ['path'],
       },
       category: 'file',
-      handler: async (args) => {
-        const { path } = args as { path: string };
+      handler: async (args: any) => {
+        const path = args.path || args.file || args.uri;
         
+        if (!path) {
+          return { success: false, error: 'Missing required argument: path' };
+        }
+
         try {
           const resolvedPath = await resolvePath(path);
           const content = await invoke<string>('read_file', { path: resolvedPath });
@@ -81,12 +85,13 @@ export function createFileServerTools(): InternalTool[] {
         required: ['path', 'content'],
       },
       category: 'file',
-      handler: async (args) => {
-        const { path, content } = args as {
-          path: string;
-          content: string;
-        };
+      handler: async (args: any) => {
+        const path = args.path || args.file || args.uri;
+        const content = args.content || args.text || args.data;
         
+        if (!path) return { success: false, error: 'Missing required argument: path' };
+        if (content === undefined) return { success: false, error: 'Missing required argument: content' };
+
         try {
           const resolvedPath = await resolvePath(path);
           await invoke('write_file', { path: resolvedPath, content });
@@ -191,12 +196,12 @@ export function createFileServerTools(): InternalTool[] {
         required: ['pattern'],
       },
       category: 'file',
-      handler: async (args) => {
-        const { pattern, path } = args as {
-          pattern: string;
-          path?: string;
-        };
+      handler: async (args: any) => {
+        const pattern = args.pattern || args.query || args.search;
+        const path = args.path || args.dir || args.directory;
         
+        if (!pattern) return { success: false, error: 'Missing required argument: pattern' };
+
         try {
           const workspacePath = path ? await resolvePath(path) : await getWorkspacePath();
           
@@ -273,12 +278,12 @@ export function createFileServerTools(): InternalTool[] {
         required: ['query'],
       },
       category: 'file',
-      handler: async (args) => {
-        const { query, path } = args as {
-          query: string;
-          path?: string;
-        };
+      handler: async (args: any) => {
+        const query = args.query || args.pattern || args.text || args.search;
+        const path = args.path || args.dir || args.directory;
         
+        if (!query) return { success: false, error: 'Missing required argument: query' };
+
         try {
           const workspacePath = path ? await resolvePath(path) : await getWorkspacePath();
           

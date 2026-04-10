@@ -186,8 +186,20 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
     (msg.content?.includes('[Model: llama') || msg.content?.includes('[Model: mixtral') || msg.content?.includes('[Model: gemma'));
   
   // Clean content for display (remove token metadata)
-  const displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content;
+  let displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content;
   
+  // Extract Tool Results (handle multiple)
+  let toolResultsText = null;
+  const toolResultsMatches = [...displayContent.matchAll(/\[TOOL RESULTS\]([\s\S]*?)\[\/TOOL RESULTS\]/g)];
+  if (toolResultsMatches.length > 0) {
+    toolResultsText = toolResultsMatches.map(m => m[1].trim()).filter(Boolean).join('\n\n---\n\n');
+    // Remove closed tool results from main display
+    displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*?\[\/TOOL RESULTS\]/g, '').trim();
+  }
+  
+  // Clean up any remaining unclosed [TOOL RESULTS] at the end of the string (usually caused by AI echoing during stream)
+  displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*$/, '').trim();
+
   return (
     <div
       className={`flex flex-col gap-1 ${
@@ -221,7 +233,22 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
             )}
           </div>
         ) : (
-          <pre className="whitespace-pre-wrap break-all text-[13px] leading-relaxed">{msg.content}</pre>
+          displayContent && <pre className="whitespace-pre-wrap break-all text-[13px] leading-relaxed">{displayContent}</pre>
+        )}
+        
+        {toolResultsText && (
+          <div className="mt-2 border border-app-border/40 rounded-lg bg-black/20 overflow-hidden">
+            <details className="group">
+              <summary className="px-3 py-2 text-xs font-mono text-app-text-muted hover:text-white cursor-pointer hover:bg-white/5 flex items-center select-none">
+                <span className="group-open:hidden mr-1.5 opacity-50">▶</span>
+                <span className="hidden group-open:inline mr-1.5 opacity-50">▼</span>
+                🔧 View Tool Results
+              </summary>
+              <div className="px-3 py-2 text-[11px] font-mono text-neutral-400 whitespace-pre-wrap max-h-[300px] overflow-y-auto custom-scrollbar border-t border-app-border/40 bg-black/40">
+                {toolResultsText}
+              </div>
+            </details>
+          </div>
         )}
       </div>
     </div>
