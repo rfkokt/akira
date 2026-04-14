@@ -381,6 +381,38 @@ pub fn git_show_head(cwd: String, path: String) -> Result<String, String> {
     }
 }
 
+/// Get unstaged diff for a specific file (git diff -- <file>)
+#[tauri::command]
+pub fn git_get_file_diff(cwd: String, file_path: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["diff", "--", &file_path])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to get file diff: {}", e))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Show file content at an arbitrary git ref (e.g. HEAD~1, a commit hash)
+#[tauri::command]
+pub fn git_show_at_ref(cwd: String, path: String, ref_: String) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["show", &format!("{}:{}", ref_, path)])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("Failed to show file at ref: {}", e))?;
+
+    if output.status.success() {
+        if output.stdout.contains(&0) {
+            return Err("File is a binary file and cannot be displayed".to_string());
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        // File didn't exist at this ref (new file)
+        Ok(String::new())
+    }
+}
+
 #[tauri::command]
 pub fn git_discard_changes(cwd: String, paths: Vec<String>) -> Result<(), String> {
     if paths.is_empty() {

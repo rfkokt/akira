@@ -23,14 +23,36 @@ export function MonacoDiffViewer({ filePath, workspacePath }: MonacoDiffViewerPr
       setLoading(true);
       setError(null);
       try {
-        // Fetch original (HEAD) content
-        const orig = await invoke<string>('git_show_head', { cwd: workspacePath, path: filePath });
-        
+        // Read current file content
         let mod = '';
         try {
-           mod = await invoke<string>('read_file', { path: `${workspacePath}/${filePath}` });
+          mod = await invoke<string>('read_file', { path: `${workspacePath}/${filePath}` });
         } catch (e) {
-           mod = ''; // File was deleted
+          mod = ''; // File was deleted
+        }
+
+        // Check if there are unstaged changes for this file
+        const unstagedDiff = await invoke<string>('git_get_file_diff', {
+          cwd: workspacePath,
+          filePath,
+        }).catch(() => '');
+
+        let orig = '';
+
+        if (unstagedDiff && unstagedDiff.trim()) {
+          // File has unstaged changes — compare against HEAD
+          orig = await invoke<string>('git_show_head', { cwd: workspacePath, path: filePath }).catch(() => '');
+        } else {
+          // No unstaged changes — file might have just been committed
+          // Compare last commit against its parent (HEAD~1..HEAD)
+          orig = await invoke<string>('git_show_at_ref', {
+            cwd: workspacePath,
+            path: filePath,
+            ref: 'HEAD~1',
+          }).catch(() => {
+            // HEAD~1 might not exist (first commit), fallback to empty
+            return '';
+          });
         }
 
         if (isMounted) {

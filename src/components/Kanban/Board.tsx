@@ -305,6 +305,11 @@ export function KanbanBoard() {
             task={diffTask}
             isOpen={!!diffTask}
             onClose={() => setDiffTask(null)}
+            onDiscard={async () => {
+              await moveTask(diffTask.id, 'todo')
+              aiChatStore.clearTaskState?.(diffTask.id)
+              setDiffTask(null)
+            }}
             workspacePath={activeWorkspace.folder_path}
             taskState={taskStates[diffTask.id]}
           />

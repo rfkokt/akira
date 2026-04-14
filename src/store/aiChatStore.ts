@@ -122,6 +122,7 @@ interface AIChatState {
   updateToolCall: (taskId: string, toolCallId: string, updates: Partial<ToolCallRecord>) => void;
   getToolCalls: (taskId: string) => ToolCallRecord[];
   clearToolCalls: (taskId: string) => void;
+  clearTaskState: (taskId: string) => void;
 }
 
 // ─── Exports ────────────────────────────────────────────────────────────
@@ -1320,6 +1321,23 @@ Please respond concisely. Use 'rtk' for any commands.`;
             toolCalls: [],
           },
         },
+      };
+    });
+  },
+
+  clearTaskState: (taskId) => {
+    set((state) => {
+      const { taskStates, messages, invokedSkills } = state;
+      const updated = { ...taskStates };
+      delete updated[taskId];
+      const updatedMessages = { ...messages };
+      delete updatedMessages[taskId];
+      const updatedSkills = { ...invokedSkills };
+      delete updatedSkills[taskId];
+      return {
+        taskStates: updated,
+        messages: updatedMessages,
+        invokedSkills: updatedSkills,
       };
     });
   },

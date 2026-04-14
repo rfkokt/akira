@@ -68,19 +68,58 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
 
     setDiscarding(true);
     try {
-      // 1. Reset tracked files and remove staged status
+      const branch = prBranch || taskState?.prBranch;
+
+      // 1. If on a feature branch, switch back to main/master first
+      if (branch) {
+        const mainCheck = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+          command: 'git',
+          args: ['show-ref', '--verify', '--quiet', 'refs/heads/main'],
+          cwd: workspacePath,
+        }).catch(() => ({ success: false, stdout: '' }));
+
+        const baseBranch = mainCheck.success ? 'main' : 'master';
+        await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+          command: 'git',
+          args: ['checkout', baseBranch],
+          cwd: workspacePath,
+        });
+      }
+
+      // 2. Reset tracked files and remove staged status
       const resetResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
         command: 'git',
         args: ['reset', '--hard', 'HEAD'],
         cwd: workspacePath,
       });
 
-      // 2. Remove untracked files and directories
+      // 3. Remove untracked files and directories
       const cleanResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
         command: 'git',
         args: ['clean', '-fd'],
         cwd: workspacePath,
       });
+
+      // 4. Delete the task branch if it exists
+      if (branch) {
+        // Attempt to delete remote branch
+        await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+          command: 'git',
+          args: ['push', 'origin', '--delete', branch],
+          cwd: workspacePath,
+        }).catch(() => {
+          // Ignore if remote deletion fails (e.g., branch not pushed yet)
+        });
+
+        // Delete local branch
+        await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+          command: 'git',
+          args: ['branch', '-D', branch],
+          cwd: workspacePath,
+        }).catch(() => {
+          // Branch might already be gone locally, ignore
+        });
+      }
 
       if (resetResult.success && cleanResult.success) {
         onDiscard?.();
@@ -519,7 +558,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
             <div className="p-4">
               <h3 className="text-sm font-semibold text-red-400 mb-2">Batalkan Perubahan?</h3>
               <p className="text-xs text-neutral-400">
-                Semua perubahan yang belum disimpan akan dikembalikan. Tindakan ini tidak dapat dibatalkan.
+                Semua perubahan AI akan dikembalikan{(prBranch || taskState?.prBranch) ? ` dan branch "${prBranch || taskState?.prBranch}" akan dihapus` : ''}. Tindakan ini tidak dapat dibatalkan.
               </p>
             </div>
             <div className="px-4 py-3 border-t border-app-border flex justify-end gap-2">

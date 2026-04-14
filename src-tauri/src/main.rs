@@ -118,6 +118,8 @@ fn main() {
             commands::git::git_stage,
             commands::git::git_unstage,
             commands::git::git_show_head,
+            commands::git::git_get_file_diff,
+            commands::git::git_show_at_ref,
             commands::git::git_discard_changes,
             commands::git::git_log,
             commands::git::git_commit_amend,
