@@ -186,7 +186,7 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
     (msg.content?.includes('[Model: llama') || msg.content?.includes('[Model: mixtral') || msg.content?.includes('[Model: gemma'));
   
   // Clean content for display (remove token metadata)
-  let displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content;
+    let displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content;
   
   // Extract Tool Results (handle multiple)
   let toolResultsText = null;
@@ -197,8 +197,14 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
     displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*?\[\/TOOL RESULTS\]/g, '').trim();
   }
   
-  // Clean up any remaining unclosed [TOOL RESULTS] at the end of the string (usually caused by AI echoing during stream)
-  displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*?(?:\[\/TOOL RESULTS\]|$)/g, '').trim();
+  // Clean up any remaining unclosed [TOOL RESULTS] and also [TOOL_EXEC]/[TOOL_RES] markers and <think> blocks
+  displayContent = displayContent
+    .replace(/\[TOOL RESULTS\][\s\S]*?(?:\[\/TOOL RESULTS\]|$)/g, '')
+    .replace(/\[TOOL_EXEC\].*(\n|$)/g, '')
+    .replace(/\[TOOL_RES\].*(\n|$)/g, '')
+    .replace(/<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)/gi, '')
+    .replace(/```thinking[\s\S]*?```/gi, '')
+    .trim();
 
   return (
     <div

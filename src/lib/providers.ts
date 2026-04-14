@@ -90,13 +90,13 @@ const opencodeProvider: ProviderConfig = {
         else if (toolState?.input?.command) detail = toolState.input.command;
         else if (toolState?.input?.file_path) detail = toolState.input.file_path;
 
-        let toolInfo = `[Tool: ${toolName}]`;
+        let toolInfo = `[TOOL_EXEC] [Tool: ${toolName}]`;
         if (detail) toolInfo += ` ${detail}`;
         if (toolState?.output) {
           const output = typeof toolState.output === 'string'
             ? toolState.output.substring(0, 200)
             : JSON.stringify(toolState.output).substring(0, 200);
-          toolInfo += `\n  → ${output}`;
+          toolInfo += `\n[TOOL_RES] ${output.replace(/\n/g, ' ')}`;
         }
 
         return {
@@ -190,7 +190,7 @@ const claudeProvider: ProviderConfig = {
           if (block.type === 'tool_use') {
             const input = block.input ?? {};
             const detail = input.file_path || input.path || input.command || input.pattern || '';
-            texts.push(`[Tool: ${block.name}]${detail ? ` ${detail}` : ''}`);
+            texts.push(`[TOOL_EXEC] [Tool: ${block.name}]${detail ? ` ${detail}` : ''}`);
           }
         }
 
@@ -208,7 +208,7 @@ const claudeProvider: ProviderConfig = {
         const text = content.map((c: { text?: string }) => c.text || '').filter(Boolean).join('\n');
         if (!text) return null;
         return {
-          displayText: `  → ${text.substring(0, 200)}`,
+          displayText: `[TOOL_RES] ${text.substring(0, 200).replace(/\n/g, ' ')}`,
           step: { type: 'tool_use', content: text.substring(0, 100) },
         };
       }
@@ -371,7 +371,7 @@ const geminiProvider: ProviderConfig = {
         const detail = input.file_path || input.path || input.command || input.pattern || '';
 
         return {
-          displayText: `[Tool: ${toolName}]${detail ? ` ${detail}` : ''}`,
+          displayText: `[TOOL_EXEC] [Tool: ${toolName}]${detail ? ` ${detail}` : ''}`,
           step: { type: 'tool_use', content: `${toolName}${detail ? `: ${detail}` : ''}` },
         };
       }
@@ -381,7 +381,7 @@ const geminiProvider: ProviderConfig = {
         const result = json.tool_result || json.result || json.content || '';
         const text = typeof result === 'string' ? result : JSON.stringify(result);
         return {
-          displayText: `  → ${text.substring(0, 200)}`,
+          displayText: `[TOOL_RES] ${text.substring(0, 200).replace(/\n/g, ' ')}`,
           step: { type: 'tool_use', content: text.substring(0, 100) },
         };
       }

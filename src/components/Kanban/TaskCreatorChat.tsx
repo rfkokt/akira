@@ -81,9 +81,11 @@ function renderContentWithFileRefs(content: string) {
 function MarkdownContent({ content }: { content: string }) {
   // Filter out tool calls and thinking blocks from display
   const filteredContent = content
+    .replace(/\[TOOL_EXEC\].*(\n|$)/g, '') // Remove tool execution lines
+    .replace(/\[TOOL_RES\].*(\n|$)/g, '') // Remove tool result lines
     .replace(/\[Tool: [^\]]+\]\s*(?=\[Tool:|$)/gi, '') // Remove empty tool calls
     .replace(/\[Tool: [^\]]+\]\s*/gi, '') // Remove tool call markers
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '') // Remove thinking blocks
+    .replace(/<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)/gi, '') // Remove thinking blocks
     .replace(/```thinking[\s\S]*?```/gi, '') // Remove thinking code blocks
     .trim()
   
@@ -644,7 +646,14 @@ ${historyMsg ? 'History:\n' + historyMsg + '\n\n' : ''}
 IMPORTANT: Use rtk for all terminal commands. Be concise.`;
       } else {
         // Planning Mode
-        internalPrompt = `[PLANNING ASSISTANT] Discuss and define tasks for Akira. NO execution.
+        internalPrompt = `[PLANNING ASSISTANT] You are an AI acting as a System Architect & Planner.
+YOUR ONLY JOB IS TO EXPLORE AND PLAN. DO NOT MODIFY ANY FILES.
+Use your tools to read code, search directories, and understand the project structure.
+Help the user break down their ideas into actionable tasks for the Kanban board.
+For each task plan, identify:
+1. Exact files that will need to be created or modified.
+2. What existing components/patterns should be followed.
+3. Which MCP servers or built-in Skills would be required to execute the task later.
 
 ${projectRules ? '\nProject Context:\n' + projectRules + '\n' : ''}
 ${historyMsg ? '\nHistory:\n' + historyMsg + '\n' : ''}

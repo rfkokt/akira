@@ -186,7 +186,6 @@ export async function autoCreatePR(
     const shortId = taskId.slice(0, 8);
     const slugifiedTitle = slugify(taskTitle);
     const branchName = `task/${slugifiedTitle}-${shortId}`;
-    const commitMsg = `feat: ${taskTitle}`;
 
     // Get current branch
     const currentBranch = await runGit(['branch', '--show-current'], cwd);
@@ -203,6 +202,17 @@ export async function autoCreatePR(
       await runGit(['branch', '-d', branchName], cwd);
       return null;
     }
+
+    // Get the cached diff for AI commit generation
+    const diffResult = await runGit(['diff', '--cached'], cwd);
+    const diff = diffResult.success ? diffResult.output : '';
+    
+    // Generate commit message dynamically using Groq AI
+    const { generateCommitMessage } = await import('./commitMessage');
+    const groqApiKey = useConfigStore.getState().config?.groq_api_key ?? undefined;
+    const commitMsg = diff.trim() 
+      ? await generateCommitMessage({ diff, groqApiKey, language: 'en' })
+      : `feat: ${taskTitle}`;
 
     // Commit
     const commitResult = await runGit(['commit', '-m', commitMsg], cwd);
