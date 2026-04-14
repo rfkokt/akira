@@ -180,3 +180,86 @@ export function generateCommitMessageFromFiles(
   const scopePart = scope ? `(${scope})` : '';
   return `${type}${scopePart}: ${description}`;
 }
+
+/**
+ * Generate a detailed code review from a git diff using Groq API
+ */
+export async function generateCodeReview(diff: string, groqApiKey?: string): Promise<{ score: number; reviewMarkdown: string }> {
+  // Trim diff to max 15000 chars to avoid token limits but give enough context
+  const trimmedDiff = diff.slice(0, 15000);
+  
+  const apiKey = groqApiKey || (typeof import.meta !== 'undefined' ? (import.meta as {env?: { VITE_GROQ_API_KEY?: string }}).env?.VITE_GROQ_API_KEY : undefined);
+  
+  if (!apiKey) {
+    return {
+      score: 0,
+      reviewMarkdown: "⚠️ **Groq API Key is missing.**\n\nPlease configure your Groq API in the Settings to enable AI Auto-Review."
+    };
+  }
+
+  const systemPrompt = `You are a strict and highly experienced Senior Developer performing a Code Review.
+Analyze the provided git diff carefully.
+
+Your output MUST be in Markdown and MUST follow this structure EXACTLY:
+SCORE: [Number between 0 and 100 representing code quality]
+---
+### 🔍 Review Summary
+[1-2 sentences summarizing the change]
+
+### 💡 Key Findings
+- [Point 1]
+- [Point 2]
+...
+
+### 🛠️ Suggestions & Improvements
+- [Suggestion 1]
+- [Suggestion 2]
+...
+(If there are no suggestions, write "Code looks solid!")
+`;
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant', // fast and decent enough
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Please review this diff:\n\n\`\`\`diff\n${trimmedDiff}\n\`\`\`` },
+        ],
+        temperature: 0.2, // Be deterministic regarding formatting
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Groq API error in code review:', response.status);
+      return { score: 0, reviewMarkdown: "⚠️ **Error connecting to Groq API.**\n\nHTTP Status: " + response.status };
+    }
+
+    const data: GroqResponse = await response.json();
+    const message = data.choices?.[0]?.message?.content?.trim();
+    
+    if (!message) {
+      return { score: 0, reviewMarkdown: "⚠️ **No response received from Groq.**" };
+    }
+
+    // Extract score
+    let score = 85; // Default score
+    const scoreMatch = message.match(/SCORE:\s*(\d+)/i);
+    if (scoreMatch && scoreMatch[1]) {
+      score = parseInt(scoreMatch[1], 10);
+    }
+    
+    // Clean up message by removing the score prefix
+    const reviewMarkdown = message.replace(/SCORE:\s*\d+\s*[-]*\s*/i, '').trim();
+
+    return { score, reviewMarkdown };
+  } catch (error) {
+    console.error('Failed to generate code review:', error);
+    return { score: 0, reviewMarkdown: `⚠️ **Failed to generate review.**\n\n${error}` };
+  }
+}

@@ -16,6 +16,7 @@ interface TaskCardProps {
   onComplete: (task: Task) => void
   onRetry: (task: Task) => void
   onClick: (task: Task) => void
+  onAIReview: (task: Task) => void
   processingTasks: Set<string>
   taskStates: Record<string, AITaskState>
   mergeLoadingTasks: Set<string>
@@ -29,6 +30,7 @@ export function TaskCard({
   onComplete,
   onRetry,
   onClick,
+  onAIReview,
   processingTasks,
   taskStates,
   mergeLoadingTasks
@@ -131,7 +133,20 @@ const style = {
           )}
 
           {task.status === 'review' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2.5 text-xs relative z-10 hover:bg-app-panel text-purple-400 hover:text-purple-300"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAIReview(task)
+                }}
+                title="AI Self-Review"
+              >
+                <AlertCircle className="w-4 h-4 mr-1.5" />
+                AI Review
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"

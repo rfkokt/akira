@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { X } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 import { useTaskStore, useAIChatStore, useWorkspaceStore } from '@/store'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'
@@ -11,6 +12,7 @@ import { DiffViewer } from '@/components/DiffViewer/DiffViewer'
 import { DescriptionWithFileTag } from '@/components/DescriptionWithFileTag'
 import { TaskCard } from './TaskCard'
 import { TaskDetailModal } from './TaskDetailModal'
+import { CodeReviewModal } from './CodeReviewModal'
 import { GitPushFlow } from '@/components/AI/AIWorkflowPanel'
 import { KanbanColumn } from './KanbanColumn'
 import { COLUMNS, PRIORITY_COLORS } from './constants'
@@ -43,6 +45,7 @@ export function KanbanBoard() {
   const [chatTask, setChatTask] = useState<Task | null>(null)
   const [diffTask, setDiffTask] = useState<Task | null>(null)
   const [detailTask, setDetailTask] = useState<Task | null>(null)
+  const [reviewModalTask, setReviewModalTask] = useState<Task | null>(null)
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
@@ -128,6 +131,8 @@ export function KanbanBoard() {
   const handleTaskClick = (task: Task) => setDetailTask(task)
   const handleTaskUpdate = (task: Task) => setDetailTask(task)
 
+  const handleAIReview = (task: Task) => setReviewModalTask(task);
+
   const handleDeleteTask = async (taskId: string) => {
     try {
       await deleteTask(taskId)
@@ -199,6 +204,7 @@ export function KanbanBoard() {
                         onStartAI={handleStartAI}
                         onViewDiff={handleViewDiff}
                         onOpenChat={handleOpenChat}
+                        onAIReview={handleAIReview}
                         onComplete={handleCompleteTask}
                         onRetry={handleRetry}
                         onClick={handleTaskClick}
@@ -337,6 +343,16 @@ export function KanbanBoard() {
             onClose={() => setMergeTask(null)}
             onComplete={handleMergeComplete}
             workspacePath={activeWorkspace.folder_path}
+          />
+        )}
+        {reviewModalTask && (
+          <CodeReviewModal
+            task={reviewModalTask}
+            isOpen={!!reviewModalTask}
+            onClose={() => setReviewModalTask(null)}
+            onViewDiff={handleViewDiff}
+            onOpenChat={handleOpenChat}
+            onComplete={handleCompleteTask}
           />
         )}
       </div>

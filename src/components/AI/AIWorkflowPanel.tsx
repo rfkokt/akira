@@ -19,6 +19,7 @@ interface AIWorkflowPanelProps {
   onStartAI: () => void;
   onViewDiff: () => void;
   onOpenChat: () => void;
+  onAIReview?: () => void;
   onComplete: () => void;
 }
 
@@ -28,6 +29,7 @@ export function AIWorkflowPanel({
   onStartAI, 
   onViewDiff, 
   onOpenChat, 
+  onAIReview,
   onComplete 
 }: AIWorkflowPanelProps) {
   const { activeEngine } = useEngineStore();
@@ -105,22 +107,31 @@ export function AIWorkflowPanel({
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 mb-2">
               <Button
                 variant="outline"
                 onClick={onViewDiff}
               >
-                <FileDiff className="w-4 h-4" />
+                <FileDiff className="w-4 h-4 mr-2" />
                 View Diff
               </Button>
               <Button
                 variant="outline"
                 onClick={onOpenChat}
               >
-                <MessageSquare className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4 mr-2" />
                 Chat
               </Button>
             </div>
+
+            <Button
+              variant="outline"
+              className="w-full mb-2 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 border-purple-500/30"
+              onClick={onAIReview}
+            >
+              <Bot className="w-4 h-4 mr-2" />
+              AI Auto-Review
+            </Button>
 
             <Button
               className="w-full bg-green-600 hover:bg-green-700"
