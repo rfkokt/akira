@@ -272,8 +272,6 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
         onClose={() => setIsModalOpen(false)}
         workspaces={workspaces}
         handleSelectWorkspace={handleSelectWorkspace}
-        handleOpenInTerminal={handleOpenInTerminal}
-        deleteWorkspace={deleteWorkspace}
       />
     </div>
   )
