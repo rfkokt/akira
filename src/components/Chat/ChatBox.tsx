@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useEngineStore } from '@/store/engineStore'
+import { useConfigStore } from '@/store/configStore'
 import { dbService } from '@/lib/db'
 import type { CliOutputEvent, CliCompleteEvent, ChatMessage, RouterProviderInfo } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -371,9 +372,18 @@ export function ChatBox({ taskId, projectPath }: ChatBoxProps) {
       .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
       .join('\n\n')
     
+    // Get project rules for context
+    let systemContext = '';
+    try {
+      const projectRules = useConfigStore.getState().getSystemPrompt();
+      if (projectRules) {
+        systemContext = `[PROJECT CONTEXT]\n${projectRules}\n\n`;
+      }
+    } catch { /* no config */ }
+    
     let fullPrompt = conversationContext 
-      ? `Previous conversation:\n${conversationContext}\n\nUser: ${userMessage}\n\nAssistant:`
-      : userMessage
+      ? `${systemContext}Previous conversation:\n${conversationContext}\n\nUser: ${userMessage}\n\nAssistant:`
+      : `${systemContext}User: ${userMessage}\n\nAssistant:`
 
     try {
       if (useRouter) {

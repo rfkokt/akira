@@ -15,6 +15,10 @@ import { CodeReviewModal } from './CodeReviewModal'
 import { GitPushFlow } from '@/components/AI/AIWorkflowPanel'
 import { KanbanColumn } from './KanbanColumn'
 import { COLUMNS, PRIORITY_COLORS } from './constants'
+import { autoCreatePR } from '@/lib/git'
+import { invoke } from '@tauri-apps/api/core'
+import { dbService } from '@/lib/db'
+import { notify } from '@/lib/notify'
 import {
   DndContext,
   DragEndEvent,
@@ -76,7 +80,104 @@ export function KanbanBoard() {
     setActiveTask(task)
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleManualPRCreation = useCallback(async (task: Task, workspacePath: string) => {
+    setProcessingTasks((prev) => new Set(prev).add(task.id))
+    
+    try {
+      // For revisions after merge, use merged_to_branch as base
+      const baseBranch = task.is_merged ? task.merged_to_branch || undefined : undefined
+      
+      if (baseBranch) {
+        console.log(`[Board] Creating revision PR for ${task.id} from base branch: ${baseBranch}`)
+      }
+      
+      // Create PR for manually moved task
+      const prResult = await autoCreatePR(task.id, task.title, workspacePath, { baseBranch })
+      
+      // Capture diff snapshot with cumulative history
+      if (prResult?.branch && prResult?.baseBranch) {
+        try {
+          const diffResult = await invoke<{ diff: string; has_changes: boolean }>
+            ('git_get_branch_diff', { 
+              cwd: workspacePath, 
+              baseBranch: prResult.baseBranch, 
+              headBranch: prResult.branch 
+            })
+          if (diffResult.has_changes) {
+            // Get existing diff for cumulative history
+            const existingTask = tasks.find(t => t.id === task.id)
+            const existingDiff = existingTask?.diff_content || ''
+            
+            let combinedDiff = ''
+            if (existingDiff && existingDiff.trim()) {
+              const timestamp = new Date().toISOString()
+              combinedDiff = `${existingDiff}\n\n${'='.repeat(60)}\n[REVISION ${timestamp}]\n${'='.repeat(60)}\n\n${diffResult.diff}`
+            } else {
+              combinedDiff = diffResult.diff
+            }
+            
+            const diffLastCapturedAt = new Date().toISOString()
+            await dbService.updateTaskDiffInfo(task.id, combinedDiff, diffLastCapturedAt)
+            await fetchTasks()
+            
+            console.log(`[Board] Manual PR diff captured for ${task.id}: ${diffResult.diff.length} chars new, ${combinedDiff.length} chars total`)
+          }
+        } catch (e) {
+          console.error('[Board] Failed to capture diff:', e)
+        }
+      }
+
+      // Show notification
+      if (prResult?.prUrl) {
+        const isRealPR = !prResult.prUrl.includes('/compare/')
+        if (isRealPR) {
+          await notify('PR Created! ✅', `"${task.title}" - PR auto-created: ${prResult.prUrl}`)
+        } else {
+          await notify('Branch Pushed! ✅', `"${task.title}" - Branch \`${prResult.branch}\` pushed. Click to create PR.`)
+        }
+      } else if (prResult?.error) {
+        await notify('Branch Created (Push Failed)', `"${task.title}" - Branch \`${prResult.branch}\` created locally but push failed.`)
+      } else {
+        await notify('Task Moved to Review', `"${task.title}" moved to review. PR creation skipped.`)
+      }
+
+      // Update AI chat store with PR info
+      if (prResult) {
+        useAIChatStore.setState({
+          taskStates: {
+            ...useAIChatStore.getState().taskStates,
+            [task.id]: {
+              ...(useAIChatStore.getState().taskStates[task.id] || {
+                status: 'completed',
+                startTime: null,
+                endTime: null,
+                errorMessage: null,
+                lastResponse: null,
+                queuePosition: null,
+                currentFile: null,
+                filesModified: [],
+                toolCalls: [],
+              }),
+              prBranch: prResult.branch,
+              prUrl: prResult.prUrl,
+              prCreatedAt: Date.now(),
+            }
+          }
+        })
+      }
+    } catch (error) {
+      console.error('[Board] Manual PR creation failed:', error)
+      await notify('PR Creation Failed', `"${task.title}" - Could not create PR. Check git configuration.`)
+    } finally {
+      setProcessingTasks((prev) => {
+        const next = new Set(prev)
+        next.delete(task.id)
+        return next
+      })
+    }
+  }, [fetchTasks])
+
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
     setActiveTask(null)
 
@@ -101,7 +202,15 @@ export function KanbanBoard() {
     }
 
     if (task.status !== newStatus) {
-      moveTask(taskId, newStatus)
+      await moveTask(taskId, newStatus)
+      
+      // Trigger PR creation when manually moving from "in-progress" to "review"
+      if (task.status === 'in-progress' && newStatus === 'review' && activeWorkspace) {
+        // Small delay to let the UI update first
+        setTimeout(() => {
+          handleManualPRCreation(task, activeWorkspace.folder_path)
+        }, 100)
+      }
     }
   }
 

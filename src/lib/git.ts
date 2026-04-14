@@ -176,15 +176,33 @@ export function slugify(text: string): string {
  * Automated branch workflow: create branch → add → commit → push → generate PR URL.
  * Platform-agnostic — works with GitHub, GitLab, Bitbucket, and self-hosted.
  */
+export interface AutoCreatePROptions {
+  baseBranch?: string; // Optional base branch to create PR from (for revisions after merge)
+}
+
 export async function autoCreatePR(
   taskId: string,
   taskTitle: string,
   cwd: string,
+  options?: AutoCreatePROptions,
 ): Promise<PRResult | null> {
   try {
     const shortId = taskId.slice(0, 8);
     const slugifiedTitle = slugify(taskTitle);
-    const branchName = `task/${slugifiedTitle}-${shortId}`;
+    
+    // Check if this is a revision (task already has a PR branch)
+    // If so, append revision number to branch name
+    const existingBranchCheck = await runGit(['branch', '--list', `task/${slugifiedTitle}-${shortId}*`], cwd);
+    let revision = 0;
+    if (existingBranchCheck.success && existingBranchCheck.output.trim()) {
+      // Count existing branches for this task
+      const existingBranches = existingBranchCheck.output.trim().split('\n').filter(b => b.trim());
+      revision = existingBranches.length;
+    }
+    
+    const branchName = revision > 0 
+      ? `task/${slugifiedTitle}-${shortId}-v${revision + 1}`
+      : `task/${slugifiedTitle}-${shortId}`;
 
     // Ensure git is initialized for greenfield projects
     const statusRes = await runGit(['status'], cwd);
@@ -194,9 +212,17 @@ export async function autoCreatePR(
       await runGit(['commit', '--allow-empty', '-m', 'Initial commit'], cwd);
     }
 
-    // Get current branch
-    const currentBranch = await runGit(['branch', '--show-current'], cwd);
-    const currentBranchName = currentBranch.success ? currentBranch.output.trim() : 'main';
+    // Get current branch or use specified base branch
+    let currentBranchName: string;
+    if (options?.baseBranch) {
+      // Use specified base branch (e.g., for revisions after merge)
+      currentBranchName = options.baseBranch;
+      // Checkout to base branch first
+      await runGit(['checkout', currentBranchName], cwd);
+    } else {
+      const currentBranch = await runGit(['branch', '--show-current'], cwd);
+      currentBranchName = currentBranch.success ? currentBranch.output.trim() : 'main';
+    }
 
     // Create feature branch
     await runGit(['checkout', '-b', branchName], cwd);
@@ -210,6 +236,14 @@ export async function autoCreatePR(
       return null;
     }
 
+    // Check if there are staged changes
+    const stagedCheck = await runGit(['diff', '--cached', '--quiet'], cwd);
+    const hasStagedChanges = !stagedCheck.success; // --quiet exits 1 if there are changes
+    
+    if (!hasStagedChanges) {
+      console.log('[git] No staged changes detected. Creating empty commit...');
+    }
+
     // Get the cached diff for AI commit generation
     const diffResult = await runGit(['diff', '--cached'], cwd);
     const diff = diffResult.success ? diffResult.output : '';
@@ -221,8 +255,12 @@ export async function autoCreatePR(
       ? await generateCommitMessage({ diff, groqApiKey, language: 'en' })
       : `feat: ${taskTitle}`;
 
-    // Commit
-    const commitResult = await runGit(['commit', '-m', commitMsg], cwd);
+    // Commit (with --allow-empty if no changes)
+    const commitArgs = hasStagedChanges 
+      ? ['commit', '-m', commitMsg]
+      : ['commit', '--allow-empty', '-m', commitMsg];
+    const commitResult = await runGit(commitArgs, cwd);
+    
     if (!commitResult.success) {
       console.error('[git] git commit failed:', commitResult.output);
       await runGit(['checkout', currentBranchName], cwd);
@@ -344,11 +382,44 @@ export interface MergeOptions {
   createTag: boolean;
   tagName: string;
   deleteBranch?: boolean;
+  runBuildTest?: boolean;
+}
+
+async function detectBuildCommand(cwd: string): Promise<string | null> {
+  // Check for package.json scripts
+  try {
+    const packageJson = await runGit(['show', 'HEAD:package.json'], cwd);
+    if (packageJson.success) {
+      const pkg = JSON.parse(packageJson.output);
+      if (pkg.scripts?.build) return 'npm run build';
+      if (pkg.scripts?.['build:prod']) return 'npm run build:prod';
+    }
+  } catch {
+    // package.json might not exist or be parseable
+  }
+
+  // Check for common build files
+  const buildFiles = [
+    { file: 'Cargo.toml', cmd: 'cargo build --release' },
+    { file: 'pom.xml', cmd: 'mvn clean package' },
+    { file: 'build.gradle', cmd: './gradlew build' },
+    { file: 'Makefile', cmd: 'make' },
+    { file: 'CMakeLists.txt', cmd: 'cmake --build build' },
+  ];
+
+  for (const { file, cmd } of buildFiles) {
+    const check = await runGit(['ls-files', file], cwd);
+    if (check.success && check.output.trim()) {
+      return cmd;
+    }
+  }
+
+  return null;
 }
 
 export async function mergeTaskToBranch(cwd: string, featureBranch: string, targetBranch: string, options?: MergeOptions): Promise<{ success: boolean; log: string; mergedToBranch?: string }> {
   let fullLog = '';
-  
+
   // Auto-detect remote name (origin, kaidev, etc.)
   const remote = await getDefaultRemote(cwd);
   if (remote) {
@@ -367,6 +438,37 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
     fullLog += `${res.output}\n`;
     if (res.stderr && res.success) fullLog += `[stderr payload]\n${res.stderr}\n`;
     return res;
+  };
+
+  const execShell = async (cmd: string, allowFail = false) => {
+    fullLog += `> ${cmd}\n`;
+    const { invoke } = await import('@tauri-apps/api/core');
+    
+    // Parse command and args (e.g., "npm run build" -> command: "npm", args: ["run", "build"])
+    const parts = cmd.split(' ');
+    const command = parts[0];
+    const args = parts.slice(1);
+    
+    try {
+      const result = await invoke<{ success: boolean; stdout: string; stderr: string; exit_code: number }>('run_shell_command', {
+        command,
+        args,
+        cwd
+      });
+      if (!result.success && !allowFail) {
+        fullLog += `${result.stderr || result.stdout}\n[ERROR] Build command failed with exit code ${result.exit_code}.\n`;
+        throw new Error(fullLog);
+      }
+      fullLog += `${result.stdout}\n`;
+      if (result.stderr) fullLog += `[stderr]\n${result.stderr}\n`;
+      return { success: result.success, output: result.stdout, stderr: result.stderr };
+    } catch (e: any) {
+      if (!allowFail) {
+        fullLog += `${e.message || e}\n[ERROR] Build command failed.\n`;
+        throw new Error(fullLog);
+      }
+      return { success: false, output: '', stderr: e.message || String(e) };
+    }
   };
 
   try {
@@ -399,22 +501,25 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
     await exec(['merge', '--no-ff', featureBranch, '-m', `Merge branch '${featureBranch}' into ${targetBranch}`]);
 
     // 5. Create tag if requested - auto-increment if already exists
+    let createdTagName: string | null = null;
     if (options && options.createTag) {
       let tagName = options.tagName;
       let attempts = 0;
       const maxAttempts = 100; // Safety limit
-      
+
       while (attempts < maxAttempts) {
         const tagCheck = await exec(['tag', '-l', tagName], true);
         const tagExists = tagCheck.success && tagCheck.output.trim() === tagName;
-        
+
         if (!tagExists) {
           await exec(['tag', '-a', tagName, '-m', `Version ${tagName}`]);
+          createdTagName = tagName;
+          fullLog += `[Created tag: ${tagName}]\n`;
           break;
         }
-        
+
         // Tag exists, increment patch version
-        fullLog += `[Tag ${tagName} already exists, incrementing...]\n`;
+        fullLog += `[Tag ${tagName} already exists locally, incrementing...]\n`;
         const match = tagName.match(/^(alpha\.\d+\.\d+\.)(\d+)$/);
         if (match) {
           const prefix = match[1];
@@ -426,27 +531,89 @@ export async function mergeTaskToBranch(cwd: string, featureBranch: string, targ
         }
         attempts++;
       }
-      
+
       if (attempts >= maxAttempts) {
         fullLog += `[Warning: Could not find available tag after ${maxAttempts} attempts]\n`;
       }
     }
 
-    // 6. Push target branch
-    if (remote) await exec(['push', remote, targetBranch]);
+    // 6. Run build & test if requested
+    if (options?.runBuildTest) {
+      const buildCmd = await detectBuildCommand(cwd);
+      if (buildCmd) {
+        fullLog += `[Running build/test: ${buildCmd}]\n`;
+        try {
+          const buildResult = await execShell(buildCmd);
+          if (buildResult.success) {
+            fullLog += `[✅ Build passed]\n`;
+          } else {
+            fullLog += `[❌ Build failed. Aborting merge.]\n`;
+            throw new Error(fullLog);
+          }
+        } catch (buildError: any) {
+          fullLog += `[❌ Build failed: ${buildError.message || buildError}\n`;
+          fullLog += `[Merge aborted to prevent broken deployment]\n`;
 
-    // 7. Push tags if applied
-    if (remote && options && options.createTag) {
-      await exec(['push', remote, '--tags']);
+          // Try to abort merge first (if merge is still in progress)
+          const abortResult = await exec(['merge', '--abort'], true);
+          if (!abortResult.success) {
+            // Merge already committed, need to revert
+            fullLog += `[Merge already committed. Reverting...]\n`;
+            await exec(['reset', '--hard', 'HEAD~1'], true);
+            fullLog += `[Reverted to before merge]\n`;
+          }
+
+          return { success: false, log: fullLog };
+        }
+      } else {
+        fullLog += `[No build command detected. Skipping build check.]\n`;
+        fullLog += `[To add build check, ensure package.json has "build" script or use Cargo.toml, pom.xml, etc.]\n`;
+      }
     }
 
-    // 8. Delete feature branch if requested
+    // 7. Push target branch
+    if (remote) await exec(['push', remote, targetBranch]);
+
+    // 8. Push only the specific tag that was created (not all tags)
+    if (remote && createdTagName) {
+      fullLog += `[Pushing tag: ${createdTagName}]\n`;
+      const pushTagResult = await exec(['push', remote, createdTagName], true);
+      if (!pushTagResult.success) {
+        fullLog += `[Warning: Failed to push tag ${createdTagName}: ${pushTagResult.stderr}]\n`;
+        // Don't fail the entire merge just because tag push failed
+      }
+    }
+
+    // 9. Delete feature branch if requested
     if (options && options.deleteBranch) {
       await exec(['branch', '-D', featureBranch], true); // Force delete local (it's already pushed/merged)
       if (remote) await exec(['push', remote, '--delete', featureBranch], true); // remote
+      
+      // Also cleanup old revision branches (v1, v2, etc.) if they exist
+      const shortId = featureBranch.match(/-([a-f0-9]{8})(?:-v\d+)?$/)?.[1];
+      if (shortId) {
+        const baseName = featureBranch.replace(/-v\d+$/, '');
+        fullLog += `[Cleaning up old revision branches...]\n`;
+        
+        // Find all branches matching this task pattern
+        const allBranches = await runGit(['branch', '--list', `${baseName}*`], cwd);
+        if (allBranches.success && allBranches.output.trim()) {
+          const branchesToClean = allBranches.output
+            .trim()
+            .split('\n')
+            .map(b => b.trim().replace(/^\*\s*/, ''))
+            .filter(b => b !== featureBranch && b.startsWith(baseName));
+          
+          for (const oldBranch of branchesToClean) {
+            await exec(['branch', '-D', oldBranch], true);
+            if (remote) await exec(['push', remote, '--delete', oldBranch], true);
+            fullLog += `[Cleaned up old branch: ${oldBranch}]\n`;
+          }
+        }
+      }
     }
 
-    // 9. Restore uncommitted changes
+    // 10. Restore uncommitted changes
     if (stashed) {
       fullLog += `\n[Restoring uncommitted changes...]\n`;
       await exec(['stash', 'pop'], true);

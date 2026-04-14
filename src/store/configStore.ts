@@ -39,25 +39,39 @@ const defaultConfig: ProjectConfig = {
   workspace_id: '',
   md_persona: `# Persona
 
-Kamu adalah senior software engineer yang berpengalaman.
-Selalu berikan solusi yang clean, maintainable, dan mengikuti best practices.`,
+You are an expert software engineer. Analyze requirements carefully, then implement clean, maintainable solutions following best practices.`,
   md_tech_stack: `# Tech Stack
 
-- Framework: 
-- Language: 
-- Database: 
-- Tools: `,
-  md_rules: `# Rules
+- Framework: (analyze from package.json)
+- Language: (analyze from source files)
+- Database: (if applicable)
+- Tools: (build tools, linters, etc.)`,
+  md_rules: `# Coding Standards
 
 ## DO
-- 
+- Write clean, self-documenting code with clear variable names
+- Follow existing project patterns and conventions
+- Add error handling for edge cases
+- Use TypeScript types strictly (no 'any')
+- Keep functions small and focused (single responsibility)
+- Add comments only for complex logic, not obvious code
 
 ## DON'T
-- `,
-  md_tone: `# Tone
+- Don't break existing functionality
+- Don't add unnecessary dependencies
+- Don't leave console.log in production code
+- Don't ignore TypeScript errors
+- Don't duplicate code - refactor into reusable functions
 
-Jawab singkat dan langsung ke poin.
-Berikan penjelasan yang jelas dan terstruktur.`,
+## Output Format
+When implementing:
+1. First analyze the requirements
+2. List files that need changes
+3. Show the implementation with clear comments
+4. Verify the solution handles edge cases`,
+  md_tone: `# Communication Style
+
+Be concise but thorough. Focus on actionable solutions.`,
 };
 
 export const useConfigStore = create<ConfigState>((set, get) => ({

@@ -3,6 +3,7 @@ import { devtools } from 'zustand/middleware';
 import type { Task, CreateTaskRequest } from '@/types';
 import { dbService } from '@/lib/db';
 import { useAIChatStore } from './aiChatStore';
+import { getSavedRunningTask } from '@/lib/helpers';
 
 interface TaskState {
   tasks: Task[];
@@ -46,10 +47,35 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         try {
           const tasks = await dbService.getTasksByWorkspace(targetWorkspaceId);
-          set({ tasks, isLoading: false });
+          
+          // Check for stuck tasks (in-progress but no running AI process)
+          const aiStore = useAIChatStore.getState();
+          const savedTask = getSavedRunningTask();
+          const stuckTasks = tasks.filter(task => {
+            if (task.status !== 'in-progress') return false;
+            // Check if AI is actually running this task
+            const taskState = aiStore.taskStates[task.id];
+            const isRunning = taskState?.status === 'running' || taskState?.status === 'queued';
+            const isCurrentTask = aiStore.currentRunningTask === task.id;
+            const isSavedTask = savedTask?.taskId === task.id;
+            // Task is stuck if not running in memory AND not saved in localStorage
+            return !isRunning && !isCurrentTask && !isSavedTask;
+          });
+          
+          // Reset stuck tasks to 'todo'
+          if (stuckTasks.length > 0) {
+            console.log(`[TaskStore] Found ${stuckTasks.length} stuck task(s), resetting to todo:`, stuckTasks.map(t => t.title));
+            for (const stuckTask of stuckTasks) {
+              await dbService.updateTaskStatus(stuckTask.id, 'todo');
+            }
+            // Re-fetch tasks after reset
+            const updatedTasks = await dbService.getTasksByWorkspace(targetWorkspaceId);
+            set({ tasks: updatedTasks, isLoading: false });
+          } else {
+            set({ tasks, isLoading: false });
+          }
           
           // Sync PR and merge info to AI chat store
-          const aiStore = useAIChatStore.getState();
           tasks.forEach(task => {
             if (task.pr_branch || task.is_merged) {
               const existingState = aiStore.taskStates[task.id];

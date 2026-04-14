@@ -170,27 +170,45 @@ export async function sendGroqSummary(
   const result = await sendGroqChat(apiKey, [
     {
       role: 'system',
-      content: `You are a task extraction specialist. Analyze the conversation and extract actionable coding tasks.
+      content: `You are a task extraction specialist. Analyze the conversation and extract coding tasks.
 
-Output format - JSON array only:
+CRITICAL: Group related changes into SINGLE task. AVOID over-splitting!
+
+Output format - VALID JSON array only, no markdown:
 [
   {
     "title": "Short clear title, max 80 chars",
-    "description": "Implementation prompt for AI agent. Max 2500 chars.",
+    "description": "Implementation requirements. Include: 1) All file paths with @ prefix, 2) Complete changes needed, 3) Technical requirements, 4) Expected behavior.",
     "priority": "high | medium | low",
-    "recommendedSkills": ["skill-name-1"]
+    "recommendedSkills": ["skill-name-1", "skill-name-2"]
   }
 ]
 
-Priority guidelines:
-- "high": Bug fixes, security, blockers
-- "medium": New features, enhancements
-- "low": Documentation, cosmetic
+MERGE vs SPLIT GUIDELINES:
+→ MERGE into 1 task when:
+  - Same feature/component (e.g., "create login form" = 1 task)
+  - Related UI changes in same area
+  - CRUD operations on same entity
+  - Frontend + Backend for same API
+  
+→ SPLIT when:
+  - Completely different features
+  - Independent components
+  - Task dependencies exist
 
-Rules:
-- Extract ONLY coding tasks
-- Do NOT create tasks for: git commits, testing, deployment
-- If no actionable tasks, return: []`,
+Priority:
+- "high": Bug fixes, security
+- "medium": New features
+- "low": Documentation
+
+RULES:
+- If ONE feature described → return 1 task
+- If multiple independent features → return multiple
+- No tasks for: git, PRs, testing
+- If no tasks → return []
+
+EXAMPLE (Single Feature - 1 Task):
+"Create UserProfile in @src/components/UserProfile.tsx with avatar, name, email. Use @components/Button.tsx. Style with Tailwind. Accept 'user' prop with TypeScript types."`,
     },
     {
       role: 'user',
@@ -199,12 +217,12 @@ Rules:
 Conversation:
 ${conversationText}
 
-Extract tasks as JSON:`,
+Extract tasks as JSON ONLY:`,
     },
   ], {
     model: 'llama-3.1-8b-instant',
-    maxTokens: 2000,
-    temperature: 0.3,
+    maxTokens: 2500,
+    temperature: 0.2,
   });
 
   return result?.content || null;

@@ -7,72 +7,63 @@ import { invoke } from '@tauri-apps/api/core'
 // ---------------------------------------------------------------------------
 // Deep-Scan Analysis Prompt
 // ---------------------------------------------------------------------------
-const ANALYSIS_PROMPT = `[System: You are a senior software architect performing a deep project analysis. DO NOT modify any files. DO NOT use any tools that write to disk. ONLY read and analyze.]
+const ANALYSIS_PROMPT = `[ROLE: Senior Software Architect - Project Analyzer]
 
-Analyze the project at: {{CWD}}
+Analyze project at: {{CWD}}
+READ-ONLY: Do not modify any files.
 
-## Files to Read (in order of priority)
-1. **Config files**: package.json, tsconfig.json, vite.config.*, next.config.*, tailwind.config.*, Cargo.toml, pyproject.toml
-2. **README.md** if present
-3. **Top-level folder structure** (ls the root)
-4. **Source structure**: Read the directory tree of src/ or app/ (2 levels deep)
-5. **Sample components**: Read 2-3 actual component files to understand patterns (pick from components/, _components/, or similar)
-6. **State management**: Read 1-2 store files if present (store/, hooks/, or similar)
-7. **Service/API layer**: Read 1 file from services/, lib/, or api/ if present
-8. **Validation/Schema**: Read 1 file from validations/, schemas/, or types/ if present
+[FILES TO READ]
+1. Config: package.json, tsconfig.json, *.config.*
+2. README.md (if exists)
+3. Root structure (1 level)
+4. Source tree: src/ or app/ (2 levels deep)
+5. Sample files: 2-3 components, 1 store, 1 service
 
-## Output Format
-You MUST output ONLY a fenced JSON code block. No text before or after. No explanation. No markdown outside the fence.
-
+[OUTPUT - JSON ONLY]
 \`\`\`json
 {
-  "project_overview": "1-2 sentence summary of what this project does",
+  "project_overview": "1-2 sentences about what this project does",
   "tech_stack": {
-    "runtime": "e.g. Node.js 20 / TypeScript 5.x",
-    "framework": "e.g. Next.js 14 App Router",
-    "ui": "e.g. Radix UI + Tailwind CSS",
-    "state": "e.g. Zustand per-feature stores",
-    "api": "e.g. Axios with interceptors",
-    "database": "e.g. PostgreSQL via Prisma",
-    "auth": "e.g. Cookie-based JWT",
-    "testing": "e.g. Vitest + Testing Library",
-    "build": "e.g. Vite / Turbopack"
+    "runtime": "e.g., Node.js 20 + TypeScript",
+    "framework": "e.g., Next.js 14 / React 18",
+    "ui": "e.g., Tailwind + Radix",
+    "state": "e.g., Zustand / Redux",
+    "api": "e.g., REST / tRPC",
+    "database": "e.g., PostgreSQL / Mongo",
+    "auth": "e.g., JWT / OAuth",
+    "testing": "e.g., Vitest / Jest",
+    "build": "e.g., Vite / Webpack"
   },
   "architecture": {
-    "pattern": "e.g. Feature-based with route groups",
-    "key_directories": ["dir1 — purpose", "dir2 — purpose"],
-    "data_flow": "e.g. Zustand stores → service layer → Axios"
+    "pattern": "e.g., Feature-based / MVC",
+    "key_directories": ["src/components — UI components", "src/store — state"],
+    "data_flow": "e.g., Store → API → UI"
   },
   "component_patterns": {
-    "reusability": "How components are organized for reuse",
-    "naming": "File and component naming conventions",
-    "state_management": "How state is scoped and managed",
-    "forms": "How forms and validation are handled",
-    "styling": "CSS approach and conventions"
+    "reusability": "How components are shared",
+    "naming": "File naming convention",
+    "state_management": "State approach",
+    "forms": "Form handling pattern",
+    "styling": "Styling method"
   },
   "code_standards": {
-    "do": [
-      "Specific project rule 1 (max 7 rules)"
-    ],
-    "dont": [
-      "Specific anti-pattern 1 (max 7 rules)"
-    ]
+    "do": ["Specific pattern 1", "Specific pattern 2"],
+    "dont": ["Anti-pattern 1", "Anti-pattern 2"]
   },
   "security": {
-    "auth_pattern": "How authentication works",
-    "role_check": "How authorization is enforced",
-    "data_sanitization": "How inputs are validated"
+    "auth_pattern": "Auth implementation",
+    "role_check": "Authorization method",
+    "data_sanitization": "Input validation"
   }
 }
 \`\`\`
 
-CRITICAL RULES:
-- Every value MUST be specific to THIS project. No generic advice.
-- Read actual source files to discover real patterns. Do not guess.
-- If a field is not applicable, use "N/A".
-- Keep values concise — each string should be 1-2 sentences max.
-- DO and DON'T rules must come from actual code patterns you observed.
-- Output ONLY the JSON block. Nothing else.`
+[RULES]
+- ONLY output JSON block, nothing else
+- Be specific to THIS project (no generic advice)
+- Use "N/A" if field doesn't apply
+- Keep each value to 1-2 sentences max
+- DO/DON'T must be from actual code observed`
 
 // ---------------------------------------------------------------------------
 // JSON Extraction

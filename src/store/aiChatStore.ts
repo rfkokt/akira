@@ -221,15 +221,37 @@ function buildTaskPrompt(taskTitle: string, taskDescription?: string, skillListi
   const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
   const invokedSkillsSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
 
-  let prompt = `${systemPrompt ? systemPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSkillsSection}
-
----
-
-TASK: ${taskTitle}
+  // Build prompt with TASK FIRST (most important for AI focus)
+  const taskSection = `TASK: ${taskTitle}
 ${cleanDescription ? `CONTEXT: ${cleanDescription}` : ''}
 
-Please analyze and implement this task. Be concise and always use 'rtk' for terminal commands to save tokens.`;  // Inject Dynamic MCP tools
+Please analyze and implement this task.`;
+
   const workspace = useWorkspaceStore.getState().activeWorkspace;
+  
+  // Start with task section (highest priority)
+  let prompt = taskSection;
+  
+  // Add system context after task (for reference)
+  if (systemPrompt || GLOBAL_RTK_INSTRUCTION) {
+    prompt += `\n\n---\n\n${GLOBAL_RTK_INSTRUCTION}`;
+    if (systemPrompt) {
+      prompt += `\n\n${systemPrompt}`;
+    }
+  }
+  
+  // Add skills
+  prompt += skillSection;
+  prompt += invokedSkillsSection;
+  
+  // Add output format guidance
+  prompt += `\n\n[OUTPUT FORMAT]
+1. Analyze: What needs to be done and why
+2. Plan: List files to create/modify with @filepath format
+3. Implement: Show code changes with clear comments
+4. Verify: Confirm edge cases are handled`;
+  
+  // Inject tools at the end
   if (workspace) {
     prompt = injectToolsIntoPrompt(prompt, {
       maxTools: 30,
@@ -326,28 +348,60 @@ async function handleTaskCompletion(
     return;
   }
 
-  const prResult = await autoCreatePR(taskId, taskTitle, cwd);
+  // Check if task has been merged before - use merged_to_branch as base for revision
+  const tasks = useTaskStore.getState().tasks;
+  const task = tasks.find(t => t.id === taskId);
+  const baseBranch = task?.is_merged ? task.merged_to_branch || undefined : undefined;
+  
+  if (baseBranch) {
+    console.log(`[AI] Task ${taskId} revision - creating branch from ${baseBranch}`);
+  }
+
+  const prResult = await autoCreatePR(taskId, taskTitle, cwd, { baseBranch: baseBranch || undefined });
 
   // Capture diff snapshot — use branch diff if we have a PR branch (isolated per task)
   try {
+    let newDiff = '';
+    let hasChanges = false;
+
     if (prResult?.branch && prResult?.baseBranch) {
       const baseBranch = prResult.baseBranch;
 
       const diffResult = await invoke<{ diff: string; has_changes: boolean }>
         ('git_get_branch_diff', { cwd, baseBranch, headBranch: prResult.branch });
       if (diffResult.has_changes) {
-        const diffLastCapturedAt = new Date().toISOString();
-        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, diffLastCapturedAt);
-        await useTaskStore.getState().fetchTasks();
+        newDiff = diffResult.diff;
+        hasChanges = true;
       }
     } else {
       // Fallback: working directory diff
       const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd });
       if (diffResult.has_changes) {
-        const diffLastCapturedAt = new Date().toISOString();
-        await dbService.updateTaskDiffInfo(taskId, diffResult.diff, diffLastCapturedAt);
-        await useTaskStore.getState().fetchTasks();
+        newDiff = diffResult.diff;
+        hasChanges = true;
       }
+    }
+
+    if (hasChanges) {
+      // Get existing diff from task and append for cumulative history
+      const tasks = useTaskStore.getState().tasks;
+      const task = tasks.find(t => t.id === taskId);
+      const existingDiff = task?.diff_content || '';
+      
+      // Build cumulative diff with revision marker
+      let combinedDiff = '';
+      if (existingDiff && existingDiff.trim()) {
+        const timestamp = new Date().toISOString();
+        combinedDiff = `${existingDiff}\n\n${'='.repeat(60)}\n[REVISION ${timestamp}]\n${'='.repeat(60)}\n\n${newDiff}`;
+      } else {
+        combinedDiff = newDiff;
+      }
+
+      const diffLastCapturedAt = new Date().toISOString();
+      await dbService.updateTaskDiffInfo(taskId, combinedDiff, diffLastCapturedAt);
+      await useTaskStore.getState().fetchTasks();
+      
+      console.log(`[AI] Diff captured for ${taskId}: ${newDiff.length} chars new, ${combinedDiff.length} chars total`);
     }
   } catch (e) {
     console.error('[AI] Failed to capture diff:', e);

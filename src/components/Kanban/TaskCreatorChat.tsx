@@ -632,33 +632,62 @@ const userMsg = message
         internalPrompt = `[CONTEXT AWARE ASSISTANT]
 ${historyMsg ? 'Recent History:\n' + historyMsg + '\n\n' : ''}Briefly answer: ${finalMessage}`;
       } else if (yoloMode) {
-        // YOLO Mode: Direct execution with full tool access
-        const rtkInstruction = `
-[TOKEN SAVING] Prefix heavy commands with 'rtk' (git, lint, test, build, search, system).`;
+        // YOLO Mode: Direct execution with clear instructions
+        internalPrompt = `[ROLE: AI Coding Assistant - Direct Execution Mode]
 
-        internalPrompt = `${projectRules ? projectRules + '\n\n' : ''}You are an AI coding assistant. Execute changes DIRECTLY.
+Your job: IMMEDIATELY implement the user's request by writing/modifying code.
 
-${rtkInstruction}
+USER REQUEST: ${finalMessage}
 
-User request: ${finalMessage}
+${historyMsg ? `CONVERSATION HISTORY:\n${historyMsg}\n\n` : ''}
+${projectRules ? `PROJECT RULES:\n${projectRules}\n\n` : ''}
+[EXECUTION GUIDELINES]
+1. Analyze the request quickly
+2. Identify files to modify/create using @filepath format
+3. IMPLEMENT the changes immediately - don't ask for confirmation
+4. Show the code you're writing with clear comments
+5. If you encounter errors, fix them proactively
+6. Use rtk prefix for terminal commands (rtk git, rtk test, etc.)
 
-${historyMsg ? 'History:\n' + historyMsg + '\n\n' : ''}
-IMPORTANT: Use rtk for all terminal commands. Be concise.`;
+[OUTPUT FORMAT]
+- State what you're doing: "Creating @src/components/NewComponent.tsx..."
+- Show the code implementation
+- Verify it works or note any issues
+
+Start implementing now.`;
       } else {
         // Planning Mode
-        internalPrompt = `[PLANNING ASSISTANT] You are an AI acting as a System Architect & Planner.
-YOUR ONLY JOB IS TO EXPLORE AND PLAN. DO NOT MODIFY ANY FILES.
-Use your tools to read code, search directories, and understand the project structure.
-Help the user break down their ideas into actionable tasks for the Kanban board.
-For each task plan, identify:
-1. Exact files that will need to be created or modified.
-2. What existing components/patterns should be followed.
-3. Which MCP servers or built-in Skills would be required to execute the task later.
+        internalPrompt = `[ROLE: System Architect & Planner - READ-ONLY MODE]
 
-${projectRules ? '\nProject Context:\n' + projectRules + '\n' : ''}
-${historyMsg ? '\nHistory:\n' + historyMsg + '\n' : ''}
-User: ${finalMessage}
-Assistant:`;
+Your job: EXPLORE, ANALYZE, and CREATE A PLAN. DO NOT write any files.
+
+USER REQUEST: ${finalMessage}
+
+${historyMsg ? `CONVERSATION HISTORY:\n${historyMsg}\n\n` : ''}
+${projectRules ? `PROJECT CONTEXT:\n${projectRules}\n\n` : ''}
+[PLANNING PROCESS]
+1. EXPLORE: Read relevant files to understand current state
+2. ANALYZE: Identify what needs to change and why
+3. PLAN: Break down into specific, actionable steps
+
+[OUTPUT FORMAT - STRUCTURED PLAN]
+For each task you identify, provide:
+
+**Task: [Clear Title]**
+- Files to modify: @filepath1, @filepath2
+- Files to create: @newfilepath
+- Changes needed: [Specific description]
+- Estimated complexity: [Low/Medium/High]
+- Dependencies: [Any prerequisites]
+
+[PLANNING GUIDELINES]
+- Use @filepath format for all file references
+- Reference existing patterns from the codebase
+- Suggest which skills/tools would help execute this
+- Consider edge cases and potential issues
+- Estimate effort for each task
+
+Create a comprehensive plan now.`;
       }
 
 // Inject Dynamic MCP tools for non-small talk queries
@@ -793,35 +822,62 @@ Assistant:`;
         console.log('[handleSummarize] Falling back to CLI for summary')
         const projectRules = useConfigStore.getState().getSystemPrompt()
 
-        const summaryPrompt = `You are a task extraction specialist. Analyze the conversation below and extract all actionable coding tasks discussed.
+        const summaryPrompt = `You are a task extraction specialist. Analyze the conversation and extract coding tasks.
 
-You MUST output a valid JSON array. No markdown, no explanation, ONLY the JSON array.
+CRITICAL: Group related changes into SINGLE task. AVOID over-splitting!
+
+OUTPUT: Valid JSON array ONLY. No markdown, no explanation.
 
 JSON Schema:
 [
   {
     "title": "Short clear title, max 80 chars",
-    "description": "A comprehensive implementation prompt for the AI agent. Include: exact file paths mentioned, design decisions agreed upon, specific coding steps, and technical constraints from the discussion. Max 2500 chars.",
+    "description": "Implementation requirements. Include: 1) All file paths with @ prefix, 2) Complete changes needed, 3) Technical requirements, 4) Expected behavior. Max 2000 chars.",
     "priority": "high | medium | low",
     "recommendedSkills": ["skill-name-1", "skill-name-2"]
   }
 ]
 
-Priority guidelines:
-- "high": Bug fixes, breaking issues, security concerns, blockers
-- "medium": New features, enhancements, refactoring
-- "low": Nice-to-have improvements, cosmetic changes, documentation
+MERGE vs SPLIT GUIDELINES:
+→ MERGE into 1 task when:
+  - Same feature/component (e.g., "create login form" = 1 task, not 4)
+  - Related UI changes in same area
+  - CRUD operations on same entity
+  - Frontend + Backend for same API endpoint
+  - Changes that must be deployed together
 
-Available skills (recommend MAX 2 that would help implement this task):
-${skillCatalog || 'No skills installed'}
+→ SPLIT into multiple tasks when:
+  - Completely different features (e.g., login vs settings)
+  - Independent components that can ship separately
+  - One task blocks another (dependencies)
+  - Different tech stacks/layers
 
-Rules:
-- Extract ONLY coding implementation tasks
-- Do NOT create tasks for: git commits, PRs, testing, deployment
-- If the conversation is unclear or has no actionable tasks, return an empty array: []
-- Only recommend skills from the "Available skills" list above
-- If no skills are relevant, use an empty array: []
-- Output ONLY valid JSON, no surrounding text or markdown fences${projectRules ? '\n\nThe tasks MUST follow these project rules. Embed relevant rules into each task description:\n' + projectRules : ''}`
+Priority:
+- "high": Bug fixes, security, blockers
+- "medium": New features, refactoring  
+- "low": Documentation, cosmetic
+
+Available skills (max 2):
+${skillCatalog || 'None'}
+
+RULES:
+- If conversation describes ONE feature → return 1 task
+- If multiple independent features → return multiple tasks
+- description: Focus on WHAT to build/modify
+- Include @filepath for all files
+- No tasks for: git, PRs, testing, deployment
+- Output ONLY JSON
+
+${projectRules ? '\nProject rules:\n' + projectRules : ''}
+
+EXAMPLE 1 (Single Feature - 1 Task):
+"Create UserProfile component in @src/components/UserProfile.tsx with avatar, name, email fields. Use @src/components/Button.tsx for actions. Style with Tailwind. Accept 'user' prop with proper TypeScript types."
+
+EXAMPLE 2 (Multiple Independent Features - Multiple Tasks):
+Task 1: "Create Login form with email/password fields"
+Task 2: "Create User Settings page with theme toggle"
+
+Extract tasks from this conversation:`
 
         const summaryId = `__summarize_temp_${Date.now()}__`
         lastResponse = await sendSimpleMessage(summaryId, `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`)
@@ -868,19 +924,157 @@ Rules:
     setIsStreaming(false)
   }
 
+  const extractFileReferences = (messages: { role: string; content: string }[]): string[] => {
+    const fileRefs = new Set<string>()
+    const filePattern = /@([\w./\-]+)/g
+    
+    messages.forEach(msg => {
+      const matches = msg.content.matchAll(filePattern)
+      for (const match of matches) {
+        const filePath = match[1]
+        // Filter out likely non-file mentions (too short or no extension for code files)
+        if (filePath.length > 2 && filePath.includes('.')) {
+          fileRefs.add(filePath)
+        }
+      }
+    })
+    
+    return Array.from(fileRefs)
+  }
+
+  const buildComprehensiveDescription = (
+    summary: ConversationSummary,
+    messages: { role: string; content: string }[],
+    fileReferences: string[]
+  ): string => {
+    const parts: string[] = []
+    
+    // 1. Skills tag (if any)
+    if (summary.recommendedSkills && summary.recommendedSkills.length > 0) {
+      parts.push(`<!-- skills:${summary.recommendedSkills.join(',')} -->`)
+    }
+    
+    // 2. Original description
+    if (summary.description) {
+      parts.push('\n[IMPLEMENTATION PLAN]')
+      parts.push(summary.description)
+    }
+    
+    // 3. File references mentioned in chat
+    if (fileReferences.length > 0) {
+      parts.push('\n[RELEVANT FILES]')
+      fileReferences.forEach(file => {
+        parts.push(`- @${file}`)
+      })
+    }
+    
+    // 4. Extract key decisions/requirements from conversation
+    const keyPoints = extractKeyPoints(messages)
+    if (keyPoints.length > 0) {
+      parts.push('\n[KEY REQUIREMENTS]')
+      keyPoints.forEach(point => {
+        parts.push(`- ${point}`)
+      })
+    }
+    
+    // 5. Auto-rules marker
+    parts.push('\n<!-- auto-rules-embedded -->')
+    
+    return parts.join('\n')
+  }
+
+  /**
+   * Extract key decisions and requirements from conversation
+   * Filters out tool executions and technical noise
+   */
+  const extractKeyPoints = (messages: { role: string; content: string }[]): string[] => {
+    const points: string[] = []
+    const seen = new Set<string>()
+    
+    // Process only last 15 messages, skip system
+    const relevantMessages = messages
+      .filter(m => m.role !== 'system' && m.content.trim())
+      .slice(-15)
+    
+    for (const msg of relevantMessages) {
+      let content = msg.content
+      
+      // Skip tool execution blocks entirely
+      if (content.includes('[TOOL_EXEC]') || content.includes('[Tool:')) {
+        continue
+      }
+      
+      // Clean up content
+      content = content
+        .replace(/\[TOOL_EXEC\][\s\S]*?(\n\n|$)/g, '')
+        .replace(/\[Tool:[^\]]+\]/g, '')
+        .replace(/```[\s\S]*?```/g, '[code block]')
+        .replace(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/, '')
+        .replace(/@[\w./\-]+/g, '') // Remove file refs (already listed separately)
+        .trim()
+      
+      // Skip if too short or already seen
+      if (content.length < 20 || seen.has(content)) continue
+      
+      // Extract key decision patterns
+      const decisionPatterns = [
+        /(?:harus|should|must|need to|perlu) ([^.]+)/i,
+        /(?:ubah|change|convert|modify|update) ([^.]+)/i,
+        /(?:tampilkan|display|show|hide) ([^.]+)/i,
+        /(?:tambahkan|add|create) ([^.]+)/i,
+        /(?:hapus|remove|delete) ([^.]+)/i,
+        /(?:gunakan|use|pakai) ([^.]+)/i,
+        /(?:ketika|when|if|jika) ([^.]+)/i,
+      ]
+      
+      for (const pattern of decisionPatterns) {
+        const match = content.match(pattern)
+        if (match && match[1]) {
+          const point = match[1].trim()
+            .replace(/\s+/g, ' ')
+            .substring(0, 150)
+          
+          if (point.length > 10 && !seen.has(point)) {
+            seen.add(point)
+            points.push(point)
+          }
+          break // Only take first match per message
+        }
+      }
+      
+      // If no pattern matched but content looks like a requirement
+      if (!decisionPatterns.some(p => p.test(content)) && content.length < 200) {
+        const summary = content
+          .replace(/^Baik,\s*/i, '')
+          .replace(/^Oke,\s*/i, '')
+          .replace(/^Mari\s+saya\s*/i, '')
+          .substring(0, 150)
+        
+        if (summary.length > 20 && !seen.has(summary)) {
+          seen.add(summary)
+          points.push(summary)
+        }
+      }
+    }
+    
+    // Limit to most relevant 8 points
+    return points.slice(0, 8)
+  }
+
   const handleCreateTasks = async () => {
     if (conversationSummaries.length === 0 || !activeWorkspace?.folder_path) return
     
     setIsCreating(true)
     try {
+      // Get all messages for context
+      const allMessages = getMessages(taskId)
+      
       for (const summary of conversationSummaries) {
-        // Embed recommended skills at the top of description
-        let finalDescription = summary.description || ''
-        if (summary.recommendedSkills && summary.recommendedSkills.length > 0) {
-          const skillsTag = `<!-- skills:${summary.recommendedSkills.join(',')} -->\n`
-          finalDescription = skillsTag + finalDescription
-        }
-        finalDescription += '\n<!-- auto-rules-embedded -->'
+        // Extract file references from entire chat
+        const fileReferences = extractFileReferences(allMessages)
+        
+        // Build comprehensive description with full context
+        const finalDescription = buildComprehensiveDescription(summary, allMessages, fileReferences)
         
         await createTask({
           title: summary.title,

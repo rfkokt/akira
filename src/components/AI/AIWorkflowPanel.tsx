@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Bot, Play, CheckCircle, GitBranch, MessageSquare, FileDiff, X } from 'lucide-react';
 import type { Task } from '@/types';
 import { useEngineStore } from '@/store/engineStore';
@@ -277,32 +277,64 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
   const [targetBranch, setTargetBranch] = useState('main');
   const [createTag, setCreateTag] = useState(false);
   const [deleteBranch, setDeleteBranch] = useState(true);
+  const [runBuildTest, setRunBuildTest] = useState(true);
   const [latestTag, setLatestTag] = useState<string | null>(null);
   const [bumpType, setBumpType] = useState<'patch' | 'minor' | 'major'>('patch');
   const [calcNextTag, setCalcNextTag] = useState('alpha.0.0.1');
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [execLog, setExecLog] = useState('');
+  const [isAIFixing, setIsAIFixing] = useState(false);
+  const [buildFailed, setBuildFailed] = useState(false);
 
   const taskStates = useAIChatStore((state) => state.taskStates);
   const taskState = taskStates[task.id];
+  const aiChatStore = useAIChatStore();
+
+  // Compute source branch for merge
+  const sourceBranch = useMemo(() => {
+    if (task.is_merged && task.merged_to_branch) {
+      return task.merged_to_branch;
+    }
+    return task.merge_source_branch || taskState?.prBranch || task.pr_branch || null;
+  }, [task.is_merged, task.merged_to_branch, task.merge_source_branch, task.pr_branch, taskState?.prBranch]);
 
   useEffect(() => {
     if (!workspacePath) return;
 
     // Load available branches
     getGitBranches(workspacePath).then(res => {
-      setBranches(res);
-      // Try to determine default branch
-      if (res.includes('main')) {
-        setTargetBranch('main');
-      } else if (res.includes('master')) {
-        setTargetBranch('master');
-      } else if (res.length > 0) {
-        setTargetBranch(res[0]);
+      // Filter out task branches (PR branches) to keep only main branches
+      const filteredBranches = res.filter(branch => !branch.startsWith('task/'));
+      setBranches(filteredBranches);
+      
+      // Determine default target branch
+      let defaultTarget = 'main';
+      if (filteredBranches.includes('main')) {
+        defaultTarget = 'main';
+      } else if (filteredBranches.includes('master')) {
+        defaultTarget = 'master';
+      } else if (filteredBranches.length > 0) {
+        defaultTarget = filteredBranches[0];
       }
+      
+      // If task has been merged before, suggest next logical target
+      // e.g., if merged to development, next target should be main/master
+      if (task.is_merged && task.merged_to_branch) {
+        const mergedTo = task.merged_to_branch;
+        if (mergedTo === 'development' && filteredBranches.includes('main')) {
+          defaultTarget = 'main';
+        } else if (mergedTo === 'development' && filteredBranches.includes('master')) {
+          defaultTarget = 'master';
+        } else if (mergedTo !== defaultTarget && filteredBranches.includes(defaultTarget)) {
+          // If already merged to something other than default, stay with default
+          defaultTarget = defaultTarget;
+        }
+      }
+      
+      setTargetBranch(defaultTarget);
     });
-  }, [workspacePath, task.id]);
+  }, [workspacePath, task.id, task.is_merged, task.merged_to_branch]);
 
   useEffect(() => {
     if (!workspacePath || !targetBranch) return;
@@ -339,23 +371,22 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
       return;
     }
     
-    // For tasks already merged once, use merged_to_branch as source (e.g., development)
-    // Otherwise use pr_branch or merge_source_branch from first merge attempt
-    const featureBranch = task.is_merged 
-      ? (task.merged_to_branch || task.merge_source_branch || task.pr_branch)
-      : (task.merge_source_branch || taskState?.prBranch || task.pr_branch);
-    if (!featureBranch) {
-      toast.error("AI feature branch PR could not be found for this task. The task may not have been run by AI, or the branch info was not saved.");
+    if (!sourceBranch) {
+      toast.error("Branch information not found for this task. The task may not have been run by AI, or the branch info was not saved.");
       return;
     }
+    
+    const featureBranch = sourceBranch;
 
     setIsExecuting(true);
+    setBuildFailed(false);
     setExecLog('Starting Git Merge Workflow...\n');
 
     const result = await mergeTaskToBranch(workspacePath, featureBranch, targetBranch, { 
       createTag, 
       tagName: calcNextTag,
-      deleteBranch 
+      deleteBranch,
+      runBuildTest
     });
 
     if (result.success) {
@@ -381,8 +412,62 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
       }, 1500);
     } else {
       setExecLog(prev => prev + '\n❌ ERROR: ' + result.log);
-      toast.error(`Merge failed: ${result.log}`);
-      setIsExecuting(false); // allow them to cancel or copy log
+      
+      // Check if this is a build failure - trigger AI auto-fix
+      if (result.log.includes('Build failed') || result.log.includes('❌ Build')) {
+        setBuildFailed(true);
+        setIsExecuting(false);
+        
+        toast.error(
+          <div className="space-y-2">
+            <div className="font-semibold">Merge Aborted: Build Failed</div>
+            <div className="text-sm text-neutral-300">
+              Build check failed. Click "Let AI Fix" to automatically fix build errors.
+            </div>
+          </div>,
+          { duration: 10000 }
+        );
+      } else {
+        toast.error(`Merge failed: ${result.log}`);
+        setIsExecuting(false); // allow them to cancel or copy log
+      }
+    }
+  };
+
+  const handleAIFixBuildErrors = async () => {
+    if (!workspacePath || !sourceBranch) return;
+    
+    setIsAIFixing(true);
+    setExecLog(prev => prev + '\n\n[🤖 AI is analyzing build errors...]\n');
+    
+    try {
+      // Trigger AI to analyze and fix build errors
+      await aiChatStore.enqueueTask(task.id, `Fix build errors for merge to ${targetBranch}`, 
+        `The build failed when trying to merge branch to ${targetBranch}. 
+
+Please:
+1. Run the build command and analyze the errors
+2. Fix all build errors in the code
+3. Ensure the build passes before completing
+
+Build errors from previous attempt:
+${execLog}
+
+Focus on fixing TypeScript errors, import issues, missing dependencies, or syntax errors that prevent the build from succeeding.`);
+      
+      // Move task back to in-progress so AI can work on it
+      await dbService.updateTaskStatus(task.id, 'in-progress');
+      
+      toast.success('AI is now fixing build errors. Task moved to In Progress.');
+      
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+      
+    } catch (error) {
+      console.error('[GitPushFlow] AI fix failed:', error);
+      toast.error('Failed to trigger AI fix. Please fix manually.');
+      setIsAIFixing(false);
     }
   };
 
@@ -418,7 +503,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
               </Select>
             </div>
             <p className="text-[11px] text-neutral-500">
-              Source branch: <span className="text-app-accent">{task.is_merged ? (task.merged_to_branch || 'Unknown') : (taskState?.prBranch || task.pr_branch || task.merge_source_branch || 'Unknown')}</span>
+              Source: <span className="text-app-accent font-mono">{sourceBranch || 'Unknown'}</span> → Target: <span className="text-app-accent font-mono">{targetBranch}</span>
             </p>
           </div>
 
@@ -472,6 +557,23 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
             )}
           </div>
 
+          <div className="p-3 bg-app-panel border border-app-border rounded-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-medium text-white">Run Build & Test</h4>
+                <p className="text-[11px] text-neutral-500 mt-0.5">Verify build passes before merging (prevents broken deployments)</p>
+              </div>
+              <Switch checked={runBuildTest} onCheckedChange={setRunBuildTest} disabled={isExecuting} />
+            </div>
+            {runBuildTest && (
+              <div className="pt-2 border-t border-app-border/50">
+                <p className="text-[10px] text-neutral-400 leading-relaxed">
+                  <span className="text-yellow-500">⚠️</span> If build fails, merge will be automatically aborted and reverted. No changes will be pushed to remote.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="p-3 bg-app-panel border border-app-border rounded-lg flex items-center justify-between">
             <div>
               <h4 className="text-sm font-medium text-white">Delete Feature Branch</h4>
@@ -493,25 +595,51 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
 
         {/* Actions */}
         <div className="p-4 border-t border-app-border flex gap-2 justify-end shrink-0 bg-app-bg">
-          <Button
-            variant="ghost"
-            onClick={onClose}
-            disabled={isExecuting}
-            className="text-xs"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleMerge}
-            disabled={isExecuting || (!taskState?.prBranch && !task.pr_branch)}
-            className="bg-app-accent hover:bg-app-accent-hover text-xs font-medium min-w-[120px]"
-          >
-            {isExecuting ? (
-              <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Working...</>
-            ) : (
-              'Complete Merge'
-            )}
-          </Button>
+          {buildFailed ? (
+            <>
+              <Button
+                variant="ghost"
+                onClick={onClose}
+                disabled={isAIFixing}
+                className="text-xs"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={handleAIFixBuildErrors}
+                disabled={isAIFixing}
+                className="bg-purple-600 hover:bg-purple-700 text-xs font-medium min-w-[140px]"
+              >
+                {isAIFixing ? (
+                  <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> AI Fixing...</>
+                ) : (
+                  <><Bot className="w-3.5 h-3.5 mr-2" /> Let AI Fix</>
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                onClick={onClose}
+                disabled={isExecuting}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleMerge}
+                disabled={isExecuting || !sourceBranch}
+                className="bg-app-accent hover:bg-app-accent-hover text-xs font-medium min-w-[120px]"
+              >
+                {isExecuting ? (
+                  <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Working...</>
+                ) : (
+                  'Complete Merge'
+                )}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>
