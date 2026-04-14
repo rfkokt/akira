@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
 import { X } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
 import { useTaskStore, useAIChatStore, useWorkspaceStore } from '@/store'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'

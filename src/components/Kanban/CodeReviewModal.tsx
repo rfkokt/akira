@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Play, MessageSquare, FileDiff, GitMerge, Loader2, CheckCircle, Bot, AlertTriangle, RefreshCw, Wand2 } from 'lucide-react'
+import { X, MessageSquare, FileDiff, GitMerge, Loader2, Bot, AlertTriangle, Wand2 } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -16,7 +16,6 @@ interface CodeReviewModalProps {
   onViewDiff: (task: Task) => void
   onOpenChat: (task: Task) => void
   onComplete: (task: Task) => void
-  onDiscard?: () => void
 }
 
 export function CodeReviewModal({ 
@@ -25,8 +24,7 @@ export function CodeReviewModal({
   onClose,
   onViewDiff,
   onOpenChat,
-  onComplete,
-  onDiscard
+  onComplete
 }: CodeReviewModalProps) {
   const [loading, setLoading] = useState(false)
   const [reviewScore, setReviewScore] = useState<number | null>(null)
