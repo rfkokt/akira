@@ -199,8 +199,8 @@ export function CodeReviewModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-5 py-4 border-t border-app-border bg-app-surface-1 shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="px-5 py-4 border-t border-app-border bg-app-surface-1 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full sm:w-auto">
             <Button
               variant="outline"
               size="sm"
@@ -242,7 +242,7 @@ export function CodeReviewModal({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
             <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
               Close
             </Button>

@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent } from '@/components/ui/card'
+import { WorkspaceListModal } from './WorkspaceListModal'
 
 interface WelcomeScreenProps {
   onClose: () => void
@@ -29,6 +30,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
   const [selectedFolder, setSelectedFolder] = useState<string>('')
   const [isCreating, setIsCreating] = useState(false)
   const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     loadWorkspaces()
@@ -125,7 +127,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
                 </div>
 
                 <div className="space-y-3">
-                  {workspaces.map((workspace) => (
+                  {workspaces.slice(0, 3).map((workspace) => (
                     <Card
                       key={workspace.id}
                       className={`cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:shadow-xl group backdrop-blur-md rounded-xl overflow-hidden ${
@@ -183,6 +185,19 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
                       </CardContent>
                     </Card>
                   ))}
+                  
+                  {workspaces.length > 3 && (
+                    <div className="pt-3 pb-1">
+                      <Button 
+                        variant="secondary" 
+                        className="w-full bg-app-sidebar/60 border border-app-border/80 hover:bg-app-accent/10 hover:text-app-accent hover:border-app-accent/30 text-app-text-muted transition-all"
+                        onClick={() => setIsModalOpen(true)}
+                      >
+                        <Folder className="w-4 h-4 mr-2 opacity-70" />
+                        Load Recent & View All Workspaces ({workspaces.length})
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -251,6 +266,15 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <WorkspaceListModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        workspaces={workspaces}
+        handleSelectWorkspace={handleSelectWorkspace}
+        handleOpenInTerminal={handleOpenInTerminal}
+        deleteWorkspace={deleteWorkspace}
+      />
     </div>
   )
 }
