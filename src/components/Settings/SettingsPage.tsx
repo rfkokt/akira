@@ -73,7 +73,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
   const analysisStatus = useAnalyzeStore((s) => s.analysisStatus);
   const analysisLogs = useAnalyzeStore((s) => s.analysisLogs);
   const analysisTokens = useAnalyzeStore((s) => s.analysisTokens);
-  const { setAnalyzing, setStatus, addLog, setTokens, reset: resetAnalysis } = useAnalyzeStore.getState();
+  const { setAnalyzing } = useAnalyzeStore.getState();
 
   // Load project config
   useEffect(() => {
@@ -573,7 +573,6 @@ function EnginesTab() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold capitalize text-white">{engine.alias}</span>
-                    {engine.model && <Badge variant="secondary" className="text-xs bg-black/40 text-neutral-300 border-app-border">{engine.model}</Badge>}
                   </div>
                   <div className="text-xs text-neutral-500 font-mono mt-1">{engine.binary_path} {engine.args}</div>
                 </div>

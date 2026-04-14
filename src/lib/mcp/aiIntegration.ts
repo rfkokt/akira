@@ -251,9 +251,6 @@ export function formatToolResultsForPrompt(results: ToolResultInfo[]): string {
   const lines: string[] = ['\n[TOOL RESULTS]'];
   
   for (const result of results) {
-    const parsed = parseToolName(result.toolName);
-    const icon = parsed.source === 'internal' ? '🔧' : '🔌';
-    
     if (result.success) {
       lines.push(`${result.toolName}: Success`);
       if (result.result) {
@@ -275,9 +272,6 @@ export function formatToolResultsForChat(results: ToolResultInfo[]): string {
   const lines: string[] = ['[TOOL RESULTS]'];
   
   for (const result of results) {
-    const parsed = parseToolName(result.toolName);
-    const icon = parsed.source === 'internal' ? '🔧' : '🔌';
-    
     if (result.success) {
       lines.push(`${result.toolName}: Success`);
       if (result.result) {

@@ -527,9 +527,6 @@ function App() {
             <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-7 px-2 text-xs rounded-md hover:bg-accent hover:text-accent-foreground">
               <Cpu className="size-3.5" />
               <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
-              {activeEngine?.model && (
-                <Badge variant="secondary" className="text-xs h-4 px-1">{activeEngine.model}</Badge>
-              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               {enabledEngines.length === 0 ? (
@@ -541,12 +538,7 @@ function App() {
                     onClick={() => setActiveEngine(engine)}
                     className={activeEngine?.id === engine.id ? 'bg-accent' : ''}
                   >
-                    <div className="flex flex-col gap-0.5">
-                      <span className="capitalize">{engine.alias}</span>
-                      {engine.model && (
-                        <span className="text-xs text-muted-foreground">{engine.model}</span>
-                      )}
-                    </div>
+                    <span className="capitalize">{engine.alias}</span>
                     {activeEngine?.id === engine.id && (
                       <span className="ml-auto text-green-500">●</span>
                     )}
