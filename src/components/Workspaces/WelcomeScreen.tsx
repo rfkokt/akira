@@ -28,6 +28,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [selectedFolder, setSelectedFolder] = useState<string>('')
   const [isCreating, setIsCreating] = useState(false)
+  const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false)
 
   useEffect(() => {
     loadWorkspaces()
@@ -38,7 +39,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
       const folder = await invoke<string | null>('pick_folder')
       if (folder) {
         setSelectedFolder(folder)
-        if (!newWorkspaceName) {
+        if (!isNameManuallyEdited) {
           const folderName = folder.split('/').pop() || 'New Workspace'
           setNewWorkspaceName(folderName)
         }
@@ -57,6 +58,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
       setShowCreateDialog(false)
       setNewWorkspaceName('')
       setSelectedFolder('')
+      setIsNameManuallyEdited(false)
       onClose()
     } catch (error) {
       console.error('Failed to create workspace:', error)
@@ -189,7 +191,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-lg">
           <DialogHeader>
             <DialogTitle>Create New Workspace</DialogTitle>
             <DialogDescription>
@@ -200,11 +202,13 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
           <div className="space-y-5 py-4">
             <div className="space-y-3">
               <Label htmlFor="folder" className="text-sm font-medium">Project Folder</Label>
-              <div className="flex gap-3">
-                <div className="flex-1 px-3 py-2 bg-app-sidebar/50 border border-app-border rounded-lg text-sm text-app-text truncate min-h-[40px] flex items-center">
-                  {selectedFolder || 'No folder selected'}
+              <div className="flex flex-wrap gap-2">
+                <div className="flex-1 min-w-0 px-3 py-2 bg-app-sidebar/50 border border-app-border rounded-lg text-sm text-app-text min-h-[40px] flex items-center overflow-hidden">
+                  <span className="truncate block w-full">
+                    {selectedFolder || 'No folder selected'}
+                  </span>
                 </div>
-                <Button variant="secondary" onClick={handlePickFolder} className="shrink-0">
+                <Button variant="secondary" onClick={handlePickFolder} className="shrink-0 w-full sm:w-auto">
                   <FolderOpen className="w-4 h-4 mr-2" />
                   Browse
                 </Button>
@@ -216,7 +220,10 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
               <Input
                 id="name"
                 value={newWorkspaceName}
-                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                onChange={(e) => {
+                  setNewWorkspaceName(e.target.value)
+                  setIsNameManuallyEdited(true)
+                }}
                 placeholder="My Project"
                 className="h-10"
               />
@@ -230,6 +237,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
                 setShowCreateDialog(false)
                 setNewWorkspaceName('')
                 setSelectedFolder('')
+                setIsNameManuallyEdited(false)
               }}
             >
               Cancel
