@@ -187,6 +187,14 @@ export async function autoCreatePR(
     const slugifiedTitle = slugify(taskTitle);
     const branchName = `task/${slugifiedTitle}-${shortId}`;
 
+    // Ensure git is initialized for greenfield projects
+    const statusRes = await runGit(['status'], cwd);
+    if (!statusRes.success) {
+      console.log('[git] Repository not initialized. Auto-initializing...');
+      await runGit(['init', '-b', 'main'], cwd);
+      await runGit(['commit', '--allow-empty', '-m', 'Initial commit'], cwd);
+    }
+
     // Get current branch
     const currentBranch = await runGit(['branch', '--show-current'], cwd);
     const currentBranchName = currentBranch.success ? currentBranch.output.trim() : 'main';
