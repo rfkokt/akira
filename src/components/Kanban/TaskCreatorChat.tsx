@@ -1,20 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle, Sparkles, MessageSquarePlus } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore, useSkillStore } from '@/store'
-import { injectToolsIntoPrompt } from '@/lib/mcp'
+import { useAIChatStore, useEngineStore, useWorkspaceStore } from '@/store'
 import { useConfigStore } from '@/store/configStore'
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject'
-import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
-import { dbService } from '@/lib/db'
-import { sendGroqSummary } from '@/lib/groq'
-import { runCLIWithStreaming } from '@/lib/cli'
-import { isSmallTalk } from '@/lib/helpers'
-import { getDefaultBaseBranch } from '@/lib/worktree'
 import { ImageInput, processPastedImages, type ImageAttachment } from '@/components/shared/ImageInput'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -25,123 +14,12 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-interface ConversationSummary {
-  title: string
-  description: string
-  priority: 'high' | 'medium' | 'low'
-  recommendedSkills: string[]
-  taskSpecificFiles?: string[]  // Files specifically mentioned for this task
-  taskSpecificContext?: string  // Additional context specific to this task
-}
-
-interface FileEntry {
-  name: string;
-  path: string;
-  is_dir: boolean;
-  relativePath?: string;
-}
-
-function FileReference({ path }: { path: string }) {
-  const filename = path.split('/').pop() || path
-  const isLongPath = path.length > 30
-  const displayPath = isLongPath 
-    ? `.../${filename}` 
-    : path
-  
-  if (!isLongPath) {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-xs">
-        <FileIcon className="w-2.5 h-2.5 flex-shrink-0" />
-        {displayPath}
-      </span>
-    )
-  }
-  
-  return (
-    <Tooltip>
-      <TooltipTrigger className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-app-accent/15 border border-app-accent/30 rounded text-app-accent font-mono text-xs max-w-[200px] cursor-default">
-        <FileIcon className="w-2.5 h-2.5 flex-shrink-0" />
-        <span className="truncate">{displayPath}</span>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[400px]">
-        <code className="text-xs break-all">{path}</code>
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
-function renderContentWithFileRefs(content: string) {
-  const parts = content.split(/(@[\w./\-]+)/g)
-  return parts.map((part, idx) => {
-    if (part.startsWith('@') && part.length > 1) {
-      const path = part.slice(1)
-      return <FileReference key={idx} path={path} />
-    }
-    return <span key={idx}>{part}</span>
-  })
-}
-
-function MarkdownContent({ content }: { content: string }) {
-  // Filter out tool calls and thinking blocks from display
-  const filteredContent = content
-    .replace(/\[TOOL_EXEC\].*(\n|$)/g, '') // Remove tool execution lines
-    .replace(/\[TOOL_RES\].*(\n|$)/g, '') // Remove tool result lines
-    .replace(/\[Tool: [^\]]+\]\s*(?=\[Tool:|$)/gi, '') // Remove empty tool calls
-    .replace(/\[Tool: [^\]]+\]\s*/gi, '') // Remove tool call markers
-    .replace(/<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)/gi, '') // Remove thinking blocks
-    .replace(/```thinking[\s\S]*?```/gi, '') // Remove thinking code blocks
-    .trim()
-  
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        code({ node, className, children, ...props }) {
-          const match = /language-(\w+)/.exec(className || '');
-          const isInline = !match && !className;
-          
-          if (isInline) {
-            return (
-              <code className="px-1.5 py-0.5 rounded border-app-border-highlight text-app-accent font-mono text-xs" {...props}>
-                {children}
-              </code>
-            );
-          }
-          
-          return (
-            <pre className="my-2 rounded-lg overflow-x-auto border border-app-border bg-app-panel p-3">
-              <code className="text-xs font-mono leading-relaxed text-neutral-300 whitespace-pre">{String(children).replace(/\n$/, '')}</code>
-            </pre>
-          );
-        },
-        a({ href, children }) {
-          return (
-            <a href={href} className="text-app-accent hover:underline" target="_blank" rel="noopener noreferrer">
-              {children}
-            </a>
-          );
-        },
-        p({ children }) {
-          return <p className="mb-2 last:mb-0">{children}</p>;
-        },
-        hr() {
-          return <hr className="my-3 border-app-border" />;
-        },
-        ul({ children }) {
-          return <ul className="list-disc list-inside space-y-1 ml-2">{children}</ul>;
-        },
-        ol({ children }) {
-          return <ol className="list-decimal list-inside space-y-1 ml-2">{children}</ol>;
-        },
-        li({ children }) {
-          return <li className="text-neutral-200">{children}</li>;
-        },
-      }}
-    >
-      {filteredContent}
-    </ReactMarkdown>
-  );
-}
+// Extracted modules
+import { MemoizedMarkdownContent, renderContentWithFileRefs } from './ChatMarkdown'
+import { useFileAutocomplete } from './useFileAutocomplete'
+import { useChatSession } from './useChatSession'
+import { useChatSend } from './useChatSend'
+import { useSummarize } from './useSummarize'
 
 interface TaskCreatorChatProps {
   onHide?: () => void
@@ -149,36 +27,12 @@ interface TaskCreatorChatProps {
 
 export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   const [message, setMessage] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [isSummarizing, setIsSummarizing] = useState(false)
-  const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([])
-  const [isCreating, setIsCreating] = useState(false)
-  const [createdSuccess, setCreatedSuccess] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
-  const [showHistoryModal, setShowHistoryModal] = useState(false)
-  const [chatSessionId, setChatSessionId] = useState<string>(() => {
-    // Persist chat session ID across navigation
-    try {
-      const saved = localStorage.getItem('akira-chat-session-id')
-      return saved || ''
-    } catch {
-      return ''
-    }
-  })
-  const [summarizedAtLength, setSummarizedAtLength] = useState<number>(-1)
-  const [historyList, setHistoryList] = useState<{ task_id: string; created_at: string; role: string; preview: string; content: string }[]>([])
-  const [files, setFiles] = useState<FileEntry[]>([])
-  const [showFileSuggestions, setShowFileSuggestions] = useState(false)
-  const [selectedFileIndex, setSelectedFileIndex] = useState(0)
-  const [atSymbolIndex, setAtSymbolIndex] = useState(-1)
-  const [executionSteps, setExecutionSteps] = useState<{ type: string; content: string; timestamp: number }[]>([])
-  const [showProgress, setShowProgress] = useState(true)
-  const [isAnalyzingProject, setIsAnalyzingProject] = useState(false)
-  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
   const [imageError, setImageError] = useState<string | null>(null)
+  const [isAnalyzingProject, setIsAnalyzingProject] = useState(false)
+  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
   const [yoloMode, setYoloMode] = useState(() => {
-    // Persist YOLO mode across navigation
     try {
       const saved = localStorage.getItem('akira-yolo-mode')
       return saved === 'true'
@@ -186,225 +40,87 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
       return false
     }
   })
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const progressEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const unlistenFns = useRef<UnlistenFn[]>([])
-  const aiChatStore = useAIChatStore()
-  const { sendSimpleMessage, stopMessage, getMessages, setMessages, clearMessages, streamingMessageId } = aiChatStore
+
+  const { getMessages } = useAIChatStore()
   const { activeEngine, engines, setActiveEngine } = useEngineStore()
-  const { createTask } = useTaskStore()
   const { activeWorkspace } = useWorkspaceStore()
   const { config } = useConfigStore()
   const { analyzeProject } = useAnalyzeProject()
-  const { isAnalyzing: isAnalyzingImages, analyzeImages, hasApiKey } = useImageAnalysis()
-  const { installedSkills } = useSkillStore()
 
-  const baseTaskId = `__task_creator__:${activeWorkspace?.id || 'default'}`
-  const taskId = chatSessionId ? `${baseTaskId}_${chatSessionId}` : baseTaskId
+  // --- Hooks ---
+  const session = useChatSession(activeWorkspace?.id)
+  const { taskId, handleNewChat, handleSetChatSessionId, loadAllHistory } = session
+
+  const fileAutocomplete = useFileAutocomplete(activeWorkspace?.folder_path)
+  const { showFileSuggestions, selectedFileIndex, setSelectedFileIndex, setShowFileSuggestions, filterFiles, handleAtDetection, insertFileReference, atSymbolIndex } = fileAutocomplete
+
+  const chatSend = useChatSend({
+    taskId,
+    yoloMode,
+    attachedImages,
+    setAttachedImages,
+    setImageError,
+    setExecutionSteps: session.setExecutionSteps,
+  })
+  const { isStreaming, isAnalyzingImages, currentStreamingId, handleStop } = chatSend
+
+  const summarize = useSummarize(taskId)
+  const { isSummarizing, conversationSummaries, setConversationSummaries, summarizedAtLength, setSummarizedAtLength, isCreating, createdSuccess, handleSummarize, handleCreateTasks } = summarize
+
   const taskMessages = getMessages(taskId)
-  const currentStreamingId = streamingMessageId[taskId]
-  
-  // Check if workspace standards are generated (new format or legacy with real content)
+
+  // Check if workspace standards are generated
   const hasRules = config?.md_rules 
     && config.md_rules.trim() !== '' 
     && config.md_rules.trim() !== '# Rules\n\n## DO\n- \n\n## DON\'T\n- '
     && (config.md_rules.includes('# Workspace Standards') || config.md_rules.split('\n').filter(l => l.trim().startsWith('-') && l.trim().length > 2).length > 2)
 
-  const fetchFiles = useCallback(async (path: string) => {
-    if (!path) return
-    try {
-      const entries = await invoke<FileEntry[]>('read_directory', { path })
-      const allFiles: FileEntry[] = []
-      
-      const processEntries = async (entries: FileEntry[], relativePath: string = '') => {
-        for (const entry of entries) {
-          if (entry.is_dir) {
-            // Skip hidden directories and common non-code directories
-            if (entry.name.startsWith('.') || 
-                ['node_modules', 'dist', 'build', '.git', '.next', 'out', 'target', 'vendor'].includes(entry.name)) {
-              continue
-            }
-            try {
-              const subEntries = await invoke<FileEntry[]>('read_directory', { path: entry.path })
-              await processEntries(subEntries, relativePath ? `${relativePath}/${entry.name}` : entry.name)
-            } catch {
-              // Skip directories we can't read
-            }
-          } else if (!entry.name.startsWith('.')) {
-            allFiles.push({
-              name: entry.name,
-              path: entry.path,
-              is_dir: false,
-              relativePath: relativePath ? `${relativePath}/${entry.name}` : entry.name,
-            })
-          }
-        }
-      }
-      
-      await processEntries(entries, path)
-      allFiles.sort((a, b) => (a.relativePath || a.name).localeCompare(b.relativePath || b.name))
-      setFiles(allFiles)
-    } catch (err) {
-      console.error('Failed to fetch files:', err)
-      setFiles([])
-    }
-  }, [])
+  // --- Effects ---
 
-  useEffect(() => {
-    if (activeWorkspace?.folder_path) {
-      fetchFiles(activeWorkspace.folder_path)
-    }
-  }, [activeWorkspace?.folder_path, fetchFiles])
-
-  // Load config when workspace changes to ensure Groq API key is available
+  // Load config when workspace changes
   useEffect(() => {
     if (activeWorkspace?.id) {
       useConfigStore.getState().loadConfig(activeWorkspace.id)
     }
   }, [activeWorkspace?.id])
 
+  // Reset summarize state when taskId changes
   useEffect(() => {
-    // DO NOT call clearMessages(taskId) here — it wipes the current chat.
-    // loadChatHistory will handle restoring messages from DB when switching sessions.
-    loadChatHistory()
     setSummarizedAtLength(-1)
   }, [taskId, activeWorkspace?.id])
 
+  // Smart auto-scroll: only when user is near the bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null
+    if (!viewport) return
+    const isNearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 120
+    if (isNearBottom) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      })
+    }
   }, [taskMessages])
 
-  useEffect(() => {
-    progressEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [executionSteps])
-
-  // Sync isStreaming with store — reset when streaming completes externally
+  // Sync isStreaming reset when streaming completes externally
   useEffect(() => {
     if (isStreaming && !currentStreamingId) {
-      // Streaming message was cleared in the store (e.g., CLI completed or errored)
-      // but our local state is still true — force reset
       const timer = setTimeout(() => {
-        setIsStreaming(false)
-      }, 2000) // Small delay to let the message fully flush
+        chatSend.setIsStreaming(false)
+      }, 2000)
       return () => clearTimeout(timer)
     }
-  }, [currentStreamingId])
-
-  useEffect(() => {
-    const setupListeners = async () => {
-      const unlistenComplete = await listen<{ id: string; success: boolean; error_message?: string }>('cli-complete', (event) => {
-        const { id, success, error_message } = event.payload
-        if (id !== taskId && id !== taskId + '_summary' && id !== '__analyze_project_creator__') return;
-
-        console.log('[TaskCreatorChat] cli-complete received, success:', success)
-        // Safety net: ensure isStreaming is reset when CLI completes
-        if (id === taskId) {
-          setIsStreaming(false)
-        }
-        setExecutionSteps(prev => [...prev, {
-          type: success ? 'complete' : 'error',
-          content: success ? 'Completed' : (error_message || 'Failed'),
-          timestamp: Date.now()
-        }])
-      })
-
-      unlistenFns.current = [unlistenComplete]
-      console.log('[TaskCreatorChat] Listeners set up for', taskId)
-    }
-
-    setupListeners()
-
-    return () => {
-      unlistenFns.current.forEach(fn => fn())
-      unlistenFns.current = []
-    }
-  }, [taskId]) // Re-run when taskId changes
-
-  const loadAllHistory = useCallback(async () => {
-    try {
-      const allTasks = await dbService.getAllTasks()
-      const basePrefix = `__task_creator__:${activeWorkspace?.id || 'default'}`
-      
-      const sessionTaskIds = allTasks
-          .map(t => t.id)
-          .filter(id => id === basePrefix || id.startsWith(`${basePrefix}_`))
-          
-      // Also potentially include current taskId if it's not yet saved as Task
-      if (!sessionTaskIds.includes(taskId)) {
-        sessionTaskIds.push(taskId)
-      }
-      
-      const rawHistories = await Promise.all(sessionTaskIds.map(id => dbService.getChatHistory(id)))
-      const list: { task_id: string; created_at: string; role: string; preview: string; content: string }[] = []
-      
-      rawHistories.forEach((msgs, index) => {
-        if (msgs.length > 0) {
-          const tid = sessionTaskIds[index]
-          const sorted = msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-          const first = sorted[0]
-          
-          let preview = first?.content?.substring(0, 50) || ''
-          if (first?.content?.length > 50) preview += '...'
-          
-          list.push({
-            task_id: tid,
-            created_at: first?.created_at || '',
-            role: first?.role || '',
-            preview,
-            content: first?.content || ''
-          })
-        }
-      })
-      
-      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      setHistoryList(list)
-    } catch (err) {
-      console.error('Failed to load history:', err)
-    }
-  }, [activeWorkspace?.id, taskId])
-
-  const loadChatHistory = useCallback(async () => {
-    if (!taskId) return
-    
-    // Don't reload if there are already messages in memory (user is in active chat)
-    const currentMessages = getMessages(taskId)
-    if (currentMessages.length > 0) {
-      console.log('[loadChatHistory] Skipping - messages already in memory')
-      return
-    }
-    
-    try {
-      const history = await dbService.getChatHistory(taskId)
-      if (history.length > 0) {
-        const loadedMessages: { id: string; taskId: string; role: 'user' | 'assistant' | 'system'; content: string; timestamp: number }[] = history.map((msg: { role: string; content: string; created_at: string }) => ({
-          id: `db-${Date.now()}-${Math.random()}`,
-          taskId,
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          timestamp: new Date(msg.created_at).getTime(),
-        }))
-        setMessages(taskId, loadedMessages)
-        console.log('[loadChatHistory] Loaded', loadedMessages.length, 'messages from DB')
-      }
-    } catch (err) {
-      console.error('Failed to load chat history:', err)
-    }
-  }, [taskId, setMessages, getMessages])
-
-  useEffect(() => {
-    loadChatHistory()
-  }, [loadChatHistory])
+  }, [currentStreamingId, isStreaming])
 
   // Listen for 'akira:new-task' event from keyboard shortcut
   useEffect(() => {
     const handleNewTaskEvent = () => {
-      // Focus the textarea
       textareaRef.current?.focus()
-      // Scroll to bottom to show the chat input
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-
     window.addEventListener('akira:new-task', handleNewTaskEvent)
     return () => window.removeEventListener('akira:new-task', handleNewTaskEvent)
   }, [])
@@ -417,91 +133,49 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     }
   }, [message])
 
-  const filterFiles = (query: string): FileEntry[] => {
-    if (!query) return files.slice(0, 10)
-    const lowerQuery = query.toLowerCase()
-    return files
-      .filter(f => {
-        const relativePath = (f.relativePath || f.name).toLowerCase()
-        return relativePath.includes(lowerQuery)
-      })
-      .sort((a, b) => {
-        const aPath = a.relativePath || a.name
-        const bPath = b.relativePath || b.name
-        // Prefer files that start with the query
-        const aStartsWith = aPath.toLowerCase().startsWith(lowerQuery)
-        const bStartsWith = bPath.toLowerCase().startsWith(lowerQuery)
-        if (aStartsWith && !bStartsWith) return -1
-        if (!aStartsWith && bStartsWith) return 1
-        return aPath.localeCompare(bPath)
-      })
-      .slice(0, 10)
-  }
+  // --- Handlers ---
 
   const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
-    const cursorPosition = e.target.selectionStart
     setMessage(value)
     setImageError(null)
-    
-    const textBeforeCursor = value.slice(0, cursorPosition)
-    const lastAt = textBeforeCursor.lastIndexOf('@')
-    
-    if (lastAt !== -1) {
-      const textAfterAt = textBeforeCursor.slice(lastAt + 1)
-      const hasSpace = textAfterAt.includes(' ') || textAfterAt.includes('\n')
-      
-      if (!hasSpace && textAfterAt.length <= 50) {
-        setAtSymbolIndex(lastAt)
-        const filtered = filterFiles(textAfterAt)
-        setShowFileSuggestions(filtered.length > 0)
-        setSelectedFileIndex(0)
-        return
-      }
-    }
-    
-    setShowFileSuggestions(false)
-    setAtSymbolIndex(-1)
+    handleAtDetection(value, e.target.selectionStart)
   }
 
-  const insertFileReference = (file: FileEntry) => {
-    if (atSymbolIndex === -1) return
-    
-    const beforeAt = message.slice(0, atSymbolIndex)
-    const cursorPos = textareaRef.current?.selectionStart || message.length
-    const afterCursor = message.slice(cursorPos)
-    
-    const newMessage = beforeAt + '@' + file.name + ' ' + afterCursor
-    setMessage(newMessage)
-    setShowFileSuggestions(false)
-    setAtSymbolIndex(-1)
-    
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const newPos = atSymbolIndex + file.name.length + 2
-        textareaRef.current.focus()
-        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = newPos
-      }
-    }, 0)
+  const handleSend = async () => {
+    if (!message.trim() && attachedImages.length === 0) return
+    const msg = message
+    setMessage('')
+    setConversationSummaries([])
+    await chatSend.handleSend(msg)
+  }
+
+  const handleSendAndStart = async () => {
+    if (!message.trim() && attachedImages.length === 0) return
+    const msg = message
+    setMessage('')
+    setConversationSummaries([])
+    await chatSend.handleSendAndStart(msg)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const filteredFiles = atSymbolIndex !== -1 ? filterFiles(message.slice(atSymbolIndex + 1)) : []
+    const currentQuery = atSymbolIndex !== -1 ? message.slice(atSymbolIndex + 1) : ''
+    const filtered = filterFiles(currentQuery)
     
-    if (showFileSuggestions && filteredFiles.length > 0) {
+    if (showFileSuggestions && filtered.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedFileIndex(prev => (prev + 1) % filteredFiles.length)
+        setSelectedFileIndex(prev => (prev + 1) % filtered.length)
         return
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedFileIndex(prev => (prev - 1 + filteredFiles.length) % filteredFiles.length)
+        setSelectedFileIndex(prev => (prev - 1 + filtered.length) % filtered.length)
         return
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        insertFileReference(filteredFiles[selectedFileIndex])
+        insertFileReference(filtered[selectedFileIndex], message, textareaRef, setMessage)
         return
       }
       if (e.key === 'Escape') {
@@ -510,18 +184,14 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
       }
     }
     
-    // Support both Cmd+Enter (Mac) and Ctrl+Enter (Windows/Linux)
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       if (e.shiftKey) {
-        // Cmd/Ctrl+Shift+Enter: Submit and start immediately
         handleSendAndStart()
       } else {
-        // Cmd/Ctrl+Enter: Just submit
         handleSend()
       }
     } else if (e.key === 'Enter' && !e.shiftKey) {
-      // Plain Enter: Submit (existing behavior)
       e.preventDefault()
       handleSend()
     }
@@ -534,730 +204,6 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     }
   }, [attachedImages])
 
-  const cleanDescription = (text: string): string => {
-    if (!text) return ''
-    
-    let cleaned = text
-    // Remove heading markers but keep the text
-    cleaned = cleaned.replace(/^#{1,6}\s+/gm, '')
-    // Remove horizontal rules
-    cleaned = cleaned.replace(/^[-*_]{3,}\s*$/gm, '')
-    // Remove checkbox markers
-    cleaned = cleaned.replace(/^\s*\[[ x]\]\s*/gim, '')
-    // Collapse excessive newlines
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
-    cleaned = cleaned.trim()
-    
-    return cleaned.substring(0, 2500)
-  }
-
-  const handleSend = async () => {
-    console.log('[handleSend] message:', message.trim(), 'attachedImages:', attachedImages.length, 'activeEngine:', !!activeEngine)
-    
-    if ((!message.trim() && attachedImages.length === 0) || !activeEngine) {
-      console.log('[handleSend] Early return - conditions not met')
-      return
-    }
-    
-const userMsg = message
-    const imagesToSend = [...attachedImages]
-    
-    console.log('[handleSend] hasApiKey:', hasApiKey)
-    
-    if (imagesToSend.length > 0 && !hasApiKey) {
-      console.log('[handleSend] No API key, showing error')
-      setImageError('Gemini API key belum dikonfigurasi. Buka Settings → Image Analysis untuk menambahkan API key.')
-      return
-    }
-    
-    setMessage('')
-    setAttachedImages([])
-    setConversationSummaries([])
-    setExecutionSteps([{
-      type: 'step_start',
-      content: 'Initializing and thinking...',
-      timestamp: Date.now()
-    }])
-    setIsStreaming(true)
-    
-    console.log('[handleSend] Starting send process...')
-    
-    try {
-      let imageAnalysis: string | null = null;
-      if (imagesToSend.length > 0) {
-        console.log('[handleSend] Analyzing', imagesToSend.length, 'images...')
-        setExecutionSteps(prev => [...prev, {
-          type: 'tool_use',
-          content: `Analyzing ${imagesToSend.length} image${imagesToSend.length > 1 ? 's' : ''}...`,
-          timestamp: Date.now()
-        }]);
-        
-        const result = await analyzeImages(imagesToSend);
-        console.log('[handleSend] Analysis result:', result)
-        
-        if (!result.analysis) {
-          const errorMsg = result.error || 'Failed to analyze image';
-          console.error('[handleSend] Analysis failed:', errorMsg)
-          setExecutionSteps(prev => [...prev, {
-            type: 'error',
-            content: errorMsg,
-            timestamp: Date.now()
-          }]);
-          setIsStreaming(false);
-          return;
-        }
-        imageAnalysis = result.analysis;
-        console.log('[handleSend] Analysis complete, length:', imageAnalysis.length)
-      }
-      
-      console.log('[handleSend] Building message...')
-      const finalMessage = buildMessageWithImageAnalysis(userMsg, imageAnalysis)
-      
-      const historyMsg = getMessages(taskId)
-        .filter(m => m.role !== 'system')
-        .slice(-6)
-        .map(m => {
-          let content = m.content;
-          // Strip [IMAGE ANALYSIS] block to avoid filling history with massive text
-          const analysisMatch = content.match(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/);
-          if (analysisMatch) {
-            content = content.replace(analysisMatch[0], '[Image attached]\n');
-          }
-          const displayContent = content.substring(0, 500) + (content.length > 500 ? '...[truncated]' : '');
-          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${displayContent}`;
-        })
-        .join('\n\n')
-      
-      // ✅ LAZY LOAD: Check small talk FIRST before loading project rules
-      const isSmallTalkLocal = isSmallTalk(userMsg, attachedImages.length > 0);
-
-      // ✅ LAZY LOAD: Only load projectRules if NOT small talk
-      const projectRules = !isSmallTalkLocal 
-        ? useConfigStore.getState().getSystemPrompt()
-        : '';
-      
-      let internalPrompt: string
-      
-      if (isSmallTalkLocal) {
-        // ✅ MINIMAL: Ultra-light prompt without project rules but WITH history context
-        internalPrompt = `[CONTEXT AWARE ASSISTANT]
-${historyMsg ? 'Recent History:\n' + historyMsg + '\n\n' : ''}Briefly answer: ${finalMessage}`;
-      } else if (yoloMode) {
-        // YOLO Mode: Direct execution with full tool access
-        const rtkInstruction = `
-[TOKEN SAVING] Prefix heavy commands with 'rtk' (git, lint, test, build, search, system).`;
-
-        internalPrompt = `${projectRules ? projectRules + '\n\n' : ''}You are an AI coding assistant. Execute changes DIRECTLY.
-
-${rtkInstruction}
-
-User request: ${finalMessage}
-
-${historyMsg ? 'History:\n' + historyMsg + '\n\n' : ''}
-IMPORTANT: Use rtk for all terminal commands. Be concise.`;
-      } else {
-        // Planning Mode
-        internalPrompt = `[PLANNING ASSISTANT] You are an AI acting as a System Architect & Planner.
-YOUR ONLY JOB IS TO EXPLORE AND PLAN. DO NOT MODIFY ANY FILES.
-Use your tools to read code, search directories, and understand the project structure.
-Help the user break down their ideas into actionable tasks for the Kanban board.
-For each task plan, identify:
-1. Exact files that will need to be created or modified.
-2. What existing components/patterns should be followed.
-3. Which MCP servers or built-in Skills would be required to execute the task later.
-
-${projectRules ? '\nProject Context:\n' + projectRules + '\n' : ''}
-${historyMsg ? '\nHistory:\n' + historyMsg + '\n' : ''}
-User: ${finalMessage}
-Assistant:`;
-      }
-
-// Inject Dynamic MCP tools for non-small talk queries
-      // Both YOLO and Planning modes can benefit from tools
-      let finalPrompt = internalPrompt
-      if (!isSmallTalkLocal && activeWorkspace) {
-        finalPrompt = injectToolsIntoPrompt(internalPrompt, {
-          maxTools: 20,
-          format: 'compact',
-          workspaceId: activeWorkspace.id,
-        })
-        console.log('[DynamicMCP] Tools injected into prompt for workspace:', activeWorkspace.id, '| mode:', yoloMode ? 'YOLO' : 'Planning')
-      } else if (activeWorkspace) {
-        // For small talk, inject minimal project context only
-        finalPrompt = `[CONTEXT] Project: ${activeWorkspace.name}${internalPrompt}`
-        console.log('[DynamicMCP] Minimal context injected for small talk')
-      }
-
-      console.log('[handleSend] Sending message to AI...')
-      await sendSimpleMessage(taskId, userMsg, finalPrompt)
-      console.log('[handleSend] Message sent successfully')
-    } catch (err) {
-      console.error('[handleSend] Error:', err)
-    } finally {
-      console.log('[handleSend] Cleaning up...')
-      setIsStreaming(false)
-    }
-  }
-
-  // Handle Cmd/Ctrl+Shift+Enter: Submit and immediately start the task
-  const handleSendAndStart = async () => {
-    // First send the message normally
-    await handleSend()
-    
-    // Then wait a bit for the AI response and create + start the task
-    // This will be handled by the useEffect that watches for conversation summaries
-    // We'll set a flag to auto-start after creation
-    localStorage.setItem('akira-auto-start-next-task', 'true')
-  }
-
-  const parseSummaryResponse = (raw: string): ConversationSummary[] => {
-    if (!raw || raw.trim().length < 2) {
-      console.warn('[parseSummaryResponse] Empty or too short response')
-      return []
-    }
-
-    let cleaned = raw.trim()
-    // Strip tool execution markers and results
-    cleaned = cleaned.replace(/\[TOOL_EXEC\][^\n]*(\n|$)/g, '')
-    cleaned = cleaned.replace(/\[TOOL_RES\][^\n]*(\n|$)/g, '')
-    cleaned = cleaned.replace(/\[Tool:[^\]]+\]\s*/gi, '')
-    // Strip step completion markers
-    cleaned = cleaned.replace(/---\s*Step completed[^\n]*---/g, '')
-    // Strip thinking blocks
-    cleaned = cleaned.replace(/<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)/gi, '')
-    cleaned = cleaned.replace(/```thinking[\s\S]*?```/gi, '')
-    // Strip ALL markdown code fences (not just edges)
-    cleaned = cleaned.replace(/```(?:json)?\s*/gi, '')
-    // Strip completion/status lines
-    cleaned = cleaned.replace(/✅ Completed[^\n]*/g, '')
-    cleaned = cleaned.replace(/❌ Error:[^\n]*/g, '')
-    // Strip inline markdown bold/italic
-    cleaned = cleaned.replace(/\*\*/g, '')
-    // Collapse excessive newlines
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
-    cleaned = cleaned.trim()
-    
-    console.log('[parseSummaryResponse] Input length:', raw.length, '| Cleaned first 300:', cleaned.substring(0, 300))
-    
-    // Strategy 1: Find FIRST [ and its matching ] by counting brackets
-    try {
-      const firstOpenBracket = cleaned.indexOf('[')
-      if (firstOpenBracket !== -1) {
-        let depth = 0
-        let closeBracket = -1
-        for (let i = firstOpenBracket; i < cleaned.length; i++) {
-          if (cleaned[i] === '[') depth++
-          else if (cleaned[i] === ']') depth--
-          if (depth === 0) {
-            closeBracket = i
-            break
-          }
-        }
-        
-        if (closeBracket > firstOpenBracket) {
-          const jsonStr = cleaned.substring(firstOpenBracket, closeBracket + 1)
-          try {
-            const parsed = JSON.parse(jsonStr)
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              return parsed
-                .filter((t: any) => t.title && typeof t.title === 'string')
-                .map((t: any) => {
-                  const description = cleanDescription(String(t.description || ''))
-                  const fileRefs = extractFileReferencesFromText(description)
-                  return {
-                    title: String(t.title).substring(0, 100),
-                    description: description,
-                    priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
-                    recommendedSkills: Array.isArray(t.recommendedSkills) 
-                      ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3) 
-                      : [],
-                    taskSpecificFiles: fileRefs,
-                    taskSpecificContext: t.context || t.additionalContext || undefined
-                  }
-                })
-            }
-          } catch (e) {
-            console.warn('[parseSummaryResponse] Bracket-matched JSON parse failed:', e)
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[parseSummaryResponse] Strategy 1 failed:', e)
-    }
-
-    // Strategy 2: Try to parse entire cleaned string as JSON
-    try {
-      const parsed = JSON.parse(cleaned)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
-          .filter((t: any) => t.title && typeof t.title === 'string')
-          .map((t: any) => {
-            const description = cleanDescription(String(t.description || ''))
-            const fileRefs = extractFileReferencesFromText(description)
-            return {
-              title: String(t.title).substring(0, 100),
-              description: description,
-              priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
-              recommendedSkills: Array.isArray(t.recommendedSkills) 
-                ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3) 
-                : [],
-              taskSpecificFiles: fileRefs,
-              taskSpecificContext: t.context || t.additionalContext || undefined
-            }
-          })
-      }
-    } catch (e) {
-      console.warn('[parseSummaryResponse] Full JSON parse failed:', e)
-    }
-
-    // Strategy 3: Try to fix common JSON issues and re-parse
-    try {
-      // Sometimes LLM outputs: Some text before [{...}] some text after
-      // Or outputs single object instead of array: {"title": ...}
-      let fixable = cleaned
-      
-      // Try wrapping a single object in an array
-      if (fixable.trim().startsWith('{')) {
-        fixable = '[' + fixable.trim() + ']'
-        try {
-          const parsed = JSON.parse(fixable)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed
-              .filter((t: any) => t.title && typeof t.title === 'string')
-              .map((t: any) => {
-                const description = cleanDescription(String(t.description || ''))
-                const fileRefs = extractFileReferencesFromText(description)
-                return {
-                  title: String(t.title).substring(0, 100),
-                  description,
-                  priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
-                  recommendedSkills: Array.isArray(t.recommendedSkills)
-                    ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3)
-                    : [],
-                  taskSpecificFiles: fileRefs,
-                  taskSpecificContext: t.context || t.additionalContext || undefined
-                }
-              })
-          }
-        } catch {}
-      }
-
-      // Try to fix trailing commas
-      fixable = fixable.replace(/,\s*([}\]])/g, '$1')
-      const parsed = JSON.parse(fixable)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
-          .filter((t: any) => t.title && typeof t.title === 'string')
-          .map((t: any) => ({
-            title: String(t.title).substring(0, 100),
-            description: cleanDescription(String(t.description || '')),
-            priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
-            recommendedSkills: Array.isArray(t.recommendedSkills) ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3) : [],
-            taskSpecificFiles: extractFileReferencesFromText(cleanDescription(String(t.description || ''))),
-            taskSpecificContext: t.context || t.additionalContext || undefined
-          }))
-      }
-    } catch (e) {
-      console.warn('[parseSummaryResponse] Strategy 3 JSON fix failed:', e)
-    }
-
-    // Strategy 4: Regex-based fallback
-    try {
-      const fallbackText = cleaned
-        .replace(/\*\*?TASK_TITLE:\*\*?/gi, 'TASK_TITLE:')
-        .replace(/\*\*?TASK_DESCRIPTION:\*\*?/gi, 'TASK_DESCRIPTION:')
-        .replace(/\*\*?TASK_PRIORITY:\*\*?/gi, 'TASK_PRIORITY:')
-        .replace(/\*\*?SKILLS:\*\*?/gi, 'SKILLS:')
-
-      const blocks = fallbackText.split(/TASK_TITLE:/i).slice(1)
-      const tasks: ConversationSummary[] = []
-
-      for (const block of blocks) {
-        const titleLine = block.split('\n')[0].replace(/[*_~`]/g, '').trim()
-        const descMatch = block.match(/TASK_DESCRIPTION:\s*([\s\S]*?)(?=TASK_TITLE:|TASK_PRIORITY:|SKILLS:|---|$)/i)
-        const priorityMatch = block.match(/TASK_PRIORITY:\s*(high|medium|low)/i)
-        const skillsMatch = block.match(/SKILLS:\s*([^\n]+)/i)
-
-        if (titleLine) {
-          const skillsStr = skillsMatch?.[1] || ''
-          const skills = skillsStr
-            .split(/[,;]/)
-            .map((s: string) => s.trim().toLowerCase())
-            .filter((s: string) => s.length > 0)
-            .slice(0, 3)
-          
-          const description = cleanDescription(descMatch?.[1] || '')
-          const fileRefs = extractFileReferencesFromText(description)
-
-          tasks.push({
-            title: titleLine.substring(0, 100),
-            description: description,
-            priority: (priorityMatch?.[1]?.toLowerCase() as 'high' | 'medium' | 'low') || 'medium',
-            recommendedSkills: skills,
-            taskSpecificFiles: fileRefs,
-          })
-        }
-      }
-
-      if (tasks.length > 0) return tasks
-    } catch (e) {
-      console.warn('[parseSummaryResponse] Regex fallback also failed:', e)
-    }
-
-    console.warn('[parseSummaryResponse] All strategies failed for response length:', raw.length)
-    return []
-  }
-  
-  // Helper to extract file references from specific text
-  const extractFileReferencesFromText = (text: string): string[] => {
-    const fileRefs = new Set<string>()
-    const filePattern = /@([\w./\-]+)/g
-    
-    const matches = text.matchAll(filePattern)
-    for (const match of matches) {
-      const filePath = match[1]
-      // Filter out likely non-file mentions
-      if (filePath.length > 2 && filePath.includes('.')) {
-        fileRefs.add(filePath)
-      }
-    }
-    
-    return Array.from(fileRefs)
-  }
-
-const handleSummarize = async () => {
-    const messages = getMessages(taskId)
-    if (messages.length === 0) return
-
-    setSummarizedAtLength(messages.length)
-    setIsSummarizing(true)
-    setConversationSummaries([])
-
-    try {
-      const conversationText = messages
-        .filter(m => m.content.trim())
-        .slice(-20)
-        .map(m => {
-          let content = m.content.length > 1500 ? m.content.substring(0, 1500) + '...[truncated]' : m.content
-          content = content
-            .replace(/\[TOOL_EXEC\][^\n]*(\n|$)/g, '')
-            .replace(/\[TOOL_RES\][^\n]*(\n|$)/g, '')
-            .replace(/\[Tool:[^\]]+\]\s*/gi, '')
-            .replace(/```thinking[\s\S]*?```/gi, '')
-            .replace(/<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)/gi, '')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim()
-          if (!content) return ''
-          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`
-        })
-        .filter(Boolean)
-        .join('\n\n')
-
-      const skillCatalog = installedSkills.length > 0
-        ? installedSkills.map(s => `- ${s.name}: ${s.description || 'No description'}`).join('\n')
-        : ''
-
-      let lastResponse: string | null = null
-
-      const configState = useConfigStore.getState().config
-      const groqApiKey = configState?.groq_api_key
-
-      if (groqApiKey) {
-        console.log('[handleSummarize] Using Groq API for summary (FREE)')
-        lastResponse = await sendGroqSummary(groqApiKey, conversationText, skillCatalog)
-      }
-
-      if (!lastResponse && activeEngine && activeWorkspace) {
-        console.log('[handleSummarize] Falling back to CLI for summary')
-        const projectRules = useConfigStore.getState().getSystemPrompt()
-        const summaryPrompt = `You are a task extraction specialist. Analyze the conversation below and extract all actionable coding tasks discussed.
-
-You MUST output a valid JSON array. No markdown, no explanation, ONLY the JSON array.
-
-JSON Schema:
-[
-  {
-    "title": "Short clear title, max 80 chars",
-    "description": "A comprehensive implementation prompt for the AI agent. Include: exact file paths mentioned, design decisions agreed upon, specific coding steps, and technical constraints from the discussion. Max 2500 chars.",
-    "priority": "high | medium | low",
-    "recommendedSkills": ["skill-name-1", "skill-name-2"]
-  }
-]
-
-Priority guidelines:
-- "high": Bug fixes, breaking issues, security concerns, blockers
-- "medium": New features, enhancements, refactoring
-- "low": Nice-to-have improvements, cosmetic changes, documentation
-
-Available skills (recommend MAX 2 that would help implement this task):
-${skillCatalog || 'No skills installed'}
-
-Rules:
-- Extract ONLY coding implementation tasks
-- Do NOT create tasks for: git commits, PRs, testing, deployment
-- If the conversation is unclear or has no actionable tasks, return an empty array: []
-- Only recommend skills from the "Available skills" list above
-- If no skills are relevant, use an empty array: []
-- Output ONLY valid JSON, no surrounding text or markdown fences${projectRules ? '\n\nThe tasks MUST follow these project rules. Embed relevant rules into each task description:\n' + projectRules : ''}`
-
-        const fullPrompt = `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`
-        const summaryId = `__summarize_${Date.now()}__`
-
-        try {
-          let accumulatedContent = ''
-          const result = await runCLIWithStreaming({
-            taskId: summaryId,
-            engineAlias: activeEngine.alias,
-            binaryPath: activeEngine.binary_path,
-            engineArgs: activeEngine.args || '',
-            prompt: fullPrompt,
-            cwd: activeWorkspace.folder_path,
-            mode: 'standard',
-            onOutput: (text) => {
-              accumulatedContent += text
-            },
-          })
-
-          console.log('[handleSummarize] CLI result — success:', result.success, '| accumulated length:', accumulatedContent.length, '| result.content length:', result.content.length)
-          lastResponse = accumulatedContent || result.content
-          if (!lastResponse && !result.success) {
-            console.warn('[handleSummarize] CLI failed:', result.errorMessage)
-          }
-        } catch (err) {
-          console.warn('[handleSummarize] CLI error:', err)
-        }
-      }
-
-      if (lastResponse) {
-        const tasks = parseSummaryResponse(lastResponse)
-
-        if (tasks.length > 0) {
-          setConversationSummaries(tasks)
-        } else {
-          const warningMsg = {
-            id: `warn-${Date.now()}`,
-            taskId,
-            role: 'system' as const,
-            content: '⚠️ Tidak bisa mengekstrak task dari percakapan ini. Coba diskusikan lebih detail tentang apa yang ingin dikerjakan, lalu tekan Summarize lagi.',
-            timestamp: Date.now(),
-          }
-          setMessages(taskId, [...getMessages(taskId), warningMsg])
-          setSummarizedAtLength(-1)
-        }
-      }
-    } catch (err) {
-      console.error('Failed to summarize:', err)
-      const errorMsg = {
-        id: `err-${Date.now()}`,
-        taskId,
-        role: 'system' as const,
-        content: `❌ Gagal melakukan summarize: ${err instanceof Error ? err.message : 'Unknown error'}. Silakan coba lagi.`,
-        timestamp: Date.now(),
-      }
-      setMessages(taskId, [...getMessages(taskId), errorMsg])
-      setSummarizedAtLength(-1)
-    } finally {
-      setIsSummarizing(false)
-    }
-  }
-
-  const handleStop = async () => {
-    await stopMessage(taskId)
-    setIsStreaming(false)
-  }
-
-  const extractFileReferences = (messages: { role: string; content: string }[]): string[] => {
-    const fileRefs = new Set<string>()
-    const filePattern = /@([\w./\-]+)/g
-    
-    messages.forEach(msg => {
-      const matches = msg.content.matchAll(filePattern)
-      for (const match of matches) {
-        const filePath = match[1]
-        // Filter out likely non-file mentions (too short or no extension for code files)
-        if (filePath.length > 2 && filePath.includes('.')) {
-          fileRefs.add(filePath)
-        }
-      }
-    })
-    
-    return Array.from(fileRefs)
-  }
-
-  const buildComprehensiveDescription = (
-    summary: ConversationSummary,
-    allMessages: { role: string; content: string }[],
-    allFileReferences: string[]
-  ): string => {
-    const parts: string[] = []
-    
-    // 1. Task Title Header
-    parts.push(`# ${summary.title}`)
-    
-    // 2. Skills tag (if any)
-    if (summary.recommendedSkills && summary.recommendedSkills.length > 0) {
-      parts.push(`\n<!-- skills:${summary.recommendedSkills.join(',')} -->`)
-    }
-    
-    // 3. Task-specific context (if AI provided it)
-    if (summary.taskSpecificContext) {
-      parts.push('\n[CONTEXT]')
-      parts.push(summary.taskSpecificContext)
-    }
-    
-    // 4. Original description (this is task-specific from AI)
-    if (summary.description) {
-      parts.push('\n[IMPLEMENTATION PLAN]')
-      parts.push(summary.description)
-    }
-    
-    // 5. Task-specific file references (extracted from this task's description)
-    if (summary.taskSpecificFiles && summary.taskSpecificFiles.length > 0) {
-      parts.push('\n[FILES FOR THIS TASK]')
-      summary.taskSpecificFiles.forEach(file => {
-        parts.push(`- @${file}`)
-      })
-    }
-    
-    // 6. Other potentially relevant files from conversation (if not already listed)
-    const otherFiles = allFileReferences.filter(f => !summary.taskSpecificFiles?.includes(f))
-    if (otherFiles.length > 0) {
-      parts.push('\n[OTHER REFERENCED FILES]')
-      otherFiles.slice(0, 10).forEach(file => { // Limit to 10 to avoid noise
-        parts.push(`- @${file}`)
-      })
-    }
-    
-    // 7. Extract key points specifically related to this task's description
-    const taskKeyPoints = extractKeyPointsForTask(allMessages, summary.title, summary.description)
-    if (taskKeyPoints.length > 0) {
-      parts.push('\n[KEY REQUIREMENTS]')
-      taskKeyPoints.forEach(point => {
-        parts.push(`- ${point}`)
-      })
-    }
-    
-    // 8. Auto-rules marker
-    parts.push('\n<!-- auto-rules-embedded -->')
-    
-    return parts.join('\n')
-  }
-  
-  // Extract key points specifically relevant to a task
-  const extractKeyPointsForTask = (
-    messages: { role: string; content: string }[],
-    taskTitle: string,
-    taskDescription: string
-  ): string[] => {
-    const points: string[] = []
-    const seen = new Set<string>()
-    
-    // Keywords from task title and description
-    const taskKeywords = (taskTitle + ' ' + taskDescription)
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(w => w.length > 3)
-      .slice(0, 10)
-    
-    // Process messages to find ones relevant to this task
-    const relevantMessages = messages
-      .filter(m => {
-        if (m.role === 'system') return false
-        const content = m.content.toLowerCase()
-        // Check if message is relevant to this task
-        const isRelevant = taskKeywords.some(keyword => content.includes(keyword))
-        return isRelevant && m.content.trim().length > 20
-      })
-      .slice(-5) // Last 5 relevant messages only
-    
-    for (const msg of relevantMessages) {
-      let content = msg.content
-      
-      // Clean up content
-      content = content
-        .replace(/\[TOOL_EXEC\][\s\S]*?(\n\n|$)/g, '')
-        .replace(/\[Tool:[^\]]+\]/g, '')
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/@[\w./\-]+/g, '')
-        .trim()
-      
-      if (content.length < 30 || seen.has(content)) continue
-      
-      // Extract requirements/decisions
-      const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 20)
-      for (const sentence of sentences.slice(0, 2)) { // Max 2 sentences per message
-        const clean = sentence.trim().replace(/\s+/g, ' ').substring(0, 150)
-        if (clean.length > 20 && !seen.has(clean)) {
-          seen.add(clean)
-          points.push(clean)
-        }
-      }
-    }
-    
-    return points.slice(0, 5) // Limit to 5 most relevant points
-  }
-
-  const handleCreateTasks = async () => {
-    if (conversationSummaries.length === 0 || !activeWorkspace?.folder_path) return
-    
-    setIsCreating(true)
-    try {
-      // Get all messages for additional context (optional references)
-      const allMessages = getMessages(taskId)
-      const allFileReferences = extractFileReferences(allMessages)
-      
-      // Get default base branch for the workspace
-      let baseBranch = 'rdev' // fallback default
-      try {
-        baseBranch = await getDefaultBaseBranch(activeWorkspace.folder_path)
-        console.log(`[TaskCreator] Detected base branch: ${baseBranch}`)
-      } catch (err) {
-        console.warn('[TaskCreator] Failed to detect base branch, using default:', err)
-      }
-      
-      for (const summary of conversationSummaries) {
-        // Build comprehensive description with task-specific context
-        const finalDescription = buildComprehensiveDescription(summary, allMessages, allFileReferences)
-        
-        console.log(`[TaskCreator] Creating task: ${summary.title}`)
-        console.log(`[TaskCreator] Files for this task:`, summary.taskSpecificFiles)
-        console.log(`[TaskCreator] Base branch: ${baseBranch}`)
-        
-        await createTask({
-          title: summary.title,
-          description: finalDescription,
-          status: 'todo',
-          priority: summary.priority || 'medium',
-          base_branch: baseBranch, // <-- Set base branch here!
-        })
-      }
-      
-      setCreatedSuccess(true)
-      setConversationSummaries([])
-      clearMessages(taskId)
-      setSummarizedAtLength(-1)
-      
-      setTimeout(() => setCreatedSuccess(false), 2000)
-    } catch (err) {
-      console.error('Failed to create tasks:', err)
-    } finally {
-      setIsCreating(false)
-    }
-  }
-
-  const handleNewChat = useCallback(() => {
-    const newSessionId = Date.now().toString()
-    const newTaskId = chatSessionId ? `${baseTaskId}_${newSessionId}` : baseTaskId
-    setChatSessionId(newSessionId)
-    try {
-      localStorage.setItem('akira-chat-session-id', newSessionId)
-    } catch { /* ignore */ }
-    setExecutionSteps([])
-    setShowProgress(true)
-    setConversationSummaries([])
-    clearMessages(newTaskId)
-  }, [baseTaskId, clearMessages])
-
   const handleToggleYoloMode = useCallback(() => {
     setYoloMode(prev => {
       const newValue = !prev
@@ -1268,55 +214,28 @@ Rules:
     })
   }, [])
 
-  const handleSetChatSessionId = useCallback((sessionId: string) => {
-    setChatSessionId(sessionId)
-    try {
-      if (sessionId) {
-        localStorage.setItem('akira-chat-session-id', sessionId)
-      } else {
-        localStorage.removeItem('akira-chat-session-id')
-      }
-    } catch { /* ignore */ }
-  }, [])
-
-  const suggestedPrompts = yoloMode 
-    ? [
-        "Refactor this function to be cleaner",
-        "Add error handling to the API",
-        "Create a button component",
-        "Fix the bug in login flow"
-      ]
-    : [
-        "Create a login form component",
-        "Add dark mode toggle",
-        "Build a settings page",
-        "Implement search functionality"
-      ]
-
   const handleAnalyzeInCreator = async () => {
     const cwd = activeWorkspace?.folder_path
     if (!cwd || !activeEngine) return
-
     setIsAnalyzingProject(true)
-    
-    const result = await analyzeProject(cwd, (status) => {
-      setAnalysisStatus(status)
-    })
-    
-    if (!result.success) {
-      setAnalysisStatus(`❌ ${result.error}`)
-    }
-
+    const result = await analyzeProject(cwd, (status) => setAnalysisStatus(status))
+    if (!result.success) setAnalysisStatus(`❌ ${result.error}`)
     setIsAnalyzingProject(false)
     setTimeout(() => setAnalysisStatus(null), 3000)
   }
 
+  const suggestedPrompts = yoloMode 
+    ? ["Refactor this function to be cleaner", "Add error handling to the API", "Create a button component", "Fix the bug in login flow"]
+    : ["Create a login form component", "Add dark mode toggle", "Build a settings page", "Implement search functionality"]
+
   const currentQuery = atSymbolIndex !== -1 ? message.slice(atSymbolIndex + 1) : ''
   const filteredFiles = filterFiles(currentQuery)
 
+  // --- Render ---
   return (
     <TooltipProvider>
       <div className="flex flex-col min-h-0 h-full bg-app-panel rounded-lg border border-app-border overflow-hidden">
+        {/* Header */}
         <div className="px-4 py-2 border-b border-app-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-white">
@@ -1358,7 +277,7 @@ Rules:
             <Tooltip>
               <TooltipTrigger
                 className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-                onClick={() => { loadAllHistory(); setShowHistoryModal(true); }}
+                onClick={() => { loadAllHistory(); session.setShowHistoryModal(true); }}
               >
                 <div className="p-2">
                   <History className="w-4 h-4 text-neutral-400" />
@@ -1382,38 +301,36 @@ Rules:
           </div>
         </div>
 
-        <ScrollArea className="flex-1 min-h-0 w-full">
-          <div className="p-4 space-y-4">
-            {showHistoryModal && (
+        {/* Messages Area */}
+        <ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0 w-full">
+          <div className="p-4 space-y-4 w-full">
+            {/* History Modal */}
+            {session.showHistoryModal && (
               <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-app-panel rounded-lg border border-app-border w-full max-w-md max-h-[70%] overflow-hidden">
                   <div className="px-4 py-3 border-b border-app-border flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-white">Chat History</h3>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowHistoryModal(false)}
-                    >
+                    <Button variant="ghost" size="icon" onClick={() => session.setShowHistoryModal(false)}>
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
                   <ScrollArea className="max-h-[60%]">
-                    {historyList.length === 0 ? (
+                    {session.historyList.length === 0 ? (
                       <div className="p-4 text-center text-xs text-neutral-500">No history yet</div>
                     ) : (
-                      historyList.map((item, idx) => (
+                      session.historyList.map((item, idx) => (
                         <Button
                           key={idx}
                           variant="ghost"
                           className={`w-full justify-start h-auto py-3 px-4 rounded-none border-b border-app-border ${item.task_id === taskId ? 'bg-app-accent/10 block' : 'block'}`}
-onClick={() => {
+                          onClick={() => {
                             const base = `__task_creator__:${activeWorkspace?.id || 'default'}`
                             if (item.task_id === base) {
                               handleSetChatSessionId('')
                             } else if (item.task_id.startsWith(`${base}_`)) {
                               handleSetChatSessionId(item.task_id.substring(base.length + 1))
                             }
-                            setShowHistoryModal(false)
+                            session.setShowHistoryModal(false)
                           }}
                         >
                           <div className="flex flex-col items-start w-full">
@@ -1432,6 +349,8 @@ onClick={() => {
                 </div>
               </div>
             )}
+
+            {/* Empty State */}
             {taskMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
                 <div>
@@ -1449,12 +368,7 @@ onClick={() => {
                 </div>
                 <div className="grid grid-cols-1 gap-2 w-full">
                   {suggestedPrompts.slice(0, 2).map((prompt, idx) => (
-                    <Button
-                      key={idx}
-                      variant="secondary"
-                      className="justify-start h-auto py-2"
-                      onClick={() => setMessage(prompt)}
-                    >
+                    <Button key={idx} variant="secondary" className="justify-start h-auto py-2" onClick={() => setMessage(prompt)}>
                       {prompt}
                     </Button>
                   ))}
@@ -1492,42 +406,29 @@ onClick={() => {
                 )}
               </div>
             ) : (
+              /* Message List */
               taskMessages.map((msg, idx) => {
-                // Extract token info from content first
-                const tokenMatch = msg.content?.match(/\[(\d+)?\s*tokens?\s*\|\s*([^\]]+)\]$/i);
-                const tokenCount = tokenMatch ? tokenMatch[1] : null;
-                const modelName = tokenMatch ? tokenMatch[2]?.trim() : null;
+                const tokenMatch = msg.content?.match(/\[(\d+)?\s*tokens?\s*\|\s*([^\]]+)\]$/i)
+                const tokenCount = tokenMatch ? tokenMatch[1] : null
+                const modelName = tokenMatch ? tokenMatch[2]?.trim() : null
                 
-                // Check if message is from Groq (has Groq model info in content)
-                // Groq models: llama-3.1-8b-instant, mixtral-8x7b, gemma-7b, or local-math
                 const isGroqMessage = msg.role === 'assistant' && 
                   modelName && (
                     modelName.includes('llama') || 
                     modelName.includes('mixtral') || 
                     modelName.includes('gemma') || 
                     modelName.includes('local-math')
-                  );
+                  )
+
+                let displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content
                 
-                // Debug logging
-                if (msg.role === 'assistant') {
-                  console.log('[TaskCreatorChat] content:', msg.content?.substring(0, 60));
-                  console.log('[TaskCreatorChat] isGroqMessage:', isGroqMessage, 'tokenCount:', tokenCount, 'modelName:', modelName);
-                }
-                
-                // Clean content for display (remove token metadata)
-                let displayContent = msg.content?.replace(/\s*\[\d+ tokens \| [^\]]+\]$/, '') || msg.content;
-                
-                // Extract Tool Results (handle multiple)
-                let toolResultsText = null;
-                const toolResultsMatches = [...displayContent.matchAll(/\[TOOL RESULTS\]([\s\S]*?)\[\/TOOL RESULTS\]/g)];
+                let toolResultsText = null
+                const toolResultsMatches = [...displayContent.matchAll(/\[TOOL RESULTS\]([\s\S]*?)\[\/TOOL RESULTS\]/g)]
                 if (toolResultsMatches.length > 0) {
-                  toolResultsText = toolResultsMatches.map(m => m[1].trim()).filter(Boolean).join('\n\n---\n\n');
-                  // Remove closed tool results from main display
-                  displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*?\[\/TOOL RESULTS\]/g, '').trim();
+                  toolResultsText = toolResultsMatches.map(m => m[1].trim()).filter(Boolean).join('\n\n---\n\n')
+                  displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*?\[\/TOOL RESULTS\]/g, '').trim()
                 }
-                
-                // Clean up any remaining unclosed [TOOL RESULTS] at the end of the string (usually caused by AI echoing during stream)
-                displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*$/, '').trim();
+                displayContent = displayContent.replace(/\[TOOL RESULTS\][\s\S]*$/, '').trim()
 
                 return (
                   <div
@@ -1538,7 +439,7 @@ onClick={() => {
                     )}
                   >
                     <div className={cn(
-                      "max-w-[85%] px-4 py-2.5 text-xs leading-relaxed",
+                      "max-w-[85%] min-w-0 px-4 py-2.5 text-xs leading-relaxed overflow-hidden",
                       msg.role === 'user' 
                         ? 'bg-app-accent/15 border border-app-accent/20 rounded-2xl rounded-br-md text-app-text shadow-sm' 
                         : 'bg-app-surface-2 border border-app-border rounded-2xl rounded-bl-md text-app-text shadow-sm'
@@ -1554,7 +455,7 @@ onClick={() => {
                       {msg.role === 'assistant' ? (
                         <div className="overflow-x-hidden">
                           {displayContent ? (
-                            <MarkdownContent content={displayContent} />
+                            <MemoizedMarkdownContent content={displayContent} />
                           ) : currentStreamingId === msg.id ? (
                             <span className="text-neutral-500 italic">Processing...</span>
                           ) : null}
@@ -1582,7 +483,6 @@ onClick={() => {
                         </div>
                       )}
                       
-                      {/* Token info for Groq messages */}
                       {isGroqMessage && tokenCount && (
                         <div className="mt-2 text-2xs text-app-text-muted flex items-center justify-end gap-1 opacity-70">
                           <span className="text-green-400/60">⚡</span>
@@ -1598,91 +498,69 @@ onClick={() => {
                       )}
                     </div>
                   </div>
-                );
+                )
               })
             )}
             
+            {/* Progress Panel */}
             {isStreaming && (
               <div className="mt-4 border border-app-border/50 rounded-lg overflow-hidden bg-app-bg/50">
                 <div className="flex items-center justify-between px-3 py-2 bg-app-sidebar/40 border-b border-app-border/40">
                   <div className="flex items-center gap-2">
                     <Terminal className="w-3.5 h-3.5 text-app-accent" />
                     <span className="text-xs font-semibold text-app-text-muted uppercase tracking-wider">AI Progress</span>
-                    {executionSteps.length > 0 && !showProgress && (
-                      <span className="text-xs text-neutral-500">({executionSteps.length} steps)</span>
+                    {session.executionSteps.length > 0 && !session.showProgress && (
+                      <span className="text-xs text-neutral-500">({session.executionSteps.length} steps)</span>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowProgress(!showProgress)}
-                    className="h-5 px-1.5 text-xs text-app-text-muted hover:text-white"
-                  >
-                    {showProgress ? 'Hide' : 'Show'}
+                  <Button variant="ghost" size="sm" onClick={() => session.setShowProgress(!session.showProgress)} className="h-5 px-1.5 text-xs text-app-text-muted hover:text-white">
+                    {session.showProgress ? 'Hide' : 'Show'}
                   </Button>
                 </div>
-                {showProgress && (
+                {session.showProgress && (
                   <div className="max-h-32 overflow-y-auto p-2 font-mono text-xs space-y-1">
-                    {executionSteps.length === 0 ? (
+                    {session.executionSteps.length === 0 ? (
                       <div className="flex items-center gap-2 text-neutral-400">
                         <Loader2 className="w-3 h-3 animate-spin" />
                         <span>Waiting for response...</span>
                       </div>
                     ) : (
-                      executionSteps.map((step, idx) => (
+                      session.executionSteps.map((step, idx) => (
                         <div key={idx} className="flex items-start gap-1.5">
                           {step.type === 'step_start' && (
-                            <>
-                              <Zap className="w-3 h-3 text-yellow-400 flex-shrink-0 mt-0.5" />
-                              <span className="text-yellow-400">{step.content}</span>
-                            </>
+                            <><Zap className="w-3 h-3 text-yellow-400 flex-shrink-0 mt-0.5" /><span className="text-yellow-400">{step.content}</span></>
                           )}
                           {step.type === 'tool_use' && (
-                            <>
-                              <Wrench className="w-3 h-3 text-cyan-400 flex-shrink-0 mt-0.5" />
-                              <span className="text-cyan-300">{step.content}</span>
-                            </>
+                            <><Wrench className="w-3 h-3 text-cyan-400 flex-shrink-0 mt-0.5" /><span className="text-cyan-300">{step.content}</span></>
                           )}
                           {step.type === 'text' && (
-                            <>
-                              <FileText className="w-3 h-3 text-neutral-500 flex-shrink-0 mt-0.5" />
-                              <span className="text-neutral-400">{step.content}</span>
-                            </>
-                          )}
-                          {step.type === 'error' && (
-                            <>
-                              <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
-                              <span className="text-red-400">{step.content}</span>
-                            </>
+                            <><FileText className="w-3 h-3 text-neutral-500 flex-shrink-0 mt-0.5" /><span className="text-neutral-400">{step.content}</span></>
                           )}
                           {step.type === 'complete' && (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" />
-                              <span className="text-green-400">Completed</span>
-                            </>
+                            <><CheckCircle2 className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" /><span className="text-green-400">{step.content}</span></>
+                          )}
+                          {step.type === 'error' && (
+                            <><AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" /><span className="text-red-400">{step.content}</span></>
                           )}
                         </div>
                       ))
                     )}
-                    <div ref={progressEndRef} />
                   </div>
                 )}
               </div>
             )}
             
+            {/* Summarize Button */}
             {!yoloMode && taskMessages.length > 0 && taskMessages.length > summarizedAtLength && conversationSummaries.length === 0 && !isSummarizing && (
               <div className="flex gap-2 mt-4">
-                <Button
-                  onClick={handleSummarize}
-                  disabled={isStreaming}
-                  className="flex-1 bg-app-accent hover:bg-app-accent-hover"
-                >
+                <Button onClick={handleSummarize} disabled={isStreaming} className="flex-1 bg-app-accent hover:bg-app-accent-hover">
                   <Check className="w-3 h-3 mr-2" />
                   Summarize & Create Task
                 </Button>
               </div>
             )}
             
+            {/* Summarizing Indicator */}
             {isSummarizing && (
               <div className="flex items-center justify-center p-4 mt-4 bg-app-accent/5 rounded-lg border border-app-accent/20">
                 <Loader2 className="w-4 h-4 animate-spin text-app-accent" />
@@ -1690,6 +568,7 @@ onClick={() => {
               </div>
             )}
             
+            {/* Summary Cards */}
             {conversationSummaries.length > 0 && (
               <div className="space-y-4 mt-4">
                 {conversationSummaries.map((summary, idx) => {
@@ -1739,20 +618,10 @@ onClick={() => {
                 })}
                 
                 <div className="flex gap-2">
-                  <Button
-                    onClick={handleCreateTasks}
-                    disabled={isCreating || createdSuccess}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                  >
+                  <Button onClick={handleCreateTasks} disabled={isCreating || createdSuccess} className="flex-1 bg-green-600 hover:bg-green-700">
                     {createdSuccess ? 'Created!' : isCreating ? 'Creating Tasks...' : `Create ${conversationSummaries.length} Task${conversationSummaries.length > 1 ? 's' : ''}`}
                   </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setConversationSummaries([])
-                      setSummarizedAtLength(-1)
-                    }}
-                  >
+                  <Button variant="secondary" onClick={() => { setConversationSummaries([]); setSummarizedAtLength(-1); }}>
                     Cancel
                   </Button>
                 </div>
@@ -1763,6 +632,7 @@ onClick={() => {
           </div>
         </ScrollArea>
 
+        {/* Input Area */}
         <div className="p-4 border-t border-app-border">
           {showFileSuggestions && filteredFiles.length > 0 && (
             <div className="mb-2 bg-app-panel rounded-lg border border-app-border shadow-xl max-h-48 overflow-y-auto">
@@ -1770,15 +640,15 @@ onClick={() => {
                 Files (↑↓ navigate, Enter to insert)
               </div>
               {filteredFiles.map((file, idx) => (
-<Button
-                   key={file.path}
-                   variant="ghost"
-                   className={`w-full justify-start h-auto py-2 rounded-none ${idx === selectedFileIndex ? 'bg-cyan-500/10' : ''}`}
-                   onClick={() => insertFileReference(file)}
-                 >
-                   <FileIcon className="w-3 h-3 mr-2 text-neutral-400" />
-                   <span className="text-white">{file.relativePath || file.name}</span>
-                 </Button>
+                <Button
+                  key={file.path}
+                  variant="ghost"
+                  className={`w-full justify-start h-auto py-2 rounded-none ${idx === selectedFileIndex ? 'bg-cyan-500/10' : ''}`}
+                  onClick={() => insertFileReference(file, message, textareaRef, setMessage)}
+                >
+                  <FileIcon className="w-3 h-3 mr-2 text-neutral-400" />
+                  <span className="text-white">{file.relativePath || file.name}</span>
+                </Button>
               ))}
             </div>
           )}
@@ -1812,10 +682,7 @@ onClick={() => {
               <div className="flex items-center gap-2">
                 <ImageInput
                   images={attachedImages}
-                  onImagesChange={(images) => {
-                    setAttachedImages(images)
-                    setImageError(null)
-                  }}
+                  onImagesChange={(images) => { setAttachedImages(images); setImageError(null); }}
                   maxImages={3}
                   disabled={isStreaming || !activeEngine}
                 />
@@ -1834,19 +701,14 @@ onClick={() => {
                   {showModelDropdown && (
                     <div className="absolute left-0 bottom-full mb-1 bg-app-panel rounded-lg border border-app-border shadow-xl max-h-48 overflow-y-auto min-w-[140px]">
                       {engines.length === 0 ? (
-                        <div className="px-3 py-2 text-xs text-neutral-500">
-                          No engines
-                        </div>
+                        <div className="px-3 py-2 text-xs text-neutral-500">No engines</div>
                       ) : (
                         engines.map(engine => (
                           <Button
                             key={engine.id}
                             variant="ghost"
                             className={`w-full justify-start rounded-none ${activeEngine?.id === engine.id ? 'bg-cyan-500/10' : ''}`}
-                            onClick={() => {
-                              setActiveEngine(engine)
-                              setShowModelDropdown(false)
-                            }}
+                            onClick={() => { setActiveEngine(engine); setShowModelDropdown(false); }}
                           >
                             <span className={`text-xs ${activeEngine?.id === engine.id ? 'text-cyan-400' : 'text-white'}`}>
                               {engine.alias}
@@ -1860,12 +722,7 @@ onClick={() => {
               </div>
               
               {isStreaming ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg"
-                  onClick={handleStop}
-                >
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg" onClick={handleStop}>
                   <Square className="w-4 h-4 fill-current" />
                 </Button>
               ) : (

@@ -445,24 +445,20 @@ export async function sendGroqSummary(
   const result = await sendGroqChat(apiKey, [
     {
       role: 'system',
-      content: `You are a task extraction specialist. Analyze the conversation and extract coding tasks.
+      content: `You are a task extraction engine. Produce a JSON array of implementation tasks from the conversation.
 
-${relevantContext ? `RELEVANT PROJECT FILES:
-${relevantContext}
+${relevantContext ? `PROJECT FILES FOR CONTEXT:\n${relevantContext}\n\n` : ''}OUTPUT: Raw JSON array only. No markdown fences. No explanation.
+SCHEMA: [{"title":"string","description":"string","priority":"high|medium|low","recommendedSkills":["string"]}]
 
-` : ''}CRITICAL: Group related changes into SINGLE task. AVOID over-splitting!
-
-Output format - VALID JSON array ONLY. Do NOT wrap in markdown code fences. Return raw JSON:
-[{"title":"...","description":"...","priority":"medium","recommendedSkills":["..."]}]
+FIELD RULES:
+- title: Action-oriented, max 80 chars
+- description: Implementation brief with file paths, steps, and constraints (max 2500 chars)
+- priority: "high"=bugs/security, "medium"=features, "low"=cosmetic/docs
 
 MERGE vs SPLIT:
-→ MERGE when: Same feature, Related UI changes, CRUD on same entity, Frontend+Backend for same API
-→ SPLIT when: Completely different features, Independent components, Task dependencies exist
-
-Priority: "high"=bugs/security, "medium"=features, "low"=docs
-
-If ONE feature → 1 task. If multiple independent features → multiple tasks.
-If no tasks → return empty array: []`,
+→ ONE topic = ONE task. Combine frontend+backend+styling for the same feature.
+→ Multiple tasks ONLY for genuinely unrelated features.
+→ Default to fewer tasks. If no tasks → []`,
     },
     {
       role: 'user',
@@ -471,7 +467,7 @@ If no tasks → return empty array: []`,
 Conversation:
 ${conversationText}
 
-Extract tasks as JSON array ONLY:`,
+Extract tasks as JSON array:`,
     },
   ], {
     model: 'llama-3.1-8b-instant',
