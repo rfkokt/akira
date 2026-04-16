@@ -290,7 +290,7 @@ export const ScriptRunner = forwardRef<ScriptRunnerRef, ScriptRunnerProps>(funct
 
       {/* Output Popover */}
       {showOutput && (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[500px] max-h-[300px] bg-app-panel border border-app-border rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[500px] max-w-[calc(100vw-2rem)] max-h-[300px] bg-app-panel border border-app-border rounded-xl shadow-2xl z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-app-border bg-app-sidebar/50">
             <div className="flex items-center gap-2">

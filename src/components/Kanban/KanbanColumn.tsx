@@ -30,7 +30,7 @@ export function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="bg-app-surface-1 backdrop-blur-md border border-app-border rounded-xl flex flex-col w-[380px] shrink-0 h-full overflow-hidden shadow-2xl relative"
+      className="bg-app-surface-1 backdrop-blur-md border border-app-border rounded-xl flex flex-col w-[320px] shrink-0 h-full overflow-hidden shadow-2xl relative"
     >
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-app-border shrink-0 bg-app-surface-2">
         <div className="flex items-center gap-2">

@@ -50,10 +50,12 @@ function App() {
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
   const [showRecovery, setShowRecovery] = useState(false)
   const [showGlobalChat, setShowGlobalChat] = useState(true)
-  const [chatWidth, setChatWidth] = useState(480)
-  const [gitSidebarWidth, setGitSidebarWidth] = useState(300)
+  const [chatWidth, setChatWidth] = useState(380)
+  const [gitSidebarWidth, setGitSidebarWidth] = useState(260)
+  const [fileTreeWidth, setFileTreeWidth] = useState(220)
   const isResizingRef = useRef(false)
   const isResizingGitRef = useRef(false)
+  const isResizingFileTreeRef = useRef(false)
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFileIndex, setActiveFileIndex] = useState<number | null>(null)
@@ -79,7 +81,7 @@ function App() {
       if (isResizingRef.current) {
         // 56px is the left sidebar width
         const newWidth = e.clientX - 56
-        if (newWidth > 300 && newWidth < 900) {
+        if (newWidth > 280 && newWidth < 600) {
           setChatWidth(newWidth)
         }
       } else if (isResizingGitRef.current) {
@@ -87,13 +89,21 @@ function App() {
         if (newWidth > 200 && newWidth < 800) {
           setGitSidebarWidth(newWidth)
         }
+      } else if (isResizingFileTreeRef.current) {
+        // 56px nav + chatWidth if visible
+        const offset = 56 + (showGlobalChat ? chatWidth : 0)
+        const newWidth = e.clientX - offset
+        if (newWidth > 160 && newWidth < 500) {
+          setFileTreeWidth(newWidth)
+        }
       }
     }
 
     const handleMouseUp = () => {
-      if (isResizingRef.current || isResizingGitRef.current) {
+      if (isResizingRef.current || isResizingGitRef.current || isResizingFileTreeRef.current) {
         isResizingRef.current = false
         isResizingGitRef.current = false
+        isResizingFileTreeRef.current = false
         document.body.style.cursor = 'default'
       }
     }
@@ -104,7 +114,7 @@ function App() {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [])
+  }, [showGlobalChat, chatWidth])
 
   // Check for saved running task on mount
   useEffect(() => {
@@ -821,7 +831,7 @@ function App() {
       </div>
 
       {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
         <div 
           className="absolute top-0 left-0 flex"
           style={{ 
@@ -939,7 +949,10 @@ function App() {
 
         {/* Left: File Tree (Full Height) */}
         {currentPage === 'files' && (
-          <div className="w-[300px] shrink-0 border-r border-white/5 flex flex-col bg-transparent">
+          <div
+            className="shrink-0 border-r border-white/5 flex flex-col bg-transparent relative"
+            style={{ width: `${fileTreeWidth}px` }}
+          >
             {activeWorkspace ? (
               <FileTree 
                 rootPath={activeWorkspace.folder_path}
@@ -952,11 +965,20 @@ function App() {
                 <p className="text-xs text-neutral-500">No workspace selected</p>
               </div>
             )}
+            {/* File Tree Resize Handle */}
+            <div
+              className="absolute right-0 top-0 w-1.5 h-full cursor-col-resize hover:bg-app-accent/50 active:bg-app-accent z-30 transition-colors pointer-events-auto"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                isResizingFileTreeRef.current = true
+                document.body.style.cursor = 'col-resize'
+              }}
+            />
           </div>
         )}
 
         {/* Main Content Area (Middle) */}
-        <div className="flex flex-col overflow-hidden bg-app-bg relative m-0 flex-1">
+        <div className="flex flex-col overflow-hidden bg-app-bg relative m-0 flex-1 min-w-0 min-h-0">
           <main className="flex-1 overflow-auto relative flex flex-col min-h-0">
             {renderMainContent()}
           </main>

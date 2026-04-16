@@ -28,7 +28,7 @@ export function PromptPreview({ onClose }: PromptPreviewProps) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[700px] max-h-[80vh] bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl flex flex-col">
+      <div className="w-full max-w-[700px] mx-4 max-h-[80vh] bg-[#1e1e1e] rounded-lg border border-white/10 shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#252526]">
           <div>

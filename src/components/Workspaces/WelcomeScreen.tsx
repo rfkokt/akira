@@ -86,7 +86,7 @@ export function WelcomeScreen({ onClose }: WelcomeScreenProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-app-bg flex items-center justify-center backdrop-blur-sm">
-      <div className="w-[800px] max-h-[80vh] bg-app-panel border border-app-border/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-[760px] mx-4 max-h-[80vh] bg-app-panel border border-app-border/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div className="px-6 py-5 border-b border-app-border/50 flex items-center justify-between bg-app-sidebar/40">
           <div>
             <h1 className="text-2xl font-semibold text-app-text">Welcome to Akira</h1>

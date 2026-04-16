@@ -157,7 +157,7 @@ export function SettingsPage({ projectId }: SettingsPageProps) {
   return (
     <div className="flex flex-row h-full w-full overflow-hidden">
       {/* Left Sidebar Navigation */}
-      <div className="w-[300px] shrink-0 border-r border-app-border flex flex-col bg-transparent">
+      <div className="w-[200px] shrink-0 border-r border-app-border flex flex-col bg-transparent">
         {/* Header */}
         <div className="px-3 py-2 border-b border-app-border flex items-center justify-between shadow-sm z-10 bg-transparent">
           <span className="text-xs font-medium text-app-text-muted uppercase tracking-widest">

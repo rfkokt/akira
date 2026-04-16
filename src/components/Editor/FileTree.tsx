@@ -410,7 +410,7 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
 
   return (
     <>
-      <div className="flex flex-col h-full bg-transparent border-r border-app-border">
+      <div className="flex flex-col h-full bg-transparent overflow-hidden">
         {/* Header */}
         <div className="px-3 py-2 border-b border-app-border flex items-center justify-between">
           <span className="text-xs font-medium text-app-text-muted uppercase tracking-widest">
