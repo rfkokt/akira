@@ -5,6 +5,10 @@ import { dbService } from '@/lib/db';
 import { useAIChatStore } from './aiChatStore';
 import { getSavedRunningTask } from '@/lib/helpers';
 
+// Track tasks recently moved to in-progress to prevent stuck detection race condition
+const recentlyMovedToInProgress = new Map<string, number>();
+const GRACE_PERIOD_MS = 30_000; // 30 seconds grace period before considering a task "stuck"
+
 interface TaskState {
   tasks: Task[];
   isLoading: boolean;
@@ -48,11 +52,21 @@ export const useTaskStore = create<TaskState>()(
         try {
           const tasks = await dbService.getTasksByWorkspace(targetWorkspaceId);
           
+          // Clean up expired entries from the grace period map
+          const now = Date.now();
+          for (const [taskId, movedAt] of recentlyMovedToInProgress.entries()) {
+            if (now - movedAt > GRACE_PERIOD_MS) {
+              recentlyMovedToInProgress.delete(taskId);
+            }
+          }
+          
           // Check for stuck tasks (in-progress but no running AI process)
           const aiStore = useAIChatStore.getState();
           const savedTask = getSavedRunningTask();
           const stuckTasks = tasks.filter(task => {
             if (task.status !== 'in-progress') return false;
+            // Skip tasks within grace period (just recently moved to in-progress)
+            if (recentlyMovedToInProgress.has(task.id)) return false;
             // Check if AI is actually running this task
             const taskState = aiStore.taskStates[task.id];
             const isRunning = taskState?.status === 'running' || taskState?.status === 'queued';
@@ -152,6 +166,15 @@ export const useTaskStore = create<TaskState>()(
         
         try {
           console.log('Moving task:', id, 'to status:', status);
+          
+          // Track grace period for in-progress moves to prevent stuck detection race condition
+          if (status === 'in-progress') {
+            recentlyMovedToInProgress.set(id, Date.now());
+          } else {
+            // Remove from grace period if moving away from in-progress
+            recentlyMovedToInProgress.delete(id);
+          }
+          
           await dbService.updateTaskStatus(id, status);
           console.log('Task moved, refreshing...');
           await get().fetchTasks(currentWorkspaceId);
