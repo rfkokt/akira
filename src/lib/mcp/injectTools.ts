@@ -15,16 +15,20 @@ export interface ToolPromptOptions {
   workspaceId?: string
   includeDescriptions?: boolean
   format?: 'compact' | 'detailed' | 'json'
+  readOnly?: boolean
 }
 
 /**
  * Get available tools for AI prompt
  */
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'Mkdir', 'Rm', 'Rmdir', 'Bash', 'Shell', 'Exec'])
+
 export function getAvailableToolsForPrompt(options: ToolPromptOptions = {}): InternalTool[] {
   const {
     maxTools = 50,
     categories,
     workspaceId,
+    readOnly = false,
   } = options
 
   const registry = useToolRegistry.getState()
@@ -38,7 +42,15 @@ export function getAvailableToolsForPrompt(options: ToolPromptOptions = {}): Int
   const defaultTools = registry.getAllInternalTools()
   
   // Combine and deduplicate
-  const allTools = [...defaultTools, ...workspaceTools]
+  let allTools = [...defaultTools, ...workspaceTools]
+
+  // Filter write tools for read-only mode (planning mode)
+  if (readOnly) {
+    allTools = allTools.filter(t => {
+      const isWriteTool = WRITE_TOOLS.has(t.name) || (t.category ? WRITE_TOOLS.has(t.category) : false)
+      return !isWriteTool
+    })
+  }
   
   // Filter by category if specified
   const filtered = categories

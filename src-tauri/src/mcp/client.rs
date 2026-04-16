@@ -3,6 +3,8 @@
 //! This is a simplified version that provides the interface
 //! without full implementation to ensure the app compiles.
 
+#![allow(unused)]
+
 use super::transport::{JsonRpcMessage, McpTransport};
 use super::{McpResource, McpServerInfo, McpTool, ServerCapabilities, ToolCallResult};
 use serde::{Deserialize, Serialize};
@@ -73,12 +75,19 @@ impl McpClient {
         });
 
         let msg = JsonRpcMessage::request(req_id, "initialize", params);
-        let resp = self.transport.send_request(msg).await.map_err(|e| McpClientError::Transport(e.to_string()))?;
-        
-        let result = resp.result.ok_or_else(|| McpClientError::Protocol("Missing result in initialize".into()))?;
+        let resp = self
+            .transport
+            .send_request(msg)
+            .await
+            .map_err(|e| McpClientError::Transport(e.to_string()))?;
+
+        let result = resp
+            .result
+            .ok_or_else(|| McpClientError::Protocol("Missing result in initialize".into()))?;
         let init_result: InitializeResult = serde_json::from_value(result)?;
 
-        let notif = JsonRpcMessage::notification("notifications/initialized", serde_json::json!({}));
+        let notif =
+            JsonRpcMessage::notification("notifications/initialized", serde_json::json!({}));
         let _ = self.transport.send_notification(notif).await;
 
         self.server_info = Some(init_result.server_info.clone());
@@ -109,18 +118,24 @@ impl McpClient {
     /// List available tools
     pub async fn list_tools(&mut self) -> Result<Vec<McpTool>, McpClientError> {
         self.check_initialized()?;
-        
+
         let req_id = self.get_next_id();
         let msg = JsonRpcMessage::request(req_id, "tools/list", serde_json::json!({}));
-        let resp = self.transport.send_request(msg).await.map_err(|e| McpClientError::Transport(e.to_string()))?;
+        let resp = self
+            .transport
+            .send_request(msg)
+            .await
+            .map_err(|e| McpClientError::Transport(e.to_string()))?;
 
-        let result = resp.result.ok_or_else(|| McpClientError::Protocol("Missing result in tools/list".into()))?;
-        
+        let result = resp
+            .result
+            .ok_or_else(|| McpClientError::Protocol("Missing result in tools/list".into()))?;
+
         #[derive(Deserialize)]
         struct ToolsResult {
             tools: Vec<McpTool>,
         }
-        
+
         let res: ToolsResult = serde_json::from_value(result)?;
         Ok(res.tools)
     }
@@ -132,16 +147,26 @@ impl McpClient {
         arguments: Value,
     ) -> Result<ToolCallResult, McpClientError> {
         self.check_initialized()?;
-        
+
         let req_id = self.get_next_id();
-        let msg = JsonRpcMessage::request(req_id, "tools/call", serde_json::json!({
-            "name": name,
-            "arguments": arguments
-        }));
-        
-        let resp = self.transport.send_request(msg).await.map_err(|e| McpClientError::Transport(e.to_string()))?;
-        let result = resp.result.ok_or_else(|| McpClientError::Protocol("Missing result in tools/call".into()))?;
-        
+        let msg = JsonRpcMessage::request(
+            req_id,
+            "tools/call",
+            serde_json::json!({
+                "name": name,
+                "arguments": arguments
+            }),
+        );
+
+        let resp = self
+            .transport
+            .send_request(msg)
+            .await
+            .map_err(|e| McpClientError::Transport(e.to_string()))?;
+        let result = resp
+            .result
+            .ok_or_else(|| McpClientError::Protocol("Missing result in tools/call".into()))?;
+
         let res: ToolCallResult = serde_json::from_value(result)?;
         Ok(res)
     }
@@ -149,18 +174,24 @@ impl McpClient {
     /// List available resources
     pub async fn list_resources(&mut self) -> Result<Vec<McpResource>, McpClientError> {
         self.check_initialized()?;
-        
+
         let req_id = self.get_next_id();
         let msg = JsonRpcMessage::request(req_id, "resources/list", serde_json::json!({}));
-        let resp = self.transport.send_request(msg).await.map_err(|e| McpClientError::Transport(e.to_string()))?;
+        let resp = self
+            .transport
+            .send_request(msg)
+            .await
+            .map_err(|e| McpClientError::Transport(e.to_string()))?;
 
-        let result = resp.result.ok_or_else(|| McpClientError::Protocol("Missing result in resources/list".into()))?;
-        
+        let result = resp
+            .result
+            .ok_or_else(|| McpClientError::Protocol("Missing result in resources/list".into()))?;
+
         #[derive(Deserialize)]
         struct ResourcesResult {
             resources: Vec<McpResource>,
         }
-        
+
         let res: ResourcesResult = serde_json::from_value(result)?;
         Ok(res.resources)
     }
@@ -170,18 +201,28 @@ impl McpClient {
         self.check_initialized()?;
 
         let req_id = self.get_next_id();
-        let msg = JsonRpcMessage::request(req_id, "resources/read", serde_json::json!({ "uri": uri }));
-        let resp = self.transport.send_request(msg).await.map_err(|e| McpClientError::Transport(e.to_string()))?;
+        let msg =
+            JsonRpcMessage::request(req_id, "resources/read", serde_json::json!({ "uri": uri }));
+        let resp = self
+            .transport
+            .send_request(msg)
+            .await
+            .map_err(|e| McpClientError::Transport(e.to_string()))?;
 
-        let result = resp.result.ok_or_else(|| McpClientError::Protocol("Missing result in resources/read".into()))?;
-        
+        let result = resp
+            .result
+            .ok_or_else(|| McpClientError::Protocol("Missing result in resources/read".into()))?;
+
         #[derive(Deserialize)]
         struct ReadResult {
             contents: Vec<ResourceContent>,
         }
-        
+
         let res: ReadResult = serde_json::from_value(result)?;
-        res.contents.into_iter().next().ok_or_else(|| McpClientError::Protocol("No content returned".into()))
+        res.contents
+            .into_iter()
+            .next()
+            .ok_or_else(|| McpClientError::Protocol("No content returned".into()))
     }
 
     /// List available prompts (Simplified)

@@ -51,6 +51,7 @@ pub fn import_tasks_json(
             priority: json_task.priority.unwrap_or_else(|| "medium".to_string()),
             file_path: None,
             workspace_id: workspaceId.clone(),
+            base_branch: None,
         };
 
         match queries::create_task(&conn, &request) {
@@ -112,6 +113,7 @@ pub fn import_tasks_markdown(
                 priority: "medium".to_string(),
                 file_path: None,
                 workspace_id: workspaceId.clone(),
+                base_branch: None,
             };
 
             match queries::create_task(&conn, &request) {
@@ -223,6 +225,7 @@ pub fn import_tasks_excel(
                 priority,
                 file_path: None,
                 workspace_id: workspaceId.clone(),
+                base_branch: None,
             };
 
             match queries::create_task(&conn, &request) {

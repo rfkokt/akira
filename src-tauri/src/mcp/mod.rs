@@ -6,10 +6,12 @@
 //! - Transport layer (stdio, SSE, HTTP)
 //! - Authentication handling
 
+#![allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub mod client;
 pub mod commands;
@@ -17,9 +19,9 @@ pub mod manager;
 pub mod transport;
 
 // Re-export commonly used types
-pub use client::{McpClient, McpClientError, ResourceContent};
-pub use manager::{ConnectionState, McpConnectionManager, McpManagerError};
-pub use transport::{JsonRpcMessage, JsonRpcError, McpTransport as McpTransportTrait, McpTransportError};
+pub use client::ResourceContent;
+pub use manager::McpConnectionManager;
+pub use transport::{JsonRpcError, McpTransportError};
 
 /// MCP Tool definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,4 +192,3 @@ pub struct ReadResourceRequest {
     pub server_id: String,
     pub uri: String,
 }
-

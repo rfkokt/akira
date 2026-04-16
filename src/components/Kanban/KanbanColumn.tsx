@@ -1,4 +1,4 @@
-import { Plus, MoreHorizontal, Upload } from 'lucide-react'
+import { Plus, MoreHorizontal, Upload, GitBranch } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import type { Task } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,12 @@ export function KanbanColumn({
           <span className="text-xs font-mono text-app-text-muted bg-app-bg px-2 py-0.5 rounded-full border border-app-border">
             {tasks.length}
           </span>
+          {column.id === 'todo' && (
+            <div className="flex items-center gap-1 text-[10px] text-app-text-muted ml-1" title="Tasks will be started from the base branch (e.g., rdev)">
+              <GitBranch className="w-3 h-3" />
+              <span>Branch-based</span>
+            </div>
+          )}
         </div>
         
         {column.id === 'todo' && (

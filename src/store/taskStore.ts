@@ -51,6 +51,7 @@ export const useTaskStore = create<TaskState>()(
           // Check for stuck tasks (in-progress but no running AI process)
           const aiStore = useAIChatStore.getState();
           const savedTask = getSavedRunningTask();
+          const now = Date.now();
           const stuckTasks = tasks.filter(task => {
             if (task.status !== 'in-progress') return false;
             // Check if AI is actually running this task
@@ -58,8 +59,16 @@ export const useTaskStore = create<TaskState>()(
             const isRunning = taskState?.status === 'running' || taskState?.status === 'queued';
             const isCurrentTask = aiStore.currentRunningTask === task.id;
             const isSavedTask = savedTask?.taskId === task.id;
-            // Task is stuck if not running in memory AND not saved in localStorage
-            return !isRunning && !isCurrentTask && !isSavedTask;
+            // Don't reset tasks that were recently updated (within 5 seconds) - they might be transitioning
+            const updatedAt = task.updated_at ? new Date(task.updated_at).getTime() : 0;
+            const isRecentlyUpdated = (now - updatedAt) < 5000;
+            // Don't reset tasks that have a completed AI state (might be waiting for PR creation)
+            const isCompleted = taskState?.status === 'completed';
+            // Don't reset tasks that have worktree (they were properly started)
+            const hasWorktree = !!task.worktree_path;
+            // Task is stuck if not running in memory AND not saved in localStorage AND not recently updated
+            // AND not completed AND not having worktree
+            return !isRunning && !isCurrentTask && !isSavedTask && !isRecentlyUpdated && !isCompleted && !hasWorktree;
           });
           
           // Reset stuck tasks to 'todo'

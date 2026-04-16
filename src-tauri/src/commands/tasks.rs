@@ -117,3 +117,33 @@ pub fn update_task_diff_info(
     )
     .map_err(|e: rusqlite::Error| e.to_string())
 }
+
+#[tauri::command]
+pub fn update_task_worktree(
+    state: State<AppState>,
+    id: String,
+    worktree_path: String,
+    task_branch: String,
+    base_branch: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::update_task_worktree(&conn, &id, &worktree_path, &task_branch, &base_branch)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_task_by_id(state: State<AppState>, id: String) -> Result<Option<Task>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::get_task_by_id(&conn, &id).map_err(|e: rusqlite::Error| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_task_base_branch(
+    state: State<AppState>,
+    id: String,
+    base_branch: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    queries::update_task_base_branch(&conn, &id, &base_branch)
+        .map_err(|e: rusqlite::Error| e.to_string())
+}

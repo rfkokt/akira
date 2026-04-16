@@ -1,6 +1,6 @@
 use serde::Serialize;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
@@ -24,16 +24,32 @@ pub struct SearchResult {
 }
 
 const IGNORED_DIRS: &[&str] = &[
-    "node_modules", ".git", "dist", "build", "out", "target", "vendor",
-    ".next", ".nuxt", "__pycache__", ".venv", "venv", "env",
-    ".idea", ".vscode", ".vs", "coverage", ".cache", "tmp", "temp",
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "out",
+    "target",
+    "vendor",
+    ".next",
+    ".nuxt",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    ".idea",
+    ".vscode",
+    ".vs",
+    "coverage",
+    ".cache",
+    "tmp",
+    "temp",
 ];
 
 const IGNORED_EXTENSIONS: &[&str] = &[
-    ".min.js", ".min.css", ".map", ".lock", ".svg", ".png", ".jpg", ".jpeg",
-    ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".pdf",
-    ".zip", ".tar", ".gz", ".rar", ".7z", ".dmg", ".app", ".exe",
-    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".mpg", ".mpeg",
+    ".min.js", ".min.css", ".map", ".lock", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    ".ico", ".woff", ".woff2", ".ttf", ".eot", ".pdf", ".zip", ".tar", ".gz", ".rar", ".7z",
+    ".dmg", ".app", ".exe", ".mp3", ".mp4", ".wav", ".avi", ".mov", ".mpg", ".mpeg",
 ];
 
 #[tauri::command]
@@ -84,10 +100,8 @@ pub fn read_directory(path: String) -> Result<Vec<FileEntry>, String> {
 
 #[tauri::command]
 pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
-    let result = app.dialog()
-        .file()
-        .blocking_pick_folder();
-    
+    let result = app.dialog().file().blocking_pick_folder();
+
     match result {
         Some(path) => Ok(Some(path.to_string())),
         None => Ok(None),
@@ -121,15 +135,15 @@ pub fn delete_directory(path: String) -> Result<(), String> {
 
 fn should_skip_entry(entry: &fs::DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy().to_string();
-    
+
     if name.starts_with('.') {
         return true;
     }
-    
+
     if IGNORED_DIRS.contains(&name.as_str()) {
         return true;
     }
-    
+
     if let Ok(metadata) = entry.metadata() {
         if metadata.is_file() {
             let name_lower = name.to_lowercase();
@@ -143,7 +157,7 @@ fn should_skip_entry(entry: &fs::DirEntry) -> bool {
             }
         }
     }
-    
+
     false
 }
 
@@ -156,32 +170,31 @@ pub fn search_files(root_path: String, query: String) -> Result<Vec<SearchResult
 
     let query_lower = query.to_lowercase();
     let mut results: Vec<SearchResult> = Vec::new();
-    
+
     fn search_recursive(
         dir: &Path,
         root: &Path,
         query_lower: &str,
         results: &mut Vec<SearchResult>,
     ) -> Result<(), String> {
-        let entries = fs::read_dir(dir)
-            .map_err(|e| format!("Failed to read directory: {}", e))?;
-        
+        let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+
         for entry in entries {
             if let Ok(entry) = entry {
                 if should_skip_entry(&entry) {
                     continue;
                 }
-                
+
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
                 let name_lower = name.to_lowercase();
-                
+
                 if name_lower.contains(query_lower) {
                     let relative_path = path
                         .strip_prefix(root)
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|_| name.clone());
-                    
+
                     results.push(SearchResult {
                         path: path.to_string_lossy().to_string(),
                         name,
@@ -192,21 +205,21 @@ pub fn search_files(root_path: String, query: String) -> Result<Vec<SearchResult
                         match_end: None,
                     });
                 }
-                
+
                 if path.is_dir() {
                     search_recursive(&path, root, query_lower, results)?;
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     search_recursive(root, root, &query_lower, &mut results)?;
-    
+
     results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     results.truncate(100);
-    
+
     Ok(results)
 }
 
@@ -219,50 +232,49 @@ pub fn search_in_files(root_path: String, query: String) -> Result<Vec<SearchRes
 
     let query_lower = query.to_lowercase();
     let mut results: Vec<SearchResult> = Vec::new();
-    
+
     fn search_file_content(
         file_path: &Path,
         query_lower: &str,
     ) -> Result<Vec<(usize, String, usize, usize)>, String> {
-        let content = fs::read_to_string(file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
-        
+        let content =
+            fs::read_to_string(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+
         let mut matches = Vec::new();
-        
+
         for (line_idx, line) in content.lines().enumerate() {
             let line_lower = line.to_lowercase();
             if let Some(pos) = line_lower.find(query_lower) {
                 let match_start = pos;
                 let match_end = pos + query_lower.len();
                 matches.push((line_idx + 1, line.to_string(), match_start, match_end));
-                
+
                 if matches.len() >= 5 {
                     break;
                 }
             }
         }
-        
+
         Ok(matches)
     }
-    
+
     fn search_recursive(
         dir: &Path,
         root: &Path,
         query_lower: &str,
         results: &mut Vec<SearchResult>,
     ) -> Result<(), String> {
-        let entries = fs::read_dir(dir)
-            .map_err(|e| format!("Failed to read directory: {}", e))?;
-        
+        let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+
         for entry in entries {
             if let Ok(entry) = entry {
                 if should_skip_entry(&entry) {
                     continue;
                 }
-                
+
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
-                
+
                 if path.is_file() {
                     if let Ok(content_matches) = search_file_content(&path, query_lower) {
                         for (line_num, line_content, match_start, match_end) in content_matches {
@@ -270,7 +282,7 @@ pub fn search_in_files(root_path: String, query: String) -> Result<Vec<SearchRes
                                 .strip_prefix(root)
                                 .map(|p| p.to_string_lossy().to_string())
                                 .unwrap_or_else(|_| name.clone());
-                            
+
                             results.push(SearchResult {
                                 path: path.to_string_lossy().to_string(),
                                 name: name.clone(),
@@ -286,28 +298,24 @@ pub fn search_in_files(root_path: String, query: String) -> Result<Vec<SearchRes
                     search_recursive(&path, root, query_lower, results)?;
                 }
             }
-            
+
             if results.len() >= 200 {
                 break;
             }
         }
-        
+
         Ok(())
     }
-    
+
     search_recursive(root, root, &query_lower, &mut results)?;
-    
-    results.sort_by(|a, b| {
-        match (&a.relative_path, &b.relative_path) {
-            (path_a, path_b) => {
-                match (&a.line_number, &b.line_number) {
-                    (Some(line_a), Some(line_b)) if path_a == path_b => line_a.cmp(line_b),
-                    _ => path_a.cmp(path_b),
-                }
-            }
-        }
+
+    results.sort_by(|a, b| match (&a.relative_path, &b.relative_path) {
+        (path_a, path_b) => match (&a.line_number, &b.line_number) {
+            (Some(line_a), Some(line_b)) if path_a == path_b => line_a.cmp(line_b),
+            _ => path_a.cmp(path_b),
+        },
     });
     results.truncate(200);
-    
+
     Ok(results)
 }

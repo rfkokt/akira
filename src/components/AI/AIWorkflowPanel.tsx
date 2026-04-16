@@ -336,15 +336,22 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
     });
   }, [workspacePath, task.id, task.is_merged, task.merged_to_branch]);
 
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
+
   useEffect(() => {
     if (!workspacePath || !targetBranch) return;
-    
-    // Load latest alpha tag explicitly belonging to the targetBranch
+
+    // Load tags dengan loading state
+    setIsLoadingTags(true);
     getLatestAlphaTag(workspacePath, targetBranch).then(tag => {
       setLatestTag(tag);
       if (!tag) {
         setCalcNextTag('alpha.0.0.1');
       }
+      setIsLoadingTags(false);
+    }).catch(() => {
+      // Fallback ke local tags kalau fetch gagal
+      setIsLoadingTags(false);
     });
   }, [workspacePath, targetBranch]);
 
@@ -549,9 +556,18 @@ Focus on fixing TypeScript errors, import issues, missing dependencies, or synta
                   </Button>
                 </div>
                 <div className="bg-black/30 rounded p-2 text-xs font-mono text-center flex items-center justify-center gap-2">
-                  <span className="text-neutral-500">{latestTag || 'None'}</span>
-                  <span className="text-neutral-600">→</span>
-                  <span className="text-green-400 font-semibold">{calcNextTag}</span>
+                  {isLoadingTags ? (
+                    <span className="text-neutral-500 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Loading tags...
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-neutral-500">{latestTag || 'None'}</span>
+                      <span className="text-neutral-600">→</span>
+                      <span className="text-green-400 font-semibold">{calcNextTag}</span>
+                    </>
+                  )}
                 </div>
               </div>
             )}

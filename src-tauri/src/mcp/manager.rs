@@ -3,7 +3,9 @@
 //! This is a simplified version that provides the interface
 //! without full implementation to ensure the app compiles.
 
-use super::client::{McpClient};
+#![allow(unused)]
+
+use super::client::McpClient;
 use super::transport::create_transport;
 use super::{McpServerInfo, McpTool, ServerCapabilities, ToolCallResult};
 use crate::db::mcp_queries::{self, McpServerConfig};
@@ -93,25 +95,28 @@ impl McpConnectionManager {
     pub async fn connect_server(&self, server_id: &str) -> Result<Vec<McpTool>, McpManagerError> {
         let config = {
             let db = self.db_connection.lock().unwrap();
-            mcp_queries::get_mcp_server(&db, server_id).map_err(|e| McpManagerError::Database(e.to_string()))?
+            mcp_queries::get_mcp_server(&db, server_id)
+                .map_err(|e| McpManagerError::Database(e.to_string()))?
         };
 
-        let config = config.ok_or_else(|| McpManagerError::ServerNotFound(server_id.to_string()))?;
+        let config =
+            config.ok_or_else(|| McpManagerError::ServerNotFound(server_id.to_string()))?;
 
         // Parse transport config
-        let transport_config: Value = serde_json::from_str(&config.config_json)
-            .unwrap_or_else(|_| serde_json::json!({}));
+        let transport_config: Value =
+            serde_json::from_str(&config.config_json).unwrap_or_else(|_| serde_json::json!({}));
 
         let transport = create_transport(&config.transport_type, &transport_config)
             .map_err(|e| McpManagerError::Connection(e.to_string()))?;
 
         let mut client = McpClient::new(transport);
-        
-        let init_result = client.initialize("Akira", "1.0.0").await
+
+        let init_result = client
+            .initialize("Akira", "1.0.0")
+            .await
             .map_err(|e| McpManagerError::Connection(e.to_string()))?;
 
-        let tools = client.list_tools().await
-            .unwrap_or_else(|_| Vec::new()); // Tools are optional for a connection
+        let tools = client.list_tools().await.unwrap_or_else(|_| Vec::new()); // Tools are optional for a connection
 
         // Update state in manager
         let state = ConnectionState::Connected {
@@ -123,12 +128,15 @@ impl McpConnectionManager {
 
         {
             let mut connections = self.connections.write().await;
-            connections.insert(server_id.to_string(), ManagedConnection {
-                config: config.clone(),
-                client: Some(client),
-                state: state.clone(),
-                last_error: None,
-            });
+            connections.insert(
+                server_id.to_string(),
+                ManagedConnection {
+                    config: config.clone(),
+                    client: Some(client),
+                    state: state.clone(),
+                    last_error: None,
+                },
+            );
         }
 
         // Update status in DB
@@ -149,7 +157,7 @@ impl McpConnectionManager {
                 let _ = client.disconnect().await;
             }
             conn.state = ConnectionState::Disconnected;
-            
+
             // Update status in DB
             let db = self.db_connection.lock().unwrap();
             let _ = mcp_queries::update_server_status(&db, server_id, "disabled", None);
@@ -164,14 +172,22 @@ impl McpConnectionManager {
         tool_name: &str,
         arguments: Value,
     ) -> Result<ToolCallResult, McpManagerError> {
-        let mut connections: tokio::sync::RwLockWriteGuard<'_, std::collections::HashMap<std::string::String, ManagedConnection>> = self.connections.write().await;
-        let conn = connections.get_mut(server_id)
+        let mut connections: tokio::sync::RwLockWriteGuard<
+            '_,
+            std::collections::HashMap<std::string::String, ManagedConnection>,
+        > = self.connections.write().await;
+        let conn = connections
+            .get_mut(server_id)
             .ok_or_else(|| McpManagerError::ServerNotFound(server_id.to_string()))?;
-            
-        let client = conn.client.as_mut()
+
+        let client = conn
+            .client
+            .as_mut()
             .ok_or_else(|| McpManagerError::NotConnected(server_id.to_string()))?;
 
-        client.call_tool(tool_name, arguments).await
+        client
+            .call_tool(tool_name, arguments)
+            .await
             .map_err(|e| McpManagerError::Client(e.to_string()))
     }
 
@@ -181,20 +197,31 @@ impl McpConnectionManager {
         server_id: &str,
         uri: &str,
     ) -> Result<super::client::ResourceContent, McpManagerError> {
-        let mut connections: tokio::sync::RwLockWriteGuard<'_, std::collections::HashMap<std::string::String, ManagedConnection>> = self.connections.write().await;
-        let conn = connections.get_mut(server_id)
+        let mut connections: tokio::sync::RwLockWriteGuard<
+            '_,
+            std::collections::HashMap<std::string::String, ManagedConnection>,
+        > = self.connections.write().await;
+        let conn = connections
+            .get_mut(server_id)
             .ok_or_else(|| McpManagerError::ServerNotFound(server_id.to_string()))?;
-            
-        let client = conn.client.as_mut()
+
+        let client = conn
+            .client
+            .as_mut()
             .ok_or_else(|| McpManagerError::NotConnected(server_id.to_string()))?;
 
-        client.read_resource(uri).await
+        client
+            .read_resource(uri)
+            .await
             .map_err(|e| McpManagerError::Client(e.to_string()))
     }
 
     /// Get connection state
     pub async fn get_connection_state(&self, server_id: &str) -> Option<ConnectionState> {
-        let connections: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<std::string::String, ManagedConnection>> = self.connections.read().await;
+        let connections: tokio::sync::RwLockReadGuard<
+            '_,
+            std::collections::HashMap<std::string::String, ManagedConnection>,
+        > = self.connections.read().await;
         connections.get(server_id).map(|c| c.state.clone())
     }
 

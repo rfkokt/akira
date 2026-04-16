@@ -3,6 +3,8 @@
 //! Provides the transport implementation to establish connections
 //! with MCP servers via stdio, HTTP, and SSE.
 
+#![allow(unused)]
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -78,10 +80,8 @@ pub trait McpTransport: Send + Sync {
     ) -> Result<JsonRpcMessage, McpTransportError>;
 
     /// Send a notification (no response expected)
-    async fn send_notification(
-        &mut self,
-        message: JsonRpcMessage,
-    ) -> Result<(), McpTransportError>;
+    async fn send_notification(&mut self, message: JsonRpcMessage)
+        -> Result<(), McpTransportError>;
 
     /// Check if connected
     fn is_connected(&self) -> bool;
@@ -123,7 +123,7 @@ pub struct StdioTransport {
     command: String,
     args: Vec<String>,
     env: HashMap<String, String>,
-    
+
     // Runtime state
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -159,7 +159,7 @@ impl McpTransport for StdioTransport {
 
         let mut cmd = Command::new(&resolved_command);
         cmd.args(&self.args);
-        
+
         // Inherit current environment, then apply overrides
         for (k, v) in std::env::vars() {
             cmd.env(k, v);
@@ -168,7 +168,9 @@ impl McpTransport for StdioTransport {
         #[cfg(target_family = "unix")]
         {
             let current_path = std::env::var("PATH").unwrap_or_default();
-            let home = dirs::home_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+            let home = dirs::home_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
             let augmented_path = format!(
                 "{}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:{}/.bun/bin:{}/.cargo/bin:{}/.local/bin",
                 current_path, home, home, home
@@ -183,18 +185,34 @@ impl McpTransport for StdioTransport {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| McpTransportError::Io(format!("Failed to spawn process {}: {}", resolved_command, e)))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            McpTransportError::Io(format!(
+                "Failed to spawn process {}: {}",
+                resolved_command, e
+            ))
+        })?;
 
-        let stdin = child.stdin.take().ok_or_else(|| McpTransportError::Io("Failed to open stdin".to_string()))?;
-        let stdout = child.stdout.take().ok_or_else(|| McpTransportError::Io("Failed to open stdout".to_string()))?;
-        let stderr = child.stderr.take().ok_or_else(|| McpTransportError::Io("Failed to open stderr".to_string()))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| McpTransportError::Io("Failed to open stdin".to_string()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| McpTransportError::Io("Failed to open stdout".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| McpTransportError::Io("Failed to open stderr".to_string()))?;
 
         // Background task to read stderr for debugging
         tokio::spawn(async move {
             let mut reader = BufReader::new(stderr);
             let mut line = String::new();
             while let Ok(n) = reader.read_line(&mut line).await {
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 log::warn!("[MCP STDERR] {}", line.trim_end());
                 line.clear();
             }
@@ -206,7 +224,9 @@ impl McpTransport for StdioTransport {
             let mut reader = BufReader::new(stdout);
             let mut line = String::new();
             while let Ok(n) = reader.read_line(&mut line).await {
-                if n == 0 { break; } // EOF
+                if n == 0 {
+                    break;
+                } // EOF
 
                 if let Ok(msg) = serde_json::from_str::<JsonRpcMessage>(&line) {
                     if let Some(id_val) = &msg.id {
@@ -263,8 +283,10 @@ impl McpTransport for StdioTransport {
         }
 
         let stdin = self.stdin.as_mut().ok_or(McpTransportError::NotConnected)?;
-        
-        let id = message.id.as_ref()
+
+        let id = message
+            .id
+            .as_ref()
             .and_then(|v| v.as_u64())
             .ok_or_else(|| McpTransportError::InvalidResponse("Message ID must be u64".into()))?;
 
@@ -274,14 +296,21 @@ impl McpTransport for StdioTransport {
             pending.insert(id, tx);
         }
 
-        let mut data = serde_json::to_string(&message).map_err(|e| McpTransportError::Json(e.to_string()))?;
+        let mut data =
+            serde_json::to_string(&message).map_err(|e| McpTransportError::Json(e.to_string()))?;
         data.push('\n');
 
-        stdin.write_all(data.as_bytes()).await.map_err(|e| McpTransportError::Io(e.to_string()))?;
-        stdin.flush().await.map_err(|e| McpTransportError::Io(e.to_string()))?;
+        stdin
+            .write_all(data.as_bytes())
+            .await
+            .map_err(|e| McpTransportError::Io(e.to_string()))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|e| McpTransportError::Io(e.to_string()))?;
 
         let response = rx.await.map_err(|_| McpTransportError::ConnectionClosed)?;
-        
+
         if let Some(err) = response.error {
             return Err(McpTransportError::ServerError(err.message));
         }
@@ -298,12 +327,19 @@ impl McpTransport for StdioTransport {
         }
 
         let stdin = self.stdin.as_mut().ok_or(McpTransportError::NotConnected)?;
-        
-        let mut data = serde_json::to_string(&message).map_err(|e| McpTransportError::Json(e.to_string()))?;
+
+        let mut data =
+            serde_json::to_string(&message).map_err(|e| McpTransportError::Json(e.to_string()))?;
         data.push('\n');
 
-        stdin.write_all(data.as_bytes()).await.map_err(|e| McpTransportError::Io(e.to_string()))?;
-        stdin.flush().await.map_err(|e| McpTransportError::Io(e.to_string()))?;
+        stdin
+            .write_all(data.as_bytes())
+            .await
+            .map_err(|e| McpTransportError::Io(e.to_string()))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|e| McpTransportError::Io(e.to_string()))?;
 
         Ok(())
     }
@@ -375,7 +411,11 @@ pub fn create_transport(
                 .to_string();
             let args: Vec<String> = config["args"]
                 .as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let env: HashMap<String, String> = config["env"]
                 .as_object()

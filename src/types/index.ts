@@ -7,6 +7,11 @@ export interface Task {
   priority: 'low' | 'medium' | 'high';
   file_path: string | null;
   workspace_id: string | null;
+  // Git worktree info
+  worktree_path: string | null;
+  task_branch: string | null;
+  base_branch: string | null;
+  // PR info
   pr_branch: string | null;
   pr_url: string | null;
   pr_created_at: string | null;
@@ -28,6 +33,7 @@ export interface CreateTaskRequest {
   priority: 'low' | 'medium' | 'high';
   file_path?: string;
   workspace_id?: string;
+  base_branch?: string;
 }
 
 // Engine types

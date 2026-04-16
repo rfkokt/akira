@@ -14,6 +14,9 @@ export const dbService = {
   
   getTasksByWorkspace: (workspaceId: string) =>
     invoke<Task[]>('get_tasks_by_workspace', { workspaceId }),
+
+  getTaskById: (id: string) =>
+    invoke<Task>('get_task_by_id', { id }),
   
   updateTaskStatus: (id: string, status: string) => 
     invoke<void>('update_task_status', { id, status }),
@@ -29,6 +32,9 @@ export const dbService = {
 
   updateTaskDiffInfo: (id: string, diffContent: string | null, diffCapturedAt: string | null) =>
     invoke<void>('update_task_diff_info', { id, diffContent, diffCapturedAt }),
+
+  updateTaskBaseBranch: (id: string, baseBranch: string) =>
+    invoke<void>('update_task_base_branch', { id, baseBranch }),
   
   deleteTask: (id: string) => 
     invoke<void>('delete_task', { id }),

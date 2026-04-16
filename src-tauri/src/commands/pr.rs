@@ -58,8 +58,8 @@ pub async fn create_pull_request(
                 return Err(format!("GitHub API error {}: {}", status, text));
             }
 
-            let json: serde_json::Value =
-                serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {}", e))?;
+            let json: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| format!("Failed to parse response: {}", e))?;
 
             Ok(CreatedPR {
                 pr_url: json["html_url"].as_str().unwrap_or("").to_string(),
@@ -69,8 +69,7 @@ pub async fn create_pull_request(
 
         "gitlab" => {
             // GitLab uses project path encoded
-            let encoded_path =
-                format!("{}/{}", owner, repo).replace('/', "%2F");
+            let encoded_path = format!("{}/{}", owner, repo).replace('/', "%2F");
             let url = format!(
                 "{}/api/v4/projects/{}/merge_requests",
                 base_url.trim_end_matches('/'),
@@ -99,8 +98,8 @@ pub async fn create_pull_request(
                 return Err(format!("GitLab API error {}: {}", status, text));
             }
 
-            let json: serde_json::Value =
-                serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {}", e))?;
+            let json: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| format!("Failed to parse response: {}", e))?;
 
             Ok(CreatedPR {
                 pr_url: json["web_url"].as_str().unwrap_or("").to_string(),
@@ -108,7 +107,10 @@ pub async fn create_pull_request(
             })
         }
 
-        _ => Err(format!("Unsupported platform: {}. Supported: github, gitlab", platform)),
+        _ => Err(format!(
+            "Unsupported platform: {}. Supported: github, gitlab",
+            platform
+        )),
     }
 }
 

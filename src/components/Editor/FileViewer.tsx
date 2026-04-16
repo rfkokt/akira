@@ -6,9 +6,10 @@ import { MarkdownPreview, MarkdownViewToggle } from './MarkdownPreview';
 
 interface FileViewerProps {
   filePath: string;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function FileViewer({ filePath }: FileViewerProps) {
+export function FileViewer({ filePath, onDirtyChange }: FileViewerProps) {
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -18,9 +19,13 @@ export function FileViewer({ filePath }: FileViewerProps) {
   const [viewMode, setViewMode] = useState<'code' | 'preview'>('preview');
 
   const hasChanges = content !== originalContent;
-  
+
   const isMarkdown = filePath.toLowerCase().endsWith('.md') || 
                      filePath.toLowerCase().endsWith('.markdown');
+
+  useEffect(() => {
+    onDirtyChange?.(hasChanges)
+  }, [hasChanges, onDirtyChange])
 
   // Reset view mode when file changes
   useEffect(() => {
@@ -88,13 +93,9 @@ export function FileViewer({ filePath }: FileViewerProps) {
       });
     }
 
-    // Make sure Monaco exposes the CtrlCmd and KeyS constants
-    if (!monaco.KeyMod) return;
-    monaco.editor.addKeybindingRules([{
-      keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-      command: 'save-file'
-    }]);
-  }, []);
+    }, []);
+
+  const editorRef = useRef<any>(null)
 
   const handleSave = useCallback(async () => {
     if (!hasChanges || saving) return;
@@ -118,16 +119,17 @@ export function FileViewer({ filePath }: FileViewerProps) {
   }, [handleSave]);
 
   const handleEditorMount = useCallback((editor: any) => {
+    editorRef.current = editor
     editor.addAction({
       id: 'save-file',
       label: 'Save File',
-      keybindings: [2048 | 49], // monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS
+      keybindings: [2048 | 49],
       run: () => {
-        handleSaveRef.current();
+        handleSaveRef.current()
       }
-    });
-  }, [handleSave]);
-  
+    })
+  }, [])
+
   const getLanguage = (path: string) => {
     const ext = path.split('.').pop()?.toLowerCase();
     switch(ext) {
@@ -145,18 +147,6 @@ export function FileViewer({ filePath }: FileViewerProps) {
       default: return 'plaintext';
     }
   }
-
-  // Global keyboard shortcut fallback
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave]);
 
   if (loading) {
     return <div className="h-full w-full flex items-center justify-center text-xs text-neutral-500">Loading file...</div>;

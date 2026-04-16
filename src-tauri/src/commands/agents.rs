@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use tauri::State;
 use crate::state::AppState;
+use serde::{Deserialize, Serialize};
+use tauri::State;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunAgentRequest {
@@ -34,7 +34,11 @@ pub async fn run_agent(
     // For now, return a placeholder response
     Ok(RunAgentResponse {
         success: true,
-        output: format!("Running agent for task {} with {} files", request.task_id, request.files.len()),
+        output: format!(
+            "Running agent for task {} with {} files",
+            request.task_id,
+            request.files.len()
+        ),
         error: None,
     })
 }

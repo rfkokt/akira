@@ -19,10 +19,7 @@ struct AkiraConfigMeta {
 ///   {folder_path}/.akira/rules.md
 ///   {folder_path}/.akira/config.json
 #[tauri::command]
-pub fn export_akira_config(
-    folder_path: String,
-    config: AkiraProjectConfig,
-) -> Result<(), String> {
+pub fn export_akira_config(folder_path: String, config: AkiraProjectConfig) -> Result<(), String> {
     let akira_dir = Path::new(&folder_path).join(".akira");
     fs::create_dir_all(&akira_dir)
         .map_err(|e| format!("Failed to create .akira/ directory: {}", e))?;

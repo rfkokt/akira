@@ -19,6 +19,7 @@ import { autoCreatePR } from '@/lib/git'
 import { invoke } from '@tauri-apps/api/core'
 import { dbService } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import { createTaskWorktree, getDefaultBaseBranch, updateTaskWorktree } from '@/lib/worktree'
 import {
   DndContext,
   DragEndEvent,
@@ -217,6 +218,55 @@ export function KanbanBoard() {
   const handleStartAI = useCallback(async (task: Task) => {
     if (processingTasks.has(task.id)) return
     setProcessingTasks((prev) => new Set(prev).add(task.id))
+    
+    // Save to localStorage FIRST before moving status (prevents race condition with fetchTasks)
+    try {
+      const { saveRunningTask } = await import('@/lib/helpers')
+      saveRunningTask(task.id, task.title)
+    } catch (e) {
+      console.warn('[Board] Failed to save running task:', e)
+    }
+    
+    // Create git worktree for task isolation
+    if (activeWorkspace?.folder_path) {
+      try {
+        // Determine base branch - use task's base_branch if already set, otherwise detect
+        let baseBranch = task.base_branch
+        console.log(`[Board] Task ${task.id} base_branch from DB:`, baseBranch)
+        
+        if (!baseBranch) {
+          baseBranch = await getDefaultBaseBranch(activeWorkspace.folder_path)
+          console.log(`[Board] Auto-detected base branch: ${baseBranch}`)
+        } else {
+          console.log(`[Board] Using task's configured base branch: ${baseBranch}`)
+        }
+        
+        // Create worktree from base branch
+        const appDataDir = await invoke<string>('get_app_data_dir')
+        console.log(`[Board] Creating worktree from base branch: ${baseBranch}`)
+        
+        const worktreeInfo = await createTaskWorktree(
+          activeWorkspace.folder_path,
+          task.id,
+          baseBranch,
+          appDataDir
+        )
+        
+        // Save worktree info to task
+        await updateTaskWorktree(
+          task.id,
+          worktreeInfo.path,
+          worktreeInfo.branch,
+          baseBranch
+        )
+        
+        console.log(`[Board] Created worktree at ${worktreeInfo.path} from ${baseBranch}`)
+      } catch (error) {
+        console.error('[Board] Failed to create worktree:', error)
+        // Continue even if worktree creation fails - will use workspace path as fallback
+      }
+    }
+    
     await moveTask(task.id, 'in-progress')
     try {
       await enqueueTask(task.id, task.title, task.description || undefined)
@@ -227,7 +277,7 @@ export function KanbanBoard() {
         return next
       })
     }
-  }, [processingTasks, moveTask, enqueueTask])
+  }, [processingTasks, moveTask, enqueueTask, activeWorkspace])
 
   const handleRetry = useCallback(async (task: Task) => {
     await moveTask(task.id, 'in-progress')
@@ -316,6 +366,7 @@ export function KanbanBoard() {
                         onComplete={handleCompleteTask}
                         onRetry={handleRetry}
                         onClick={handleTaskClick}
+                        onRefreshTasks={fetchTasks}
                         processingTasks={processingTasks}
                         taskStates={taskStates}
                         mergeLoadingTasks={mergeLoadingTasks}

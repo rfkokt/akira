@@ -1,12 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, AlertCircle } from 'lucide-react'
+import { Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, AlertCircle, ChevronDown, Check, Square } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
 import type { Task } from '@/types'
 import type { AITaskState } from '@/store/aiChatStore'
 import { Button } from '@/components/ui/button'
 import { AIActivityIndicator } from './AIActivityIndicator'
 import { PRIORITY_COLORS } from './constants'
 import { cn } from '@/lib/utils'
+import { getAvailableBaseBranches } from '@/lib/worktree'
+import { useWorkspaceStore } from '@/store'
+import { dbService } from '@/lib/db'
 
 interface TaskCardProps {
   task: Task
@@ -17,20 +21,22 @@ interface TaskCardProps {
   onRetry: (task: Task) => void
   onClick: (task: Task) => void
   onAIReview: (task: Task) => void
+  onRefreshTasks?: () => void
   processingTasks: Set<string>
   taskStates: Record<string, AITaskState>
   mergeLoadingTasks: Set<string>
 }
 
-export function TaskCard({ 
-  task, 
-  onStartAI, 
-  onViewDiff, 
-  onOpenChat, 
+export function TaskCard({
+  task,
+  onStartAI,
+  onViewDiff,
+  onOpenChat,
   onComplete,
   onRetry,
   onClick,
   onAIReview,
+  onRefreshTasks,
   processingTasks,
   taskStates,
   mergeLoadingTasks
@@ -39,6 +45,14 @@ export function TaskCard({
                       taskStates[task.id]?.status === 'queued'
   
   const isMergeLoading = mergeLoadingTasks.has(task.id)
+  
+  // Base branch editing state
+  const [isEditingBranch, setIsEditingBranch] = useState(false)
+  const [availableBranches, setAvailableBranches] = useState<string[]>([])
+  const [currentBaseBranch, setCurrentBaseBranch] = useState(task.base_branch || 'rdev')
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false)
+  const branchDropdownRef = useRef<HTMLDivElement>(null)
+  const { activeWorkspace } = useWorkspaceStore()
   
   const {
     attributes,
@@ -69,6 +83,51 @@ const style = {
       return
     }
     onClick(task)
+  }
+
+  // Load available branches when editing
+  useEffect(() => {
+    if (isEditingBranch && activeWorkspace?.folder_path) {
+      setIsLoadingBranches(true)
+      getAvailableBaseBranches(activeWorkspace.folder_path)
+        .then(branches => {
+          setAvailableBranches(branches)
+          setIsLoadingBranches(false)
+        })
+        .catch(() => {
+          setAvailableBranches(['rdev', 'develop', 'dev', 'main', 'master'])
+          setIsLoadingBranches(false)
+        })
+    }
+  }, [isEditingBranch, activeWorkspace])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
+        setIsEditingBranch(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Sync local state with task prop when it changes
+  useEffect(() => {
+    setCurrentBaseBranch(task.base_branch || 'rdev')
+  }, [task.base_branch])
+
+  // Handle base branch change
+  const handleBranchChange = async (newBranch: string) => {
+    try {
+      await dbService.updateTaskBaseBranch(task.id, newBranch)
+      setCurrentBaseBranch(newBranch)
+      setIsEditingBranch(false)
+      // Force refresh tasks to update the task object in parent
+      onRefreshTasks?.()
+    } catch (error) {
+      console.error('Failed to update base branch:', error)
+    }
   }
 
   return (
@@ -108,6 +167,54 @@ const style = {
         <p className="text-sm text-app-text-secondary line-clamp-3 leading-relaxed">
           {task.description}
         </p>
+      )}
+
+      {/* Base Branch Info for Todo Tasks - Editable */}
+      {task.status === 'todo' && (
+        <div className="mt-3 flex items-center gap-1.5 text-xs text-app-text-muted" ref={branchDropdownRef}>
+          <GitBranch className="w-3 h-3" />
+          <span>From:</span>
+          {!isEditingBranch ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsEditingBranch(true)
+              }}
+              className="flex items-center gap-1 font-mono text-app-accent bg-app-accent/10 px-1.5 py-0.5 rounded hover:bg-app-accent/20 transition-colors"
+              title="Click to change base branch"
+            >
+              {currentBaseBranch}
+              <ChevronDown className="w-3 h-3" />
+            </button>
+          ) : (
+            <div className="relative">
+              <div className="absolute bottom-full left-0 mb-1 min-w-[140px] bg-app-panel border border-app-border rounded-lg shadow-xl z-50 overflow-hidden">
+                {isLoadingBranches ? (
+                  <div className="px-3 py-2 text-xs text-app-text-muted flex items-center gap-2">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Loading...
+                  </div>
+                ) : (
+                  availableBranches.map(branch => (
+                    <button
+                      key={branch}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleBranchChange(branch)
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs text-app-text hover:bg-app-sidebar transition-colors"
+                    >
+                      <span className="font-mono">{branch}</span>
+                      {branch === currentBaseBranch && (
+                        <Check className="w-3 h-3 text-app-accent" />
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="mt-4 flex items-center justify-end border-t border-app-border/30 pt-3">
@@ -246,9 +353,45 @@ const style = {
       {task.status === 'in-progress' && taskStates[task.id]?.status === 'completed' && (
         <div className="mt-2 pt-2 border-t border-orange-500/20">
           {taskStates[task.id]?.creatingPR ? (
-            <div className="flex items-center gap-1.5 text-xs text-blue-400">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              <span>Creating PR...</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 text-xs text-blue-400">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>{taskStates[task.id]?.prProgressMessage || 'Creating PR...'}</span>
+              </div>
+              {/* Progress Stage Indicator */}
+              <div className="flex items-center gap-1">
+                {['init', 'checking', 'branch', 'commit', 'push', 'pr', 'save', 'complete'].map((stage) => {
+                  const currentStage = taskStates[task.id]?.prStage || 'init'
+                  const isActive = stage === currentStage
+                  const isPast = ['init', 'checking', 'branch', 'commit', 'push', 'pr', 'save', 'complete'].indexOf(stage) < 
+                    ['init', 'checking', 'branch', 'commit', 'push', 'pr', 'save', 'complete'].indexOf(currentStage)
+                  
+                  return (
+                    <div
+                      key={stage}
+                      className={`h-1 w-1 rounded-full ${
+                        isActive ? 'bg-blue-400 animate-pulse' : 
+                        isPast ? 'bg-green-400' : 'bg-neutral-600'
+                      }`}
+                      title={stage}
+                    />
+                  )
+                })}
+              </div>
+              {/* Cancel Button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  const { cancelAutoCreatePR } = await import('@/lib/git')
+                  cancelAutoCreatePR()
+                }}
+              >
+                <Square className="w-3 h-3 mr-1" />
+                Cancel
+              </Button>
             </div>
           ) : taskStates[task.id]?.prError ? (
             <>

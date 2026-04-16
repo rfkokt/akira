@@ -30,6 +30,18 @@ import {
 } from '@/lib/mcp/aiIntegration';
 import { trackToolCall } from '@/lib/mcp/analytics';
 import { injectToolsIntoPrompt } from '@/lib/mcp';
+import type { ToolUseEvent, ToolOutputEvent } from '@/lib/streaming';
+
+// ─── Helper ──────────────────────────────────────────────────────────────
+
+function clearStreamingForTask(get: () => AIChatState, set: (partial: Partial<AIChatState>) => void, taskId: string) {
+  const ss = { ...get().streamingState };
+  delete ss[taskId];
+  set({ 
+    streamingMessageId: { ...get().streamingMessageId, [taskId]: null },
+    streamingState: ss,
+  });
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -39,6 +51,14 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+}
+
+// Structured streaming state for a task
+export interface StreamingState {
+  thinking: string;
+  content: string;
+  tools: Array<{ use: ToolUseEvent; output?: ToolOutputEvent }>;
+  usage: { input: number; output: number; cache?: number } | null;
 }
 
 export type AITaskStatus = 'idle' | 'queued' | 'running' | 'completed' | 'error';
@@ -70,6 +90,8 @@ export interface AITaskState {
   mergeSourceBranch?: string;
   prError?: string;
   creatingPR?: boolean;
+  prStage?: string;
+  prProgressMessage?: string;
   toolCalls: ToolCallRecord[];
 }
 
@@ -95,6 +117,7 @@ interface AIChatState {
   routerProvider: string | null;
   currentSessionId: string | null;
   streamingMessageId: Record<string, string | null>;
+  streamingState: Record<string, StreamingState>;
   invokedSkills: Record<string, InvokedSkill[]>;
   stopStreaming: (taskId: string) => void;
 
@@ -180,6 +203,23 @@ function getWorkspaceCwd(): string | null {
   return useWorkspaceStore.getState().activeWorkspace?.folder_path || null;
 }
 
+/** Get task-specific cwd (uses worktree if available) */
+async function getTaskCwd(taskId: string): Promise<string | null> {
+  // First check if task has a worktree
+  try {
+    const { dbService } = await import('@/lib/db')
+    const task = await dbService.getTaskById(taskId)
+    if (task?.worktree_path) {
+      return task.worktree_path
+    }
+  } catch (e) {
+    console.warn('[aiChatStore] Failed to get task worktree:', e)
+  }
+  
+  // Fallback to workspace cwd
+  return getWorkspaceCwd()
+}
+
 async function getSkillListing(): Promise<string> {
   try {
     const skills = useSkillStore.getState().installedSkills;
@@ -221,44 +261,23 @@ function buildTaskPrompt(taskTitle: string, taskDescription?: string, skillListi
   const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
   const invokedSkillsSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
 
-  // Build prompt with TASK FIRST (most important for AI focus)
-  const taskSection = `TASK: ${taskTitle}
+  let prompt = `${systemPrompt ? systemPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSkillsSection}
+
+---
+
+TASK: ${taskTitle}
 ${cleanDescription ? `CONTEXT: ${cleanDescription}` : ''}
 
-Please analyze and implement this task.`;
+Please analyze and implement this task. Be concise and always use 'rtk' for terminal commands to save tokens.`;
 
+  // Inject Dynamic MCP tools
   const workspace = useWorkspaceStore.getState().activeWorkspace;
-  
-  // Start with task section (highest priority)
-  let prompt = taskSection;
-  
-  // Add system context after task (for reference)
-  if (systemPrompt || GLOBAL_RTK_INSTRUCTION) {
-    prompt += `\n\n---\n\n${GLOBAL_RTK_INSTRUCTION}`;
-    if (systemPrompt) {
-      prompt += `\n\n${systemPrompt}`;
-    }
-  }
-  
-  // Add skills
-  prompt += skillSection;
-  prompt += invokedSkillsSection;
-  
-  // Add output format guidance
-  prompt += `\n\n[OUTPUT FORMAT]
-1. Analyze: What needs to be done and why
-2. Plan: List files to create/modify with @filepath format
-3. Implement: Show code changes with clear comments
-4. Verify: Confirm edge cases are handled`;
-  
-  // Inject tools at the end
   if (workspace) {
     prompt = injectToolsIntoPrompt(prompt, {
       maxTools: 30,
       format: 'compact',
       workspaceId: workspace.id,
     });
-    console.log('[DynamicMCP] Tools injected into task prompt');
   }
 
   return prompt;
@@ -337,10 +356,14 @@ async function handleTaskCompletion(
   taskId: string,
   taskTitle: string,
 ) {
-  // Mark that we're creating PR
-  updateTaskState(get, set, taskId, { creatingPR: true });
+  // Mark that we're creating PR with progress tracking
+  updateTaskState(get, set, taskId, { 
+    creatingPR: true,
+    prStage: 'initializing',
+    prProgressMessage: 'Preparing to create pull request...'
+  });
 
-  const cwd = getWorkspaceCwd();
+  const cwd = await getTaskCwd(taskId);
   if (!cwd) {
     updateTaskState(get, set, taskId, { creatingPR: false });
     await useTaskStore.getState().moveTask(taskId, 'review');
@@ -357,7 +380,28 @@ async function handleTaskCompletion(
     console.log(`[AI] Task ${taskId} revision - creating branch from ${baseBranch}`);
   }
 
-  const prResult = await autoCreatePR(taskId, taskTitle, cwd, { baseBranch: baseBranch || undefined });
+  // Progress callback to update UI
+  const onProgress = (stage: string, message: string) => {
+    console.log(`[AI] PR Creation Progress - ${stage}: ${message}`);
+    updateTaskState(get, set, taskId, {
+      prStage: stage,
+      prProgressMessage: message
+    });
+  };
+
+  let prResult;
+  try {
+    prResult = await autoCreatePR(
+      taskId, 
+      taskTitle, 
+      cwd, 
+      { baseBranch: baseBranch || undefined },
+      onProgress
+    );
+  } catch (error) {
+    console.error('[AI] autoCreatePR failed:', error);
+    prResult = null;
+  }
 
   // Capture diff snapshot — use branch diff if we have a PR branch (isolated per task)
   try {
@@ -473,10 +517,11 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
   routerProvider: null,
   currentSessionId: null,
   streamingMessageId: {},
+  streamingState: {},
   invokedSkills: {},
 
   stopStreaming: (taskId) => {
-    set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+    clearStreamingForTask(get, set, taskId);
   },
 
   addInvokedSkill: (taskId, skill) => {
@@ -613,7 +658,16 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     });
 
     const prompt = buildTaskPrompt(taskTitle, cleanTaskDescription, skillListing, invokedSkillsContent);
-    const cwd = getWorkspaceCwd();
+    const cwd = await getTaskCwd(taskId);
+    if (!cwd) {
+      addMessage(get, set, taskId, {
+        id: `msg-${Date.now()}-error`, taskId, role: 'system',
+        content: '❌ Error: No workspace or worktree available. Please check your workspace configuration.',
+        timestamp: Date.now(),
+      });
+      updateTaskState(get, set, taskId, { status: 'error', errorMessage: 'No workspace available' });
+      return;
+    }
     let responseContent = '';
 
     try {
@@ -624,7 +678,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
         engineArgs: engine.args,
         prompt,
         cwd,
-        mode: 'standard',  // Task execution always needs full context
+        mode: 'standard',
         onOutput: (text) => {
           responseContent += text + '\n';
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
@@ -881,7 +935,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
         addMessage(get, set, taskId, {
           id: `msg-${Date.now()}-ai`, taskId, role: 'assistant', content: directResponse, timestamp: Date.now(),
         });
-        set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+        clearStreamingForTask(get, set, taskId);
         
         try {
           await dbService.createChatMessage(taskId, 'assistant', directResponse, 'direct-api');
@@ -990,7 +1044,12 @@ Please respond concisely. Use 'rtk' for any commands.`;
       console.log('[DynamicMCP] Tools injected into chat prompt');
     }
 
-    const cwd = getWorkspaceCwd();
+    const cwd = await getTaskCwd(taskId);
+    if (!cwd) {
+      appendToMessage(get, set, taskId, aiMessageId, '\n\n❌ Error: No workspace directory available.\n');
+      clearStreamingForTask(get, set, taskId);
+      return;
+    }
 
     try {
       const result = await runCLIWithStreaming({
@@ -1000,7 +1059,7 @@ Please respond concisely. Use 'rtk' for any commands.`;
         engineArgs: engine.args,
         prompt: chatPrompt,
         cwd,
-        mode: smallTalk ? 'minimal' : 'standard',  // Use minimal context for small talk
+        mode: smallTalk ? 'minimal' : 'standard',
         onOutput: (text) => {
           appendToMessage(get, set, taskId, aiMessageId, text + '\n');
         },
@@ -1032,7 +1091,7 @@ Please respond concisely. Use 'rtk' for any commands.`;
         } catch { /* non-critical */ }
       }
 
-      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+      clearStreamingForTask(get, set, taskId);
 
       // Post-revision: create PR and move back to review
       if (isRevisionMode) {
@@ -1043,7 +1102,7 @@ Please respond concisely. Use 'rtk' for any commands.`;
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      set({ streamingMessageId: { ...get().streamingMessageId, [taskId]: null } });
+      clearStreamingForTask(get, set, taskId);
 
       if (isRevisionMode) {
         updateTaskState(get, set, taskId, { status: 'completed' });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
-import { X, Send, Loader2, Copy, Check, MessageSquare, FileIcon, Zap } from 'lucide-react'
+import { X, Send, Loader2, Copy, Check, MessageSquare, FileIcon, Zap, Terminal, Play } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useAIChatStore, useEngineStore, useConfigStore, useWorkspaceStore } from '@/store'
 import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
@@ -7,9 +7,13 @@ import type { Task, ChatMessage as DbChatMessage } from '@/types'
 import type { ChatMessage } from '@/store/aiChatStore'
 import { dbService } from '@/lib/db'
 import { ImageInput, processPastedImages, type ImageAttachment } from '@/components/shared/ImageInput'
+import { Terminal as TerminalComponent } from '@/components/Terminal'
+import { ScriptRunner, type ScriptRunnerRef } from '@/components/ScriptRunner'
+import { ThinkingBlock, ToolCallGroup, UsageStats } from '@/components/Streaming'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 const EMPTY_ARRAY: ChatMessage[] = []
 
@@ -565,6 +569,15 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     useCallback(state => state.streamingMessageId[task.id] != null, [task.id])
   )
 
+  // Structured streaming state — read from the store
+  const taskStreamingState = useAIChatStore(
+    useCallback(state => state.streamingState[task.id], [task.id])
+  )
+  const streamingThinking = taskStreamingState?.thinking || ''
+  const streamingContent = taskStreamingState?.content || ''
+  const streamingTools = taskStreamingState?.tools || []
+  const streamingUsage = taskStreamingState?.usage || null
+
   const fetchFiles = useCallback(async () => {
     const path = activeWorkspace?.folder_path
     if (!path) return
@@ -640,7 +653,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [taskMessages, isTaskStreaming])
+  }, [taskMessages, isTaskStreaming, streamingContent, streamingThinking])
 
   const handleSend = useCallback(async (msg: string) => {
     if (!activeEngine) return
@@ -655,20 +668,79 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
     await sendMessage(task.id, msg)
   }, [task.id, activeEngine, sendMessage])
 
+  const [activeTab, setActiveTab] = useState<'chat' | 'terminal' | 'scripts'>('chat')
+  const scriptRunnerRef = useRef<ScriptRunnerRef>(null)
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ⌘⇧R - Trigger script run
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'R') {
+        e.preventDefault()
+        if (isOpen && activeTab === 'scripts') {
+          scriptRunnerRef.current?.triggerRun()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, activeTab])
+
   if (!isOpen) return null
 
   return (
     <div 
-      className="fixed z-[60] bg-app-panel/95 backdrop-blur-2xl border border-app-border/60 rounded-2xl shadow-2xl overflow-hidden shadow-black/40 bottom-6 right-6 w-[450px] h-[550px] flex flex-col transition-all"
+      className="fixed z-[60] bg-app-panel/95 backdrop-blur-2xl border border-app-border/60 rounded-2xl shadow-2xl overflow-hidden shadow-black/40 bottom-6 right-6 w-[600px] h-[550px] flex flex-col transition-all"
     >
       <div className="flex items-center justify-between px-4 py-3 bg-app-sidebar/40 border-b border-app-border/40 select-none">
-        <div>
-          <h3 className="text-sm font-semibold text-app-text tracking-wide">
-            Task AI Assistant
-          </h3>
-          <p className="text-xs text-app-text-muted truncate max-w-[280px] mt-0.5">
-            {task.title}
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-app-text tracking-wide">
+              Task AI Assistant
+            </h3>
+            <p className="text-xs text-app-text-muted truncate max-w-[280px] mt-0.5">
+              {task.title}
+            </p>
+          </div>
+          <div className="flex items-center gap-1 bg-app-bg/50 rounded-lg p-0.5 border border-app-border/30">
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5",
+                activeTab === 'chat' 
+                  ? 'bg-app-accent text-white shadow-sm' 
+                  : 'text-app-text-muted hover:text-app-text hover:bg-app-bg'
+              )}
+            >
+              <MessageSquare className="w-3 h-3" />
+              Chat
+            </button>
+            <button
+              onClick={() => setActiveTab('terminal')}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5",
+                activeTab === 'terminal' 
+                  ? 'bg-app-accent text-white shadow-sm' 
+                  : 'text-app-text-muted hover:text-app-text hover:bg-app-bg'
+              )}
+            >
+              <Terminal className="w-3 h-3" />
+              Terminal
+            </button>
+            <button
+              onClick={() => setActiveTab('scripts')}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5",
+                activeTab === 'scripts' 
+                  ? 'bg-app-accent text-white shadow-sm' 
+                  : 'text-app-text-muted hover:text-app-text hover:bg-app-bg'
+              )}
+            >
+              <Play className="w-3 h-3" />
+              Scripts
+            </button>
+          </div>
         </div>
         <Button
           variant="ghost"
@@ -689,41 +761,137 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar min-h-0">
-        {taskMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center mt-10">
-            <div className="w-16 h-16 bg-app-accent/10 rounded-full flex items-center justify-center mb-4 shadow-[0_0_20px_var(--app-accent-glow)]">
-              <MessageSquare className="w-7 h-7 text-app-accent opacity-60" />
-            </div>
-            <p className="text-sm font-medium text-app-text mb-1">
-              {task.status === 'review' ? 'Request Revisions' : 'Start a conversation'}
-            </p>
-            <p className="text-xs text-app-text-muted/70 max-w-[220px] leading-relaxed">
-              {task.status === 'review' 
-                ? 'Tell the AI what to change — it will directly modify the code'
-                : `AI is ready to help you implement "${task.title}"`}
-            </p>
-            <p className="text-xs text-app-accent/70 mt-2">
-              Type @ to reference files
-            </p>
+      {activeTab === 'chat' ? (
+        <>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar min-h-0">
+            {taskMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center mt-10">
+                <div className="w-16 h-16 bg-app-accent/10 rounded-full flex items-center justify-center mb-4 shadow-[0_0_20px_var(--app-accent-glow)]">
+                  <MessageSquare className="w-7 h-7 text-app-accent opacity-60" />
+                </div>
+                <p className="text-sm font-medium text-app-text mb-1">
+                  {task.status === 'review' ? 'Request Revisions' : 'Start a conversation'}
+                </p>
+                <p className="text-xs text-app-text-muted/70 max-w-[220px] leading-relaxed">
+                  {task.status === 'review' 
+                    ? 'Tell the AI what to change — it will directly modify the code'
+                    : `AI is ready to help you implement "${task.title}"`}
+                </p>
+                <p className="text-xs text-app-accent/70 mt-2">
+                  Type @ to reference files
+                </p>
+              </div>
+            ) : (
+              taskMessages.map((msg, idx) => (
+                <MessageItem key={msg.id || idx} msg={msg} currentStreamingId={currentStreamingId ?? undefined} />
+              ))
+            )}
+            
+            {/* Structured Streaming Output */}
+            {(isTaskStreaming || streamingContent || streamingThinking) && (
+              <div className="flex flex-col gap-3 items-start">
+                {/* Thinking Block */}
+                {streamingThinking && (
+                  <ThinkingBlock 
+                    content={streamingThinking} 
+                    isStreaming={isTaskStreaming && !streamingContent}
+                    className="max-w-[90%]"
+                  />
+                )}
+                
+                {/* Tool Calls */}
+                {streamingTools.length > 0 && (
+                  <ToolCallGroup 
+                    tools={streamingTools}
+                    isStreaming={isTaskStreaming}
+                    className="max-w-[90%] w-full"
+                  />
+                )}
+                
+                {/* Streaming Content */}
+                {streamingContent && (
+                  <div className="px-4 py-3 max-w-[90%] rounded-2xl bg-app-bg/50 border border-app-border text-app-text rounded-tl-sm">
+                    <div className="text-[13px] leading-relaxed">
+                      <MarkdownContent content={streamingContent} />
+                      {isTaskStreaming && (
+                        <span className="inline-flex mt-1">
+                          <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-1" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-app-accent rounded-full animate-bounce ml-1" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Usage Stats */}
+                {streamingUsage && !isTaskStreaming && (
+                  <UsageStats 
+                    inputTokens={streamingUsage.input}
+                    outputTokens={streamingUsage.output}
+                    cacheTokens={streamingUsage.cache}
+                    className="max-w-[90%]"
+                  />
+                )}
+              </div>
+            )}
+            
+            <div ref={messagesEndRef} className="h-2" />
           </div>
-        ) : (
-          taskMessages.map((msg, idx) => (
-            <MessageItem key={msg.id || idx} msg={msg} currentStreamingId={currentStreamingId ?? undefined} />
-          ))
-        )}
-        <div ref={messagesEndRef} className="h-2" />
-      </div>
 
-      <ChatInput 
-        onSend={handleSend}
-        isStreaming={isTaskStreaming}
-        hasEngine={!!activeEngine}
-        placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
-        hasApiKey={hasApiKey}
-        files={files}
-        onFetchFiles={fetchFiles}
-      />
+          <ChatInput 
+            onSend={handleSend}
+            isStreaming={isTaskStreaming}
+            hasEngine={!!activeEngine}
+            placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
+            hasApiKey={hasApiKey}
+            files={files}
+            onFetchFiles={fetchFiles}
+          />
+        </>
+      ) : activeTab === 'terminal' ? (
+        <div className="flex-1 min-h-0 p-3 bg-[#1a1a1a]">
+          {/* Use task worktree if available, otherwise fallback to workspace */}
+          {(task.worktree_path || activeWorkspace?.folder_path) ? (
+            <TerminalComponent 
+              sessionId={`task-${task.id}`}
+              cwd={task.worktree_path || activeWorkspace!.folder_path}
+              visible={true}
+              className="h-full"
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-app-text-muted">
+              No workspace selected
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 p-4">
+          {/* Use task worktree if available, otherwise fallback to workspace */}
+          {(task.worktree_path || activeWorkspace?.folder_path) ? (
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-medium text-app-text">Run Scripts</h4>
+                  {/* Show which directory scripts will run in */}
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-app-accent/10 text-app-accent font-mono">
+                    {task.worktree_path ? '🌿 Worktree' : '📁 Workspace'}
+                  </span>
+                </div>
+                <span className="text-xs text-app-text-muted">Run tests, lint, build, etc.</span>
+              </div>
+              <ScriptRunner
+                taskId={task.id}
+                workspacePath={task.worktree_path || activeWorkspace!.folder_path}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-app-text-muted">
+              No workspace selected
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

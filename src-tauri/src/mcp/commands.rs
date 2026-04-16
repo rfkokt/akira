@@ -17,8 +17,14 @@ pub async fn mcp_add_server(
     let conn = &*db;
 
     // Validate server name (no spaces, alphanumeric + dash/underscore/dot/slash/@)
-    if !request.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' || c == '@') {
-        return Err("Server name must not contain spaces or special characters except -_./@".to_string());
+    if !request
+        .name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' || c == '@')
+    {
+        return Err(
+            "Server name must not contain spaces or special characters except -_./@".to_string(),
+        );
     }
 
     // Check if server with same name already exists in workspace
@@ -26,7 +32,10 @@ pub async fn mcp_add_server(
         .map_err(|e| e.to_string())?
         .is_some()
     {
-        return Err(format!("Server '{}' already exists in this workspace", request.name));
+        return Err(format!(
+            "Server '{}' already exists in this workspace",
+            request.name
+        ));
     }
 
     // Generate server ID
@@ -34,7 +43,11 @@ pub async fn mcp_add_server(
 
     // Serialize transport config
     let transport_json = match &request.transport {
-        McpTransport::Stdio { ref command, ref args, ref env } => {
+        McpTransport::Stdio {
+            ref command,
+            ref args,
+            ref env,
+        } => {
             serde_json::json!({
                 "type": "stdio",
                 "command": command,
@@ -42,14 +55,20 @@ pub async fn mcp_add_server(
                 "env": env,
             })
         }
-        McpTransport::Sse { ref url, ref headers } => {
+        McpTransport::Sse {
+            ref url,
+            ref headers,
+        } => {
             serde_json::json!({
                 "type": "sse",
                 "url": url,
                 "headers": headers,
             })
         }
-        McpTransport::Http { ref url, ref headers } => {
+        McpTransport::Http {
+            ref url,
+            ref headers,
+        } => {
             serde_json::json!({
                 "type": "http",
                 "url": url,
@@ -76,7 +95,11 @@ pub async fn mcp_add_server(
             });
             (Some("bearer".to_string()), Some(auth_json.to_string()))
         }
-        Some(McpAuth::OAuth { client_id, client_secret, token_url }) => {
+        Some(McpAuth::OAuth {
+            client_id,
+            client_secret,
+            token_url,
+        }) => {
             let auth_json = serde_json::json!({
                 "type": "oauth",
                 "client_id": client_id,
@@ -98,7 +121,8 @@ pub async fn mcp_add_server(
             McpTransport::Stdio { .. } => "stdio",
             McpTransport::Sse { .. } => "sse",
             McpTransport::Http { .. } => "http",
-        }.to_string(),
+        }
+        .to_string(),
         config_json: transport_json.to_string(),
         auth_type,
         auth_config: auth_json,
@@ -130,11 +154,13 @@ pub async fn mcp_list_servers(
     let mut dtos = Vec::new();
     for server in servers {
         // Get runtime state
-        let runtime = mcp_queries::get_runtime_state(conn, &server.id).map_err(|e| e.to_string())?;
+        let runtime =
+            mcp_queries::get_runtime_state(conn, &server.id).map_err(|e| e.to_string())?;
 
         let (status, error, tools) = match runtime {
             Some(rt) => {
-                let tools = rt.tools_json
+                let tools = rt
+                    .tools_json
                     .and_then(|json| serde_json::from_str::<Vec<McpTool>>(&json).ok())
                     .unwrap_or_default();
                 (rt.status, rt.last_error, tools)
@@ -162,10 +188,7 @@ pub async fn mcp_list_servers(
 
 /// Get a single MCP server by ID
 #[tauri::command]
-pub async fn mcp_get_server(
-    app: AppHandle,
-    server_id: String,
-) -> Result<McpServerDto, String> {
+pub async fn mcp_get_server(app: AppHandle, server_id: String) -> Result<McpServerDto, String> {
     let state = app.state::<crate::AppState>();
     let db = state.db.lock().unwrap();
     let conn = &*db;
@@ -178,7 +201,8 @@ pub async fn mcp_get_server(
 
     let (status, error, tools) = match runtime {
         Some(rt) => {
-            let tools = rt.tools_json
+            let tools = rt
+                .tools_json
                 .and_then(|json| serde_json::from_str::<Vec<McpTool>>(&json).ok())
                 .unwrap_or_default();
             (rt.status, rt.last_error, tools)
@@ -227,7 +251,11 @@ pub async fn mcp_update_server(
 
     if let Some(transport) = request.transport {
         let transport_json = match transport {
-            McpTransport::Stdio { ref command, ref args, ref env } => {
+            McpTransport::Stdio {
+                ref command,
+                ref args,
+                ref env,
+            } => {
                 serde_json::json!({
                     "type": "stdio",
                     "command": command,
@@ -235,14 +263,20 @@ pub async fn mcp_update_server(
                     "env": env,
                 })
             }
-            McpTransport::Sse { ref url, ref headers } => {
+            McpTransport::Sse {
+                ref url,
+                ref headers,
+            } => {
                 serde_json::json!({
                     "type": "sse",
                     "url": url,
                     "headers": headers,
                 })
             }
-            McpTransport::Http { ref url, ref headers } => {
+            McpTransport::Http {
+                ref url,
+                ref headers,
+            } => {
                 serde_json::json!({
                     "type": "http",
                     "url": url,
@@ -279,7 +313,11 @@ pub async fn mcp_update_server(
                 });
                 (Some("bearer".to_string()), Some(auth_json.to_string()))
             }
-            McpAuth::OAuth { client_id, client_secret, token_url } => {
+            McpAuth::OAuth {
+                client_id,
+                client_secret,
+                token_url,
+            } => {
                 let auth_json = serde_json::json!({
                     "type": "oauth",
                     "client_id": client_id,
@@ -307,10 +345,7 @@ pub async fn mcp_update_server(
 
 /// Delete an MCP server
 #[tauri::command]
-pub async fn mcp_delete_server(
-    app: AppHandle,
-    server_id: String,
-) -> Result<(), String> {
+pub async fn mcp_delete_server(app: AppHandle, server_id: String) -> Result<(), String> {
     let state = app.state::<crate::AppState>();
     let db = state.db.lock().unwrap();
     let conn = &*db;
@@ -322,13 +357,11 @@ pub async fn mcp_delete_server(
 
 /// Connect to an MCP server
 #[tauri::command]
-pub async fn mcp_connect_server(
-    app: AppHandle,
-    server_id: String,
-) -> Result<Vec<McpTool>, String> {
+pub async fn mcp_connect_server(app: AppHandle, server_id: String) -> Result<Vec<McpTool>, String> {
     let state = app.state::<crate::AppState>();
-    
-    state.mcp_manager
+
+    state
+        .mcp_manager
         .connect_server(&server_id)
         .await
         .map_err(|e| e.to_string())
@@ -336,13 +369,11 @@ pub async fn mcp_connect_server(
 
 /// Disconnect from an MCP server
 #[tauri::command]
-pub async fn mcp_disconnect_server(
-    app: AppHandle,
-    server_id: String,
-) -> Result<(), String> {
+pub async fn mcp_disconnect_server(app: AppHandle, server_id: String) -> Result<(), String> {
     let state = app.state::<crate::AppState>();
-    
-    state.mcp_manager
+
+    state
+        .mcp_manager
         .disconnect_server(&server_id)
         .await
         .map_err(|e| e.to_string())
@@ -357,47 +388,56 @@ pub async fn mcp_test_connection(
 ) -> Result<serde_json::Value, String> {
     // Serialize transport config
     let (transport_type, config) = match transport {
-        McpTransport::Stdio { ref command, ref args, ref env } => {
-            ("stdio", serde_json::json!({
+        McpTransport::Stdio {
+            ref command,
+            ref args,
+            ref env,
+        } => (
+            "stdio",
+            serde_json::json!({
                 "type": "stdio",
                 "command": command,
                 "args": args,
                 "env": env,
-            }))
-        }
-        McpTransport::Sse { ref url, ref headers } => {
-            ("sse", serde_json::json!({
+            }),
+        ),
+        McpTransport::Sse {
+            ref url,
+            ref headers,
+        } => (
+            "sse",
+            serde_json::json!({
                 "type": "sse",
                 "url": url,
                 "headers": headers,
-            }))
-        }
-        McpTransport::Http { ref url, ref headers } => {
-            ("http", serde_json::json!({
+            }),
+        ),
+        McpTransport::Http {
+            ref url,
+            ref headers,
+        } => (
+            "http",
+            serde_json::json!({
                 "type": "http",
                 "url": url,
                 "headers": headers,
-            }))
-        }
+            }),
+        ),
     };
 
     // Try to create transport
     match transport::create_transport(transport_type, &config) {
-        Ok(_) => {
-            Ok(serde_json::json!({
-                "success": true,
-                "message": "Transport configuration is valid",
-                "transport_type": transport_type,
-                "note": "Full protocol connection not tested - only transport validation"
-            }))
-        }
-        Err(e) => {
-            Ok(serde_json::json!({
-                "success": false,
-                "message": format!("Failed to create transport: {}", e),
-                "transport_type": transport_type,
-            }))
-        }
+        Ok(_) => Ok(serde_json::json!({
+            "success": true,
+            "message": "Transport configuration is valid",
+            "transport_type": transport_type,
+            "note": "Full protocol connection not tested - only transport validation"
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "success": false,
+            "message": format!("Failed to create transport: {}", e),
+            "transport_type": transport_type,
+        })),
     }
 }
 
@@ -408,8 +448,9 @@ pub async fn mcp_call_tool(
     request: CallToolRequest,
 ) -> Result<ToolCallResult, String> {
     let state = app.state::<crate::AppState>();
-    
-    state.mcp_manager
+
+    state
+        .mcp_manager
         .call_tool(&request.server_id, &request.tool_name, request.arguments)
         .await
         .map_err(|e| e.to_string())
@@ -422,8 +463,9 @@ pub async fn mcp_read_resource(
     request: ReadResourceRequest,
 ) -> Result<ResourceContent, String> {
     let state = app.state::<crate::AppState>();
-    
-    state.mcp_manager
+
+    state
+        .mcp_manager
         .read_resource(&request.server_id, &request.uri)
         .await
         .map_err(|e| e.to_string())
@@ -440,15 +482,12 @@ pub async fn mcp_get_tool_calls(
     let db = state.db.lock().unwrap();
     let conn = &*db;
 
-    mcp_queries::get_recent_tool_calls(conn, &server_id, limit)
-        .map_err(|e| e.to_string())
+    mcp_queries::get_recent_tool_calls(conn, &server_id, limit).map_err(|e| e.to_string())
 }
 
 /// Clear runtime state for all servers (app shutdown cleanup)
 #[tauri::command]
-pub async fn mcp_clear_all_runtime(
-    app: AppHandle,
-) -> Result<(), String> {
+pub async fn mcp_clear_all_runtime(app: AppHandle) -> Result<(), String> {
     let state = app.state::<crate::AppState>();
     let db = state.db.lock().unwrap();
     let conn = &*db;

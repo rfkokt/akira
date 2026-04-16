@@ -36,17 +36,29 @@ interface ShellResult {
 
 // ─── Git Command Runner ─────────────────────────────────────────────────
 
-export async function runGit(args: string[], cwd: string): Promise<ShellResult> {
-  const raw = await invoke<{ success: boolean; stdout: string; stderr: string; exit_code: number }>(
-    'run_shell_command', { command: 'git', args, cwd }
-  );
-  return {
-    success: raw.success,
-    stdout: raw.stdout,
-    stderr: raw.stderr,
-    // 'output' was previously used throughout git.ts — mirror stdout for compat
-    output: raw.stdout,
-  };
+export async function runGit(args: string[], cwd: string, allowFail = false): Promise<ShellResult> {
+  try {
+    const raw = await invoke<{ success: boolean; stdout: string; stderr: string; exit_code: number }>(
+      'run_shell_command', { command: 'git', args, cwd }
+    );
+    return {
+      success: raw.success,
+      stdout: raw.stdout,
+      stderr: raw.stderr,
+      // 'output' was previously used throughout git.ts — mirror stdout for compat
+      output: raw.stdout,
+    };
+  } catch (error) {
+    if (allowFail) {
+      return {
+        success: false,
+        stdout: '',
+        stderr: String(error),
+        output: '',
+      };
+    }
+    throw error;
+  }
 }
 
 // ─── Remote Helpers ─────────────────────────────────────────────────────
@@ -180,22 +192,85 @@ export interface AutoCreatePROptions {
   baseBranch?: string; // Optional base branch to create PR from (for revisions after merge)
 }
 
+// Global flag to track if PR creation should be cancelled
+let cancelPRCreation = false;
+
+export function cancelAutoCreatePR() {
+  cancelPRCreation = true;
+}
+
+export function resetPRCreationCancel() {
+  cancelPRCreation = false;
+}
+
+// Helper to check if cancelled
+function checkCancelled(): boolean {
+  if (cancelPRCreation) {
+    console.log('[git] PR creation was cancelled');
+    return true;
+  }
+  return false;
+}
+
+// Wrapper for git commands with timeout
+async function runGitWithTimeout(
+  args: string[], 
+  cwd: string, 
+  timeoutMs: number = 30000,
+  operationName: string = 'git command'
+): Promise<ShellResult> {
+  console.log(`[git] Starting: ${operationName} (${args.join(' ')})`);
+  
+  const startTime = Date.now();
+  
+  try {
+    const result = await Promise.race([
+      runGit(args, cwd),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ]);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[git] Completed: ${operationName} in ${duration}ms`);
+    
+    return result;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[git] Failed: ${operationName} after ${duration}ms:`, error);
+    throw error;
+  }
+}
+
 export async function autoCreatePR(
   taskId: string,
   taskTitle: string,
   cwd: string,
   options?: AutoCreatePROptions,
+  onProgress?: (stage: string, message: string) => void,
 ): Promise<PRResult | null> {
+  // Reset cancel flag at start
+  resetPRCreationCancel();
+  
   try {
+    onProgress?.('init', 'Preparing branch name...');
+    
     const shortId = taskId.slice(0, 8);
     const slugifiedTitle = slugify(taskTitle);
     
+    if (checkCancelled()) return null;
+    
     // Check if this is a revision (task already has a PR branch)
-    // If so, append revision number to branch name
-    const existingBranchCheck = await runGit(['branch', '--list', `task/${slugifiedTitle}-${shortId}*`], cwd);
+    onProgress?.('checking', 'Checking existing branches...');
+    const existingBranchCheck = await runGitWithTimeout(
+      ['branch', '--list', `task/${slugifiedTitle}-${shortId}*`], 
+      cwd, 
+      10000,
+      'check existing branches'
+    );
+    
     let revision = 0;
     if (existingBranchCheck.success && existingBranchCheck.output.trim()) {
-      // Count existing branches for this task
       const existingBranches = existingBranchCheck.output.trim().split('\n').filter(b => b.trim());
       revision = existingBranches.length;
     }
@@ -204,48 +279,68 @@ export async function autoCreatePR(
       ? `task/${slugifiedTitle}-${shortId}-v${revision + 1}`
       : `task/${slugifiedTitle}-${shortId}`;
 
+    if (checkCancelled()) return null;
+
     // Ensure git is initialized for greenfield projects
-    const statusRes = await runGit(['status'], cwd);
+    onProgress?.('checking', 'Checking git repository...');
+    const statusRes = await runGitWithTimeout(['status'], cwd, 10000, 'check git status');
+    
     if (!statusRes.success) {
       console.log('[git] Repository not initialized. Auto-initializing...');
-      await runGit(['init', '-b', 'main'], cwd);
-      await runGit(['commit', '--allow-empty', '-m', 'Initial commit'], cwd);
+      onProgress?.('init', 'Initializing git repository...');
+      await runGitWithTimeout(['init', '-b', 'main'], cwd, 15000, 'git init');
+      await runGitWithTimeout(['commit', '--allow-empty', '-m', 'Initial commit'], cwd, 15000, 'initial commit');
     }
 
+    if (checkCancelled()) return null;
+
     // Get current branch or use specified base branch
+    onProgress?.('branch', 'Setting up base branch...');
     let currentBranchName: string;
+    
     if (options?.baseBranch) {
-      // Use specified base branch (e.g., for revisions after merge)
       currentBranchName = options.baseBranch;
-      // Checkout to base branch first
-      await runGit(['checkout', currentBranchName], cwd);
+      await runGitWithTimeout(['checkout', currentBranchName], cwd, 15000, 'checkout base branch');
     } else {
-      const currentBranch = await runGit(['branch', '--show-current'], cwd);
+      const currentBranch = await runGitWithTimeout(['branch', '--show-current'], cwd, 10000, 'get current branch');
       currentBranchName = currentBranch.success ? currentBranch.output.trim() : 'main';
     }
 
+    if (checkCancelled()) return null;
+
     // Create feature branch
-    await runGit(['checkout', '-b', branchName], cwd);
+    onProgress?.('branch', `Creating branch: ${branchName}...`);
+    await runGitWithTimeout(['checkout', '-b', branchName], cwd, 15000, 'create feature branch');
+
+    if (checkCancelled()) return null;
 
     // Stage all changes
-    const addResult = await runGit(['add', '.'], cwd);
+    onProgress?.('commit', 'Staging changes...');
+    const addResult = await runGitWithTimeout(['add', '.'], cwd, 20000, 'stage changes');
+    
     if (!addResult.success) {
       console.error('[git] git add failed:', addResult.output);
+      onProgress?.('error', 'Failed to stage changes');
       await runGit(['checkout', currentBranchName], cwd);
       await runGit(['branch', '-d', branchName], cwd);
       return null;
     }
 
+    if (checkCancelled()) return null;
+
     // Check if there are staged changes
-    const stagedCheck = await runGit(['diff', '--cached', '--quiet'], cwd);
-    const hasStagedChanges = !stagedCheck.success; // --quiet exits 1 if there are changes
+    const stagedCheck = await runGitWithTimeout(['diff', '--cached', '--quiet'], cwd, 10000, 'check staged changes');
+    const hasStagedChanges = !stagedCheck.success;
     
     if (!hasStagedChanges) {
       console.log('[git] No staged changes detected. Creating empty commit...');
     }
 
+    if (checkCancelled()) return null;
+
     // Get the cached diff for AI commit generation
-    const diffResult = await runGit(['diff', '--cached'], cwd);
+    onProgress?.('commit', 'Generating commit message...');
+    const diffResult = await runGitWithTimeout(['diff', '--cached'], cwd, 15000, 'get diff');
     const diff = diffResult.success ? diffResult.output : '';
     
     // Generate commit message dynamically using Groq AI
@@ -255,41 +350,61 @@ export async function autoCreatePR(
       ? await generateCommitMessage({ diff, groqApiKey, language: 'en' })
       : `feat: ${taskTitle}`;
 
-    // Commit (with --allow-empty if no changes)
+    if (checkCancelled()) return null;
+
+    // Commit
+    onProgress?.('commit', 'Committing changes...');
     const commitArgs = hasStagedChanges 
       ? ['commit', '-m', commitMsg]
       : ['commit', '--allow-empty', '-m', commitMsg];
-    const commitResult = await runGit(commitArgs, cwd);
+    
+    const commitResult = await runGitWithTimeout(commitArgs, cwd, 20000, 'commit changes');
     
     if (!commitResult.success) {
       console.error('[git] git commit failed:', commitResult.output);
+      onProgress?.('error', 'Failed to commit');
       await runGit(['checkout', currentBranchName], cwd);
       await runGit(['branch', '-d', branchName], cwd);
       return null;
     }
 
+    if (checkCancelled()) return null;
+
     // Get remote name
-    const remoteResult = await runGit(['remote'], cwd);
+    onProgress?.('push', 'Preparing to push...');
+    const remoteResult = await runGitWithTimeout(['remote'], cwd, 10000, 'get remote');
     const remoteName = remoteResult.success ? remoteResult.output.trim().split('\n')[0] : 'origin';
 
-    const pushResult = await runGit(['push', '-u', remoteName, branchName], cwd);
+    if (checkCancelled()) return null;
+
+    // Push branch
+    onProgress?.('push', `Pushing to ${remoteName}...`);
+    const pushResult = await runGitWithTimeout(['push', '-u', remoteName, branchName], cwd, 60000, 'push branch');
+    
     if (!pushResult.success) {
       console.error('[git] git push failed:', pushResult.output);
+      onProgress?.('error', 'Push failed');
       return { branch: branchName, baseBranch: currentBranchName, error: `Push failed: ${pushResult.output}` };
     }
 
-    // Build PR URL — try auto-create via API if token is configured
+    if (checkCancelled()) return null;
+
+    // Build PR URL
+    onProgress?.('pr', 'Creating pull request...');
     let prUrl: string | undefined;
-    const remoteUrlResult = await runGit(['remote', 'get-url', remoteName], cwd);
+    
+    const remoteUrlResult = await runGitWithTimeout(['remote', 'get-url', remoteName], cwd, 10000, 'get remote URL');
+    
     if (remoteUrlResult.success) {
       const remoteInfo = detectGitPlatform(remoteUrlResult.output.trim());
       if (remoteInfo) {
         const gitToken = useConfigStore.getState().config?.git_token;
 
         if (gitToken && remoteInfo.platform !== 'unknown') {
-          // Auto-create PR via platform API
           try {
             const taskDescription = `Auto-generated PR by Akira AI\n\nBranch: \`${branchName}\`\n\nTask: ${taskTitle}`;
+            
+            onProgress?.('pr', 'Creating PR via API...');
             const created = await invoke<{ pr_url: string; pr_number: number | null }>('create_pull_request', {
               token: gitToken,
               platform: remoteInfo.platform,
@@ -303,21 +418,26 @@ export async function autoCreatePR(
               baseBranch: currentBranchName,
               body: taskDescription,
             });
+            
             prUrl = created.pr_url;
             console.log(`[git] PR auto-created: ${prUrl}`);
+            onProgress?.('complete', 'Pull request created!');
           } catch (apiErr) {
             console.warn('[git] Auto-create PR failed, falling back to compare URL:', apiErr);
+            onProgress?.('pr', 'Using compare URL...');
             prUrl = buildPRUrl(remoteInfo, currentBranchName, branchName);
           }
         } else {
-          // No token → generate compare URL for user to open manually
           prUrl = buildPRUrl(remoteInfo, currentBranchName, branchName);
           console.log(`[git] Detected platform: ${remoteInfo.platform} → compare URL generated (no API token)`);
         }
       }
     }
 
+    if (checkCancelled()) return null;
+
     // Save PR info to database
+    onProgress?.('save', 'Saving PR information...');
     try {
       await invoke('update_task_pr_info', {
         id: taskId,
@@ -347,7 +467,44 @@ export async function getGitBranches(cwd: string): Promise<string[]> {
     .filter(b => b && b.length > 0);
 }
 
+// Cache untuk tags agar tidak fetch berulang kali
+let cachedTags: Map<string, { tag: string | null; timestamp: number }> = new Map();
+const TAG_CACHE_TTL = 30000; // 30 detik
+
 export async function getLatestAlphaTag(cwd: string, targetBranch?: string): Promise<string | null> {
+  const cacheKey = `${cwd}:${targetBranch || 'all'}`;
+  const cached = cachedTags.get(cacheKey);
+  
+  // Return cached result kalau masih fresh
+  if (cached && Date.now() - cached.timestamp < TAG_CACHE_TTL) {
+    console.log('[git] Using cached tags');
+    return cached.tag;
+  }
+  
+  // Get local tags first (fast)
+  const localTags = await getLocalAlphaTags(cwd, targetBranch);
+  
+  // Try to fetch remote tags in background (don't wait)
+  const remoteResult = await runGit(['remote'], cwd);
+  const remoteName = remoteResult.success ? remoteResult.output.trim().split('\n')[0] : 'origin';
+  
+  // Fetch tags dengan timeout 3 detik
+  const fetchPromise = runGit(['fetch', remoteName, '--tags'], cwd, true);
+  const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 3000));
+  
+  Promise.race([fetchPromise, timeoutPromise]).then(() => {
+    // Update cache setelah fetch selesai
+    getLocalAlphaTags(cwd, targetBranch).then(updatedTags => {
+      cachedTags.set(cacheKey, { tag: updatedTags, timestamp: Date.now() });
+    });
+  });
+  
+  // Cache dan return local tags dulu
+  cachedTags.set(cacheKey, { tag: localTags, timestamp: Date.now() });
+  return localTags;
+}
+
+async function getLocalAlphaTags(cwd: string, targetBranch?: string): Promise<string | null> {
   const args = ['tag', '-l', 'alpha.*'];
   if (targetBranch) {
     args.push('--merged');

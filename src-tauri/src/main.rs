@@ -11,9 +11,12 @@ mod pty_manager;
 
 // New modules
 mod commands;
+mod mcp;
 mod models;
 mod state;
-mod mcp;
+mod streaming;
+
+use commands::script_runner::ScriptRunnerState;
 
 use cli_router_core::CliRouter;
 use pty_manager::PtyManager;
@@ -71,8 +74,10 @@ fn main() {
 
             let db_conn = Arc::new(std::sync::Mutex::new(conn));
             let mcp_manager = Arc::new(mcp::McpConnectionManager::new(db_conn.clone()));
-            
+            let script_runner_state = ScriptRunnerState::new();
+
             app.manage(AppState::new(db_conn, cli_router, pty_manager, mcp_manager));
+            app.manage(script_runner_state);
 
             Ok(())
         })
@@ -89,6 +94,9 @@ fn main() {
             commands::tasks::update_task_pr_info,
             commands::tasks::update_task_merge_info,
             commands::tasks::update_task_diff_info,
+            commands::tasks::update_task_worktree,
+            commands::tasks::get_task_by_id,
+            commands::tasks::update_task_base_branch,
             // Engines
             commands::engines::create_engine,
             commands::engines::get_all_engines,
@@ -198,6 +206,22 @@ fn main() {
             mcp::commands::mcp_read_resource,
             mcp::commands::mcp_get_tool_calls,
             mcp::commands::mcp_clear_all_runtime,
+            // Script Runner
+            commands::script_runner::run_script_streaming,
+            commands::script_runner::stop_script,
+            // Worktree
+            commands::worktree::get_app_data_dir,
+            commands::worktree::get_default_base_branch,
+            commands::worktree::get_available_base_branches,
+            commands::worktree::create_task_worktree,
+            commands::worktree::remove_task_worktree,
+            commands::worktree::get_worktree_diff,
+            commands::worktree::worktree_exists,
+            // Streaming (Structured Output)
+            commands::streaming::run_structured_agent,
+            commands::streaming::send_structured_message,
+            commands::streaming::parse_ndjson_output,
+            commands::streaming::extract_content_from_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

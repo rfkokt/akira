@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal, X, File, MessageSquare } from 'lucide-react'
+import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal, X, File, MessageSquare, Plus, HelpCircle } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
 import { useMcpStore } from '@/store/mcpStore'
@@ -8,6 +8,7 @@ import { dbService } from '@/lib/db'
 import { initializeInternalServers, ensureSerenaServer, checkUvInstalled } from '@/lib/mcp'
 import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
+import { KeyboardShortcutsHelp } from '@/components/Help/KeyboardShortcutsHelp'
 import { KanbanBoard } from './components/Kanban/Board'
 import { TaskCreatorChat } from './components/Kanban/TaskCreatorChat'
 import { FileTree } from './components/Editor/FileTree'
@@ -29,6 +30,7 @@ import {
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
+import { useKeyboardShortcuts, DEFAULT_SHORTCUTS } from '@/hooks/useKeyboardShortcuts'
 
 type PageView = 'tasks' | 'files' | 'settings';
 
@@ -45,6 +47,7 @@ interface CommitDiff {
 function App() {
   const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
   const [showRecovery, setShowRecovery] = useState(false)
   const [showGlobalChat, setShowGlobalChat] = useState(true)
   const [chatWidth, setChatWidth] = useState(480)
@@ -54,6 +57,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState<PageView>('tasks')
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFileIndex, setActiveFileIndex] = useState<number | null>(null)
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set())
   const [selectedGitFile, setSelectedGitFile] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'normal' | 'diff' | 'commitDiff'>('normal')
   const [commitDiffInfo, setCommitDiffInfo] = useState<CommitDiff | null>(null)
@@ -325,6 +329,155 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [zoomIn, zoomOut, resetZoom])
 
+  // Close active tab via keyboard
+  const handleCloseActiveTab = useCallback(() => {
+    if (activeFileIndex !== null && currentPage === 'files') {
+      const file = openFiles[activeFileIndex]
+      if (file && dirtyFiles.has(file.path)) {
+        const confirmed = window.confirm(`"${file.name}" has unsaved changes. Close anyway?`)
+        if (!confirmed) return
+      }
+      const newFiles = openFiles.filter((_, i) => i !== activeFileIndex)
+      setOpenFiles(newFiles)
+      if (file) {
+        setDirtyFiles(prev => {
+          const next = new Set(prev)
+          next.delete(file.path)
+          return next
+        })
+      }
+      if (newFiles.length > 0) {
+        setActiveFileIndex(Math.min(activeFileIndex, newFiles.length - 1))
+      } else {
+        setActiveFileIndex(null)
+      }
+    }
+  }, [activeFileIndex, openFiles, dirtyFiles, currentPage])
+
+  const handleNextTab = useCallback(() => {
+    if (openFiles.length > 1 && activeFileIndex !== null && currentPage === 'files') {
+      setActiveFileIndex((activeFileIndex + 1) % openFiles.length)
+    }
+  }, [openFiles.length, activeFileIndex, currentPage])
+
+  const handlePrevTab = useCallback(() => {
+    if (openFiles.length > 1 && activeFileIndex !== null && currentPage === 'files') {
+      setActiveFileIndex((activeFileIndex - 1 + openFiles.length) % openFiles.length)
+    }
+  }, [openFiles.length, activeFileIndex, currentPage])
+
+  const handleFileDirtyChange = useCallback((filePath: string, dirty: boolean) => {
+    setDirtyFiles(prev => {
+      const next = new Set(prev)
+      if (dirty) next.add(filePath)
+      else next.delete(filePath)
+      return next
+    })
+  }, [])
+
+  // Global keyboard shortcuts
+  useKeyboardShortcuts([
+    // Navigation shortcuts
+    {
+      ...DEFAULT_SHORTCUTS.GO_TASKS,
+      callback: () => setCurrentPage('tasks'),
+    },
+    {
+      ...DEFAULT_SHORTCUTS.GO_FILES,
+      callback: () => setCurrentPage('files'),
+    },
+    {
+      ...DEFAULT_SHORTCUTS.GO_SETTINGS,
+      callback: () => setCurrentPage('settings'),
+    },
+    {
+      ...DEFAULT_SHORTCUTS.GO_TERMINAL,
+      callback: () => {
+        if (activeWorkspace) {
+          const existingSession = sessions.find(s => s.workspaceId === activeWorkspace.id)
+          if (existingSession) {
+            setActiveSession(existingSession.id)
+            setPanelOpen(!isPanelOpen)
+          } else {
+            createSession(activeWorkspace.id, activeWorkspace.name, activeWorkspace.folder_path)
+          }
+        }
+      },
+    },
+    // Action shortcuts
+    {
+      ...DEFAULT_SHORTCUTS.NEW_TASK,
+      callback: () => {
+        // Scroll to top and focus on task creator
+        window.scrollTo(0, 0)
+        // Dispatch custom event to trigger new task
+        window.dispatchEvent(new CustomEvent('akira:new-task'))
+      },
+    },
+    {
+      ...DEFAULT_SHORTCUTS.SWITCH_WORKSPACE,
+      callback: () => setShowWelcome(true),
+    },
+    {
+      ...DEFAULT_SHORTCUTS.TOGGLE_CHAT,
+      callback: () => setShowGlobalChat(!showGlobalChat),
+    },
+    {
+      ...DEFAULT_SHORTCUTS.SETTINGS,
+      callback: () => setCurrentPage('settings'),
+    },
+    // Search shortcuts
+    {
+      ...DEFAULT_SHORTCUTS.SEARCH_FILES,
+      callback: () => {
+        // Skip global Cmd+F if Monaco editor is focused (let Monaco handle it)
+        const active = document.activeElement
+        if (active && active.closest('.monaco-editor')) return
+        if (currentPage === 'files') {
+          window.dispatchEvent(new CustomEvent('akira:search-files'))
+        } else {
+          setCurrentPage('files')
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('akira:search-files'))
+          }, 100)
+        }
+      },
+    },
+    {
+      ...DEFAULT_SHORTCUTS.SEARCH_CONTENT,
+      callback: () => {
+        // Dispatch event to trigger content search
+        window.dispatchEvent(new CustomEvent('akira:search-content'))
+      },
+    },
+    // Help shortcut - press ? to show keyboard shortcuts (without modifier)
+    {
+      key: '?',
+      preventDefault: true,
+      callback: () => setShowShortcutsHelp(true),
+    },
+    // Alternative: Cmd/Ctrl + / to show help
+    {
+      key: '/',
+      metaKey: true,
+      preventDefault: true,
+      callback: () => setShowShortcutsHelp(true),
+    },
+    // Tab management shortcuts
+    {
+      ...DEFAULT_SHORTCUTS.CLOSE_TAB,
+      callback: handleCloseActiveTab,
+    },
+    {
+      ...DEFAULT_SHORTCUTS.NEXT_TAB,
+      callback: handleNextTab,
+    },
+    {
+      ...DEFAULT_SHORTCUTS.PREV_TAB,
+      callback: handlePrevTab,
+    },
+  ])
+
   useEffect(() => {
     const handleClickOutside = () => setShowEngineDropdown(false)
     if (showEngineDropdown) {
@@ -371,9 +524,22 @@ function App() {
   // Close file tab
   const handleFileClose = (index: number, e: React.MouseEvent) => {
     e.stopPropagation()
+    const file = openFiles[index]
+    if (file && dirtyFiles.has(file.path)) {
+      const confirmed = window.confirm(`"${file.name}" has unsaved changes. Close anyway?`)
+      if (!confirmed) return
+    }
     const newFiles = openFiles.filter((_, i) => i !== index)
     setOpenFiles(newFiles)
     
+    if (file) {
+      setDirtyFiles(prev => {
+        const next = new Set(prev)
+        next.delete(file.path)
+        return next
+      })
+    }
+
     if (activeFileIndex !== null) {
       if (index < activeFileIndex) {
         setActiveFileIndex(activeFileIndex - 1)
@@ -382,7 +548,7 @@ function App() {
       }
     }
   }
-  
+
   // Get active file
   const activeFile = activeFileIndex !== null && openFiles[activeFileIndex] ? openFiles[activeFileIndex].path : null
 
@@ -409,9 +575,10 @@ function App() {
                     }`}
                   >
                     <File className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="text-xs truncate max-w-[150px]" title={file.path}>
+                    <span className={`text-xs truncate max-w-[150px]${dirtyFiles.has(file.path) ? ' italic' : ''}`} title={file.path}>
                       {getFileDisplayName(file)}
                     </span>
+                    {dirtyFiles.has(file.path) && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />}
                     <button
                       onClick={(e) => handleFileClose(index, e)}
                       className="opacity-0 group-hover:opacity-100 hover:bg-white/10 rounded p-0.5 transition-opacity"
@@ -432,7 +599,7 @@ function App() {
                 workspacePath={activeWorkspace.folder_path}
               />
             ) : viewMode === 'normal' && activeFile ? (
-              <FileViewer filePath={activeFile} />
+              <FileViewer filePath={activeFile} onDirtyChange={(dirty) => handleFileDirtyChange(activeFile, dirty)} />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-neutral-500">
                 <div className="text-center">
@@ -481,6 +648,12 @@ function App() {
       {showRecovery && (
         <RecoveryModal onResume={handleResumeTask} onClose={() => setShowRecovery(false)} />
       )}
+
+      {/* Keyboard Shortcuts Help */}
+      <KeyboardShortcutsHelp 
+        isOpen={showShortcutsHelp} 
+        onClose={() => setShowShortcutsHelp(false)} 
+      />
 
       {/* Title Bar - Glassmorphism */}
       <div className="h-[38px] bg-app-titlebar backdrop-blur-md border-b border-app-border flex items-center shrink-0 relative transition-colors duration-300">
@@ -550,15 +723,16 @@ function App() {
           
           {/* Switch Workspace */}
           {activeWorkspace && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 text-xs"
-              onClick={() => setShowWelcome(true)}
-            >
-              <ArrowLeftRight className="size-3.5" />
-              <span className="hidden sm:inline">Switch</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger render={<Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => setShowWelcome(true)} />}>
+                <ArrowLeftRight className="size-3.5" />
+                <span className="hidden sm:inline">Switch</span>
+              </TooltipTrigger>
+              <TooltipContent className="flex items-center gap-2">
+                Switch Workspace
+                <kbd className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘E</kbd>
+              </TooltipContent>
+            </Tooltip>
           )}
 
           {/* Terminal */}
@@ -578,7 +752,10 @@ function App() {
               >
                 <Terminal className="size-4" />
               </TooltipTrigger>
-              <TooltipContent>Open Terminal</TooltipContent>
+              <TooltipContent className="flex items-center gap-2">
+                Toggle Terminal
+                <kbd className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘`</kbd>
+              </TooltipContent>
             </Tooltip>
           )}
 
@@ -631,14 +808,15 @@ function App() {
           <Separator orientation="vertical" className="h-4" />
 
           {/* Settings */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setCurrentPage('settings')}
-          >
-            <Settings className="size-3.5" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage('settings')} />}>
+                <Settings className="size-3.5" />
+              </TooltipTrigger>
+            <TooltipContent className="flex items-center gap-2">
+              Settings
+              <kbd className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘,</kbd>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -655,26 +833,28 @@ function App() {
         >
           {/* Navigation Sidebar (Left) */}
           <nav className="w-12 shrink-0 bg-app-sidebar flex flex-col items-center py-0 gap-0 border-r border-app-border z-10">
-            {menuItems.map((item) => {
-              const Icon = item.icon
-              const isActive = currentPage === item.id
-            
-            return (
-              <Tooltip key={item.id}>
-                <TooltipTrigger
-                  className="w-full h-12 flex items-center justify-center relative transition-none cursor-pointer group"
-                  onClick={() => setCurrentPage(item.id)}
-                >
-                  <div className={`p-2 flex items-center justify-center relative ${isActive ? 'text-white' : 'text-neutral-500 group-hover:text-white'}`}>
-                    <Icon className="w-6 h-6 stroke-[1.5px]" />
-                    {isActive && (
-                      <div className="absolute -left-3 top-0 bottom-0 w-[2px] bg-app-accent" />
-                    )}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md">
-                  {item.label}
-                </TooltipContent>
+          {menuItems.map((item, index) => {
+          const Icon = item.icon
+          const isActive = currentPage === item.id
+            const shortcutKey = index + 1
+          
+          return (
+          <Tooltip key={item.id}>
+          <TooltipTrigger
+          className="w-full h-12 flex items-center justify-center relative transition-none cursor-pointer group"
+            onClick={() => setCurrentPage(item.id)}
+          >
+          <div className={`p-2 flex items-center justify-center relative ${isActive ? 'text-white' : 'text-neutral-500 group-hover:text-white'}`}>
+          <Icon className="w-6 h-6 stroke-[1.5px]" />
+          {isActive && (
+            <div className="absolute -left-3 top-0 bottom-0 w-[2px] bg-app-accent" />
+            )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md flex items-center gap-2">
+            {item.label}
+              <kbd className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘{shortcutKey}</kbd>
+              </TooltipContent>
               </Tooltip>
             )
           })}
@@ -682,6 +862,22 @@ function App() {
           <div className="w-full flex justify-center py-2">
             <Separator className="w-6 bg-app-border" />
           </div>
+
+          {/* New Task */}
+          <Tooltip>
+            <TooltipTrigger
+              className="w-full h-12 flex items-center justify-center relative transition-none cursor-pointer group"
+              onClick={() => window.dispatchEvent(new CustomEvent('akira:new-task'))}
+            >
+              <div className="p-2 flex items-center justify-center relative text-neutral-500 group-hover:text-white">
+                <Plus className="w-6 h-6 stroke-[1.5px]" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md flex items-center gap-2">
+              New Task
+              <kbd className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘N</kbd>
+            </TooltipContent>
+          </Tooltip>
 
           {/* Global Chat Toggle */}
           <Tooltip>
@@ -696,7 +892,26 @@ function App() {
                 )}
               </div>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md">Toggle Chat Panel</TooltipContent>
+            <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md flex items-center gap-2">
+              Toggle Chat
+              <kbd className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded">⌘J</kbd>
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Help */}
+          <Tooltip>
+            <TooltipTrigger
+              className="w-full h-12 flex items-center justify-center relative transition-none cursor-pointer group"
+              onClick={() => setShowShortcutsHelp(true)}
+            >
+              <div className="p-2 flex items-center justify-center relative text-neutral-500 group-hover:text-white">
+                <HelpCircle className="w-6 h-6 stroke-[1.5px]" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="bg-app-titlebar border-app-border text-white text-xs font-semibold px-2 py-1 rounded-sm shadow-md flex items-center gap-2">
+              Keyboard Shortcuts
+              <kbd className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded">?</kbd>
+            </TooltipContent>
           </Tooltip>
 
           <div className="flex-1" />

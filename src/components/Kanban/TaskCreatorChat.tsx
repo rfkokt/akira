@@ -8,9 +8,10 @@ import { useConfigStore } from '@/store/configStore'
 import { useAnalyzeProject } from '@/hooks/useAnalyzeProject'
 import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
 import { dbService } from '@/lib/db'
-import { getProvider } from '@/lib/providers'
-import { isSmallTalk } from '@/lib/helpers'
 import { sendGroqSummary } from '@/lib/groq'
+import { runCLIWithStreaming } from '@/lib/cli'
+import { isSmallTalk } from '@/lib/helpers'
+import { getDefaultBaseBranch } from '@/lib/worktree'
 import { ImageInput, processPastedImages, type ImageAttachment } from '@/components/shared/ImageInput'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -29,6 +30,8 @@ interface ConversationSummary {
   description: string
   priority: 'high' | 'medium' | 'low'
   recommendedSkills: string[]
+  taskSpecificFiles?: string[]  // Files specifically mentioned for this task
+  taskSpecificContext?: string  // Additional context specific to this task
 }
 
 interface FileEntry {
@@ -276,45 +279,29 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
     progressEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [executionSteps])
 
+  // Sync isStreaming with store — reset when streaming completes externally
+  useEffect(() => {
+    if (isStreaming && !currentStreamingId) {
+      // Streaming message was cleared in the store (e.g., CLI completed or errored)
+      // but our local state is still true — force reset
+      const timer = setTimeout(() => {
+        setIsStreaming(false)
+      }, 2000) // Small delay to let the message fully flush
+      return () => clearTimeout(timer)
+    }
+  }, [currentStreamingId])
+
   useEffect(() => {
     const setupListeners = async () => {
-      const unlistenOutput = await listen<{ id: string; line: string; is_error: boolean }>('cli-output', (event) => {
-        const { id, line, is_error } = event.payload
-        if (id !== taskId && id !== taskId + '_summary' && id !== '__analyze_project_creator__') return;
-
-        const timestamp = Date.now()
-        
-        // Get fresh engine state from store
-        const currentEngine = useEngineStore.getState().activeEngine
-        console.log('[TaskCreatorChat] cli-output received:', line.substring(0, 100), '| is_error:', is_error, '| engine:', currentEngine?.alias)
-        
-        if (is_error) {
-          setExecutionSteps(prev => [...prev, {
-            type: 'error',
-            content: line,
-            timestamp
-          }])
-          return
-        }
-        
-        // Parse output using provider registry
-        const provider = getProvider(currentEngine?.alias || '')
-        const parsed = provider.parseOutputLine(line)
-        
-        if (parsed?.step) {
-          setExecutionSteps(prev => [...prev, {
-            type: parsed.step!.type,
-            content: parsed.step!.content,
-            timestamp
-          }])
-        }
-      })
-
       const unlistenComplete = await listen<{ id: string; success: boolean; error_message?: string }>('cli-complete', (event) => {
         const { id, success, error_message } = event.payload
         if (id !== taskId && id !== taskId + '_summary' && id !== '__analyze_project_creator__') return;
 
         console.log('[TaskCreatorChat] cli-complete received, success:', success)
+        // Safety net: ensure isStreaming is reset when CLI completes
+        if (id === taskId) {
+          setIsStreaming(false)
+        }
         setExecutionSteps(prev => [...prev, {
           type: success ? 'complete' : 'error',
           content: success ? 'Completed' : (error_message || 'Failed'),
@@ -322,7 +309,7 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
         }])
       })
 
-      unlistenFns.current = [unlistenOutput, unlistenComplete]
+      unlistenFns.current = [unlistenComplete]
       console.log('[TaskCreatorChat] Listeners set up for', taskId)
     }
 
@@ -408,6 +395,19 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
   useEffect(() => {
     loadChatHistory()
   }, [loadChatHistory])
+
+  // Listen for 'akira:new-task' event from keyboard shortcut
+  useEffect(() => {
+    const handleNewTaskEvent = () => {
+      // Focus the textarea
+      textareaRef.current?.focus()
+      // Scroll to bottom to show the chat input
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
+    window.addEventListener('akira:new-task', handleNewTaskEvent)
+    return () => window.removeEventListener('akira:new-task', handleNewTaskEvent)
+  }, [])
 
   // Auto-resize textarea based on content
   useEffect(() => {
@@ -510,7 +510,18 @@ export function TaskCreatorChat({ onHide }: TaskCreatorChatProps) {
       }
     }
     
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Support both Cmd+Enter (Mac) and Ctrl+Enter (Windows/Linux)
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      if (e.shiftKey) {
+        // Cmd/Ctrl+Shift+Enter: Submit and start immediately
+        handleSendAndStart()
+      } else {
+        // Cmd/Ctrl+Enter: Just submit
+        handleSend()
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      // Plain Enter: Submit (existing behavior)
       e.preventDefault()
       handleSend()
     }
@@ -632,62 +643,33 @@ const userMsg = message
         internalPrompt = `[CONTEXT AWARE ASSISTANT]
 ${historyMsg ? 'Recent History:\n' + historyMsg + '\n\n' : ''}Briefly answer: ${finalMessage}`;
       } else if (yoloMode) {
-        // YOLO Mode: Direct execution with clear instructions
-        internalPrompt = `[ROLE: AI Coding Assistant - Direct Execution Mode]
+        // YOLO Mode: Direct execution with full tool access
+        const rtkInstruction = `
+[TOKEN SAVING] Prefix heavy commands with 'rtk' (git, lint, test, build, search, system).`;
 
-Your job: IMMEDIATELY implement the user's request by writing/modifying code.
+        internalPrompt = `${projectRules ? projectRules + '\n\n' : ''}You are an AI coding assistant. Execute changes DIRECTLY.
 
-USER REQUEST: ${finalMessage}
+${rtkInstruction}
 
-${historyMsg ? `CONVERSATION HISTORY:\n${historyMsg}\n\n` : ''}
-${projectRules ? `PROJECT RULES:\n${projectRules}\n\n` : ''}
-[EXECUTION GUIDELINES]
-1. Analyze the request quickly
-2. Identify files to modify/create using @filepath format
-3. IMPLEMENT the changes immediately - don't ask for confirmation
-4. Show the code you're writing with clear comments
-5. If you encounter errors, fix them proactively
-6. Use rtk prefix for terminal commands (rtk git, rtk test, etc.)
+User request: ${finalMessage}
 
-[OUTPUT FORMAT]
-- State what you're doing: "Creating @src/components/NewComponent.tsx..."
-- Show the code implementation
-- Verify it works or note any issues
-
-Start implementing now.`;
+${historyMsg ? 'History:\n' + historyMsg + '\n\n' : ''}
+IMPORTANT: Use rtk for all terminal commands. Be concise.`;
       } else {
         // Planning Mode
-        internalPrompt = `[ROLE: System Architect & Planner - READ-ONLY MODE]
+        internalPrompt = `[PLANNING ASSISTANT] You are an AI acting as a System Architect & Planner.
+YOUR ONLY JOB IS TO EXPLORE AND PLAN. DO NOT MODIFY ANY FILES.
+Use your tools to read code, search directories, and understand the project structure.
+Help the user break down their ideas into actionable tasks for the Kanban board.
+For each task plan, identify:
+1. Exact files that will need to be created or modified.
+2. What existing components/patterns should be followed.
+3. Which MCP servers or built-in Skills would be required to execute the task later.
 
-Your job: EXPLORE, ANALYZE, and CREATE A PLAN. DO NOT write any files.
-
-USER REQUEST: ${finalMessage}
-
-${historyMsg ? `CONVERSATION HISTORY:\n${historyMsg}\n\n` : ''}
-${projectRules ? `PROJECT CONTEXT:\n${projectRules}\n\n` : ''}
-[PLANNING PROCESS]
-1. EXPLORE: Read relevant files to understand current state
-2. ANALYZE: Identify what needs to change and why
-3. PLAN: Break down into specific, actionable steps
-
-[OUTPUT FORMAT - STRUCTURED PLAN]
-For each task you identify, provide:
-
-**Task: [Clear Title]**
-- Files to modify: @filepath1, @filepath2
-- Files to create: @newfilepath
-- Changes needed: [Specific description]
-- Estimated complexity: [Low/Medium/High]
-- Dependencies: [Any prerequisites]
-
-[PLANNING GUIDELINES]
-- Use @filepath format for all file references
-- Reference existing patterns from the codebase
-- Suggest which skills/tools would help execute this
-- Consider edge cases and potential issues
-- Estimate effort for each task
-
-Create a comprehensive plan now.`;
+${projectRules ? '\nProject Context:\n' + projectRules + '\n' : ''}
+${historyMsg ? '\nHistory:\n' + historyMsg + '\n' : ''}
+User: ${finalMessage}
+Assistant:`;
       }
 
 // Inject Dynamic MCP tools for non-small talk queries
@@ -717,38 +699,177 @@ Create a comprehensive plan now.`;
     }
   }
 
+  // Handle Cmd/Ctrl+Shift+Enter: Submit and immediately start the task
+  const handleSendAndStart = async () => {
+    // First send the message normally
+    await handleSend()
+    
+    // Then wait a bit for the AI response and create + start the task
+    // This will be handled by the useEffect that watches for conversation summaries
+    // We'll set a flag to auto-start after creation
+    localStorage.setItem('akira-auto-start-next-task', 'true')
+  }
+
   const parseSummaryResponse = (raw: string): ConversationSummary[] => {
-    // Strategy 1: Try JSON parse first
+    if (!raw || raw.trim().length < 2) {
+      console.warn('[parseSummaryResponse] Empty or too short response')
+      return []
+    }
+
+    let cleaned = raw.trim()
+    // Strip tool execution markers and results
+    cleaned = cleaned.replace(/\[TOOL_EXEC\][^\n]*(\n|$)/g, '')
+    cleaned = cleaned.replace(/\[TOOL_RES\][^\n]*(\n|$)/g, '')
+    cleaned = cleaned.replace(/\[Tool:[^\]]+\]\s*/gi, '')
+    // Strip step completion markers
+    cleaned = cleaned.replace(/---\s*Step completed[^\n]*---/g, '')
+    // Strip thinking blocks
+    cleaned = cleaned.replace(/<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)/gi, '')
+    cleaned = cleaned.replace(/```thinking[\s\S]*?```/gi, '')
+    // Strip ALL markdown code fences (not just edges)
+    cleaned = cleaned.replace(/```(?:json)?\s*/gi, '')
+    // Strip completion/status lines
+    cleaned = cleaned.replace(/✅ Completed[^\n]*/g, '')
+    cleaned = cleaned.replace(/❌ Error:[^\n]*/g, '')
+    // Strip inline markdown bold/italic
+    cleaned = cleaned.replace(/\*\*/g, '')
+    // Collapse excessive newlines
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+    cleaned = cleaned.trim()
+    
+    console.log('[parseSummaryResponse] Input length:', raw.length, '| Cleaned first 300:', cleaned.substring(0, 300))
+    
+    // Strategy 1: Find FIRST [ and its matching ] by counting brackets
     try {
-      const jsonMatch = raw.match(/\[\s*\{[\s\S]*\}\s*\]/)
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0])
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed
-            .filter((t: any) => t.title && typeof t.title === 'string')
-            .map((t: any) => ({
+      const firstOpenBracket = cleaned.indexOf('[')
+      if (firstOpenBracket !== -1) {
+        let depth = 0
+        let closeBracket = -1
+        for (let i = firstOpenBracket; i < cleaned.length; i++) {
+          if (cleaned[i] === '[') depth++
+          else if (cleaned[i] === ']') depth--
+          if (depth === 0) {
+            closeBracket = i
+            break
+          }
+        }
+        
+        if (closeBracket > firstOpenBracket) {
+          const jsonStr = cleaned.substring(firstOpenBracket, closeBracket + 1)
+          try {
+            const parsed = JSON.parse(jsonStr)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed
+                .filter((t: any) => t.title && typeof t.title === 'string')
+                .map((t: any) => {
+                  const description = cleanDescription(String(t.description || ''))
+                  const fileRefs = extractFileReferencesFromText(description)
+                  return {
+                    title: String(t.title).substring(0, 100),
+                    description: description,
+                    priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
+                    recommendedSkills: Array.isArray(t.recommendedSkills) 
+                      ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3) 
+                      : [],
+                    taskSpecificFiles: fileRefs,
+                    taskSpecificContext: t.context || t.additionalContext || undefined
+                  }
+                })
+            }
+          } catch (e) {
+            console.warn('[parseSummaryResponse] Bracket-matched JSON parse failed:', e)
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[parseSummaryResponse] Strategy 1 failed:', e)
+    }
+
+    // Strategy 2: Try to parse entire cleaned string as JSON
+    try {
+      const parsed = JSON.parse(cleaned)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed
+          .filter((t: any) => t.title && typeof t.title === 'string')
+          .map((t: any) => {
+            const description = cleanDescription(String(t.description || ''))
+            const fileRefs = extractFileReferencesFromText(description)
+            return {
               title: String(t.title).substring(0, 100),
-              description: cleanDescription(String(t.description || '')),
+              description: description,
               priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
               recommendedSkills: Array.isArray(t.recommendedSkills) 
                 ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3) 
                 : [],
-            }))
-        }
+              taskSpecificFiles: fileRefs,
+              taskSpecificContext: t.context || t.additionalContext || undefined
+            }
+          })
       }
     } catch (e) {
-      console.warn('[Summarize] JSON parse failed, trying fallback:', e)
+      console.warn('[parseSummaryResponse] Full JSON parse failed:', e)
     }
 
-    // Strategy 2: Fallback to regex-based parsing (legacy format)
+    // Strategy 3: Try to fix common JSON issues and re-parse
     try {
-      const cleanResponse = raw
+      // Sometimes LLM outputs: Some text before [{...}] some text after
+      // Or outputs single object instead of array: {"title": ...}
+      let fixable = cleaned
+      
+      // Try wrapping a single object in an array
+      if (fixable.trim().startsWith('{')) {
+        fixable = '[' + fixable.trim() + ']'
+        try {
+          const parsed = JSON.parse(fixable)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed
+              .filter((t: any) => t.title && typeof t.title === 'string')
+              .map((t: any) => {
+                const description = cleanDescription(String(t.description || ''))
+                const fileRefs = extractFileReferencesFromText(description)
+                return {
+                  title: String(t.title).substring(0, 100),
+                  description,
+                  priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
+                  recommendedSkills: Array.isArray(t.recommendedSkills)
+                    ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3)
+                    : [],
+                  taskSpecificFiles: fileRefs,
+                  taskSpecificContext: t.context || t.additionalContext || undefined
+                }
+              })
+          }
+        } catch {}
+      }
+
+      // Try to fix trailing commas
+      fixable = fixable.replace(/,\s*([}\]])/g, '$1')
+      const parsed = JSON.parse(fixable)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed
+          .filter((t: any) => t.title && typeof t.title === 'string')
+          .map((t: any) => ({
+            title: String(t.title).substring(0, 100),
+            description: cleanDescription(String(t.description || '')),
+            priority: (['high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'high' | 'medium' | 'low',
+            recommendedSkills: Array.isArray(t.recommendedSkills) ? t.recommendedSkills.filter((s: any) => typeof s === 'string').slice(0, 3) : [],
+            taskSpecificFiles: extractFileReferencesFromText(cleanDescription(String(t.description || ''))),
+            taskSpecificContext: t.context || t.additionalContext || undefined
+          }))
+      }
+    } catch (e) {
+      console.warn('[parseSummaryResponse] Strategy 3 JSON fix failed:', e)
+    }
+
+    // Strategy 4: Regex-based fallback
+    try {
+      const fallbackText = cleaned
         .replace(/\*\*?TASK_TITLE:\*\*?/gi, 'TASK_TITLE:')
         .replace(/\*\*?TASK_DESCRIPTION:\*\*?/gi, 'TASK_DESCRIPTION:')
         .replace(/\*\*?TASK_PRIORITY:\*\*?/gi, 'TASK_PRIORITY:')
         .replace(/\*\*?SKILLS:\*\*?/gi, 'SKILLS:')
 
-      const blocks = cleanResponse.split(/TASK_TITLE:/i).slice(1)
+      const blocks = fallbackText.split(/TASK_TITLE:/i).slice(1)
       const tasks: ConversationSummary[] = []
 
       for (const block of blocks) {
@@ -764,25 +885,47 @@ Create a comprehensive plan now.`;
             .map((s: string) => s.trim().toLowerCase())
             .filter((s: string) => s.length > 0)
             .slice(0, 3)
+          
+          const description = cleanDescription(descMatch?.[1] || '')
+          const fileRefs = extractFileReferencesFromText(description)
 
           tasks.push({
             title: titleLine.substring(0, 100),
-            description: cleanDescription(descMatch?.[1] || ''),
+            description: description,
             priority: (priorityMatch?.[1]?.toLowerCase() as 'high' | 'medium' | 'low') || 'medium',
             recommendedSkills: skills,
+            taskSpecificFiles: fileRefs,
           })
         }
       }
 
       if (tasks.length > 0) return tasks
     } catch (e) {
-      console.warn('[Summarize] Regex fallback also failed:', e)
+      console.warn('[parseSummaryResponse] Regex fallback also failed:', e)
     }
 
+    console.warn('[parseSummaryResponse] All strategies failed for response length:', raw.length)
     return []
   }
+  
+  // Helper to extract file references from specific text
+  const extractFileReferencesFromText = (text: string): string[] => {
+    const fileRefs = new Set<string>()
+    const filePattern = /@([\w./\-]+)/g
+    
+    const matches = text.matchAll(filePattern)
+    for (const match of matches) {
+      const filePath = match[1]
+      // Filter out likely non-file mentions
+      if (filePath.length > 2 && filePath.includes('.')) {
+        fileRefs.add(filePath)
+      }
+    }
+    
+    return Array.from(fileRefs)
+  }
 
-  const handleSummarize = async () => {
+const handleSummarize = async () => {
     const messages = getMessages(taskId)
     if (messages.length === 0) return
 
@@ -791,97 +934,98 @@ Create a comprehensive plan now.`;
     setConversationSummaries([])
 
     try {
-      // Limit context window: max 20 messages, max 1500 chars per message
       const conversationText = messages
         .filter(m => m.content.trim())
         .slice(-20)
         .map(m => {
-          const content = m.content.length > 1500 ? m.content.substring(0, 1500) + '...[truncated]' : m.content
+          let content = m.content.length > 1500 ? m.content.substring(0, 1500) + '...[truncated]' : m.content
+          content = content
+            .replace(/\[TOOL_EXEC\][^\n]*(\n|$)/g, '')
+            .replace(/\[TOOL_RES\][^\n]*(\n|$)/g, '')
+            .replace(/\[Tool:[^\]]+\]\s*/gi, '')
+            .replace(/```thinking[\s\S]*?```/gi, '')
+            .replace(/<(?:think|thought)>[\s\S]*?(?:<\/(?:think|thought)>|$)/gi, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim()
+          if (!content) return ''
           return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`
         })
+        .filter(Boolean)
         .join('\n\n')
 
-      // Build skill catalog for recommendation
       const skillCatalog = installedSkills.length > 0
         ? installedSkills.map(s => `- ${s.name}: ${s.description || 'No description'}`).join('\n')
         : ''
 
       let lastResponse: string | null = null
 
-      // Try Groq API first (FREE!)
-      const config = useConfigStore.getState().config
-      const groqApiKey = config?.groq_api_key
+      const configState = useConfigStore.getState().config
+      const groqApiKey = configState?.groq_api_key
 
       if (groqApiKey) {
         console.log('[handleSummarize] Using Groq API for summary (FREE)')
         lastResponse = await sendGroqSummary(groqApiKey, conversationText, skillCatalog)
       }
 
-      // Fallback to CLI if Groq not available or failed
-      if (!lastResponse) {
+      if (!lastResponse && activeEngine && activeWorkspace) {
         console.log('[handleSummarize] Falling back to CLI for summary')
         const projectRules = useConfigStore.getState().getSystemPrompt()
+        const summaryPrompt = `You are a task extraction specialist. Analyze the conversation below and extract all actionable coding tasks discussed.
 
-        const summaryPrompt = `You are a task extraction specialist. Analyze the conversation and extract coding tasks.
-
-CRITICAL: Group related changes into SINGLE task. AVOID over-splitting!
-
-OUTPUT: Valid JSON array ONLY. No markdown, no explanation.
+You MUST output a valid JSON array. No markdown, no explanation, ONLY the JSON array.
 
 JSON Schema:
 [
   {
     "title": "Short clear title, max 80 chars",
-    "description": "Implementation requirements. Include: 1) All file paths with @ prefix, 2) Complete changes needed, 3) Technical requirements, 4) Expected behavior. Max 2000 chars.",
+    "description": "A comprehensive implementation prompt for the AI agent. Include: exact file paths mentioned, design decisions agreed upon, specific coding steps, and technical constraints from the discussion. Max 2500 chars.",
     "priority": "high | medium | low",
     "recommendedSkills": ["skill-name-1", "skill-name-2"]
   }
 ]
 
-MERGE vs SPLIT GUIDELINES:
-→ MERGE into 1 task when:
-  - Same feature/component (e.g., "create login form" = 1 task, not 4)
-  - Related UI changes in same area
-  - CRUD operations on same entity
-  - Frontend + Backend for same API endpoint
-  - Changes that must be deployed together
+Priority guidelines:
+- "high": Bug fixes, breaking issues, security concerns, blockers
+- "medium": New features, enhancements, refactoring
+- "low": Nice-to-have improvements, cosmetic changes, documentation
 
-→ SPLIT into multiple tasks when:
-  - Completely different features (e.g., login vs settings)
-  - Independent components that can ship separately
-  - One task blocks another (dependencies)
-  - Different tech stacks/layers
+Available skills (recommend MAX 2 that would help implement this task):
+${skillCatalog || 'No skills installed'}
 
-Priority:
-- "high": Bug fixes, security, blockers
-- "medium": New features, refactoring  
-- "low": Documentation, cosmetic
+Rules:
+- Extract ONLY coding implementation tasks
+- Do NOT create tasks for: git commits, PRs, testing, deployment
+- If the conversation is unclear or has no actionable tasks, return an empty array: []
+- Only recommend skills from the "Available skills" list above
+- If no skills are relevant, use an empty array: []
+- Output ONLY valid JSON, no surrounding text or markdown fences${projectRules ? '\n\nThe tasks MUST follow these project rules. Embed relevant rules into each task description:\n' + projectRules : ''}`
 
-Available skills (max 2):
-${skillCatalog || 'None'}
+        const fullPrompt = `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`
+        const summaryId = `__summarize_${Date.now()}__`
 
-RULES:
-- If conversation describes ONE feature → return 1 task
-- If multiple independent features → return multiple tasks
-- description: Focus on WHAT to build/modify
-- Include @filepath for all files
-- No tasks for: git, PRs, testing, deployment
-- Output ONLY JSON
+        try {
+          let accumulatedContent = ''
+          const result = await runCLIWithStreaming({
+            taskId: summaryId,
+            engineAlias: activeEngine.alias,
+            binaryPath: activeEngine.binary_path,
+            engineArgs: activeEngine.args || '',
+            prompt: fullPrompt,
+            cwd: activeWorkspace.folder_path,
+            mode: 'standard',
+            onOutput: (text) => {
+              accumulatedContent += text
+            },
+          })
 
-${projectRules ? '\nProject rules:\n' + projectRules : ''}
-
-EXAMPLE 1 (Single Feature - 1 Task):
-"Create UserProfile component in @src/components/UserProfile.tsx with avatar, name, email fields. Use @src/components/Button.tsx for actions. Style with Tailwind. Accept 'user' prop with proper TypeScript types."
-
-EXAMPLE 2 (Multiple Independent Features - Multiple Tasks):
-Task 1: "Create Login form with email/password fields"
-Task 2: "Create User Settings page with theme toggle"
-
-Extract tasks from this conversation:`
-
-        const summaryId = `__summarize_temp_${Date.now()}__`
-        lastResponse = await sendSimpleMessage(summaryId, `${summaryPrompt}\n\n---\nConversation:\n${conversationText}`)
-        clearMessages(summaryId)
+          console.log('[handleSummarize] CLI result — success:', result.success, '| accumulated length:', accumulatedContent.length, '| result.content length:', result.content.length)
+          lastResponse = accumulatedContent || result.content
+          if (!lastResponse && !result.success) {
+            console.warn('[handleSummarize] CLI failed:', result.errorMessage)
+          }
+        } catch (err) {
+          console.warn('[handleSummarize] CLI error:', err)
+        }
       }
 
       if (lastResponse) {
@@ -890,7 +1034,6 @@ Extract tasks from this conversation:`
         if (tasks.length > 0) {
           setConversationSummaries(tasks)
         } else {
-          // Provide feedback to user when no tasks could be extracted
           const warningMsg = {
             id: `warn-${Date.now()}`,
             taskId,
@@ -899,12 +1042,11 @@ Extract tasks from this conversation:`
             timestamp: Date.now(),
           }
           setMessages(taskId, [...getMessages(taskId), warningMsg])
-          setSummarizedAtLength(-1) // Allow re-summarize
+          setSummarizedAtLength(-1)
         }
       }
     } catch (err) {
       console.error('Failed to summarize:', err)
-      // Show error feedback to user
       const errorMsg = {
         id: `err-${Date.now()}`,
         taskId,
@@ -913,7 +1055,7 @@ Extract tasks from this conversation:`
         timestamp: Date.now(),
       }
       setMessages(taskId, [...getMessages(taskId), errorMsg])
-      setSummarizedAtLength(-1) // Allow retry
+      setSummarizedAtLength(-1)
     } finally {
       setIsSummarizing(false)
     }
@@ -944,121 +1086,115 @@ Extract tasks from this conversation:`
 
   const buildComprehensiveDescription = (
     summary: ConversationSummary,
-    messages: { role: string; content: string }[],
-    fileReferences: string[]
+    allMessages: { role: string; content: string }[],
+    allFileReferences: string[]
   ): string => {
     const parts: string[] = []
     
-    // 1. Skills tag (if any)
+    // 1. Task Title Header
+    parts.push(`# ${summary.title}`)
+    
+    // 2. Skills tag (if any)
     if (summary.recommendedSkills && summary.recommendedSkills.length > 0) {
-      parts.push(`<!-- skills:${summary.recommendedSkills.join(',')} -->`)
+      parts.push(`\n<!-- skills:${summary.recommendedSkills.join(',')} -->`)
     }
     
-    // 2. Original description
+    // 3. Task-specific context (if AI provided it)
+    if (summary.taskSpecificContext) {
+      parts.push('\n[CONTEXT]')
+      parts.push(summary.taskSpecificContext)
+    }
+    
+    // 4. Original description (this is task-specific from AI)
     if (summary.description) {
       parts.push('\n[IMPLEMENTATION PLAN]')
       parts.push(summary.description)
     }
     
-    // 3. File references mentioned in chat
-    if (fileReferences.length > 0) {
-      parts.push('\n[RELEVANT FILES]')
-      fileReferences.forEach(file => {
+    // 5. Task-specific file references (extracted from this task's description)
+    if (summary.taskSpecificFiles && summary.taskSpecificFiles.length > 0) {
+      parts.push('\n[FILES FOR THIS TASK]')
+      summary.taskSpecificFiles.forEach(file => {
         parts.push(`- @${file}`)
       })
     }
     
-    // 4. Extract key decisions/requirements from conversation
-    const keyPoints = extractKeyPoints(messages)
-    if (keyPoints.length > 0) {
+    // 6. Other potentially relevant files from conversation (if not already listed)
+    const otherFiles = allFileReferences.filter(f => !summary.taskSpecificFiles?.includes(f))
+    if (otherFiles.length > 0) {
+      parts.push('\n[OTHER REFERENCED FILES]')
+      otherFiles.slice(0, 10).forEach(file => { // Limit to 10 to avoid noise
+        parts.push(`- @${file}`)
+      })
+    }
+    
+    // 7. Extract key points specifically related to this task's description
+    const taskKeyPoints = extractKeyPointsForTask(allMessages, summary.title, summary.description)
+    if (taskKeyPoints.length > 0) {
       parts.push('\n[KEY REQUIREMENTS]')
-      keyPoints.forEach(point => {
+      taskKeyPoints.forEach(point => {
         parts.push(`- ${point}`)
       })
     }
     
-    // 5. Auto-rules marker
+    // 8. Auto-rules marker
     parts.push('\n<!-- auto-rules-embedded -->')
     
     return parts.join('\n')
   }
-
-  /**
-   * Extract key decisions and requirements from conversation
-   * Filters out tool executions and technical noise
-   */
-  const extractKeyPoints = (messages: { role: string; content: string }[]): string[] => {
+  
+  // Extract key points specifically relevant to a task
+  const extractKeyPointsForTask = (
+    messages: { role: string; content: string }[],
+    taskTitle: string,
+    taskDescription: string
+  ): string[] => {
     const points: string[] = []
     const seen = new Set<string>()
     
-    // Process only last 15 messages, skip system
+    // Keywords from task title and description
+    const taskKeywords = (taskTitle + ' ' + taskDescription)
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 3)
+      .slice(0, 10)
+    
+    // Process messages to find ones relevant to this task
     const relevantMessages = messages
-      .filter(m => m.role !== 'system' && m.content.trim())
-      .slice(-15)
+      .filter(m => {
+        if (m.role === 'system') return false
+        const content = m.content.toLowerCase()
+        // Check if message is relevant to this task
+        const isRelevant = taskKeywords.some(keyword => content.includes(keyword))
+        return isRelevant && m.content.trim().length > 20
+      })
+      .slice(-5) // Last 5 relevant messages only
     
     for (const msg of relevantMessages) {
       let content = msg.content
-      
-      // Skip tool execution blocks entirely
-      if (content.includes('[TOOL_EXEC]') || content.includes('[Tool:')) {
-        continue
-      }
       
       // Clean up content
       content = content
         .replace(/\[TOOL_EXEC\][\s\S]*?(\n\n|$)/g, '')
         .replace(/\[Tool:[^\]]+\]/g, '')
-        .replace(/```[\s\S]*?```/g, '[code block]')
-        .replace(/\[IMAGE ANALYSIS\][\s\S]*?\[USER REQUEST\]/, '')
-        .replace(/@[\w./\-]+/g, '') // Remove file refs (already listed separately)
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/@[\w./\-]+/g, '')
         .trim()
       
-      // Skip if too short or already seen
-      if (content.length < 20 || seen.has(content)) continue
+      if (content.length < 30 || seen.has(content)) continue
       
-      // Extract key decision patterns
-      const decisionPatterns = [
-        /(?:harus|should|must|need to|perlu) ([^.]+)/i,
-        /(?:ubah|change|convert|modify|update) ([^.]+)/i,
-        /(?:tampilkan|display|show|hide) ([^.]+)/i,
-        /(?:tambahkan|add|create) ([^.]+)/i,
-        /(?:hapus|remove|delete) ([^.]+)/i,
-        /(?:gunakan|use|pakai) ([^.]+)/i,
-        /(?:ketika|when|if|jika) ([^.]+)/i,
-      ]
-      
-      for (const pattern of decisionPatterns) {
-        const match = content.match(pattern)
-        if (match && match[1]) {
-          const point = match[1].trim()
-            .replace(/\s+/g, ' ')
-            .substring(0, 150)
-          
-          if (point.length > 10 && !seen.has(point)) {
-            seen.add(point)
-            points.push(point)
-          }
-          break // Only take first match per message
-        }
-      }
-      
-      // If no pattern matched but content looks like a requirement
-      if (!decisionPatterns.some(p => p.test(content)) && content.length < 200) {
-        const summary = content
-          .replace(/^Baik,\s*/i, '')
-          .replace(/^Oke,\s*/i, '')
-          .replace(/^Mari\s+saya\s*/i, '')
-          .substring(0, 150)
-        
-        if (summary.length > 20 && !seen.has(summary)) {
-          seen.add(summary)
-          points.push(summary)
+      // Extract requirements/decisions
+      const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 20)
+      for (const sentence of sentences.slice(0, 2)) { // Max 2 sentences per message
+        const clean = sentence.trim().replace(/\s+/g, ' ').substring(0, 150)
+        if (clean.length > 20 && !seen.has(clean)) {
+          seen.add(clean)
+          points.push(clean)
         }
       }
     }
     
-    // Limit to most relevant 8 points
-    return points.slice(0, 8)
+    return points.slice(0, 5) // Limit to 5 most relevant points
   }
 
   const handleCreateTasks = async () => {
@@ -1066,21 +1202,33 @@ Extract tasks from this conversation:`
     
     setIsCreating(true)
     try {
-      // Get all messages for context
+      // Get all messages for additional context (optional references)
       const allMessages = getMessages(taskId)
+      const allFileReferences = extractFileReferences(allMessages)
+      
+      // Get default base branch for the workspace
+      let baseBranch = 'rdev' // fallback default
+      try {
+        baseBranch = await getDefaultBaseBranch(activeWorkspace.folder_path)
+        console.log(`[TaskCreator] Detected base branch: ${baseBranch}`)
+      } catch (err) {
+        console.warn('[TaskCreator] Failed to detect base branch, using default:', err)
+      }
       
       for (const summary of conversationSummaries) {
-        // Extract file references from entire chat
-        const fileReferences = extractFileReferences(allMessages)
+        // Build comprehensive description with task-specific context
+        const finalDescription = buildComprehensiveDescription(summary, allMessages, allFileReferences)
         
-        // Build comprehensive description with full context
-        const finalDescription = buildComprehensiveDescription(summary, allMessages, fileReferences)
+        console.log(`[TaskCreator] Creating task: ${summary.title}`)
+        console.log(`[TaskCreator] Files for this task:`, summary.taskSpecificFiles)
+        console.log(`[TaskCreator] Base branch: ${baseBranch}`)
         
         await createTask({
           title: summary.title,
           description: finalDescription,
           status: 'todo',
           priority: summary.priority || 'medium',
+          base_branch: baseBranch, // <-- Set base branch here!
         })
       }
       

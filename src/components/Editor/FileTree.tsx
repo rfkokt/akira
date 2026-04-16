@@ -213,6 +213,34 @@ export function FileTree({ rootPath, rootName, onFileSelect, selectedPath }: Fil
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [showSearch, searchResults, selectedIndex, onFileSelect])
 
+  // Listen for global search events from keyboard shortcuts
+  useEffect(() => {
+    const handleSearchFiles = () => {
+      setShowSearch(true)
+      setSearchQuery('')
+      setSearchResults([])
+      setSelectedIndex(0)
+      setSearchMode('filename')
+      setTimeout(() => searchInputRef.current?.focus(), 100)
+    }
+
+    const handleSearchContent = () => {
+      setShowSearch(true)
+      setSearchQuery('')
+      setSearchResults([])
+      setSelectedIndex(0)
+      setSearchMode('content')
+      setTimeout(() => searchInputRef.current?.focus(), 100)
+    }
+
+    window.addEventListener('akira:search-files', handleSearchFiles)
+    window.addEventListener('akira:search-content', handleSearchContent)
+    return () => {
+      window.removeEventListener('akira:search-files', handleSearchFiles)
+      window.removeEventListener('akira:search-content', handleSearchContent)
+    }
+  }, [])
+
   const performSearch = useCallback(async (query: string, mode: SearchMode) => {
     if (!rootPath || !query.trim()) {
       setSearchResults([])

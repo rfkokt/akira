@@ -39,6 +39,10 @@ export interface ParsedOutput {
     type: 'step_start' | 'tool_use' | 'text' | 'error' | 'complete';
     content: string;
   };
+  /** Thinking content (for streaming thinking blocks) */
+  thinking?: string;
+  /** Token usage stats */
+  usage?: { inputTokens: number; outputTokens: number; cacheTokens?: number };
 }
 
 // ─── Provider Implementations ───────────────────────────────────────────
@@ -138,27 +142,20 @@ const claudeProvider: ProviderConfig = {
   alias: 'claude',
 
   buildArgs({ engineArgs, prompt }) {
-    // Keep any user-defined args (e.g., --dangerously-skip-permissions / --permission-mode bypassPermissions)
-    // then add -p (print/non-interactive) + stream-json output for proper streaming
     const userArgs = engineArgs.split(' ').filter(Boolean);
 
-    // Remove any existing output-format / print flags to avoid duplicates
     const baseArgs = userArgs.filter(
       a => !['--output-format', '-p', '--print', '--verbose', '--include-partial-messages'].includes(a)
         && !a.startsWith('--output-format=')
     );
 
-    // Note: --no-context flag is not supported by Claude CLI
-    // Token optimization is done by sending shorter prompts instead
-    // --verbose is REQUIRED when using --output-format=stream-json
-
     return {
       args: [
         ...baseArgs,
-        '-p',                                // non-interactive print mode
-        '--output-format', 'stream-json',    // real-time JSON streaming
-        '--include-partial-messages',        // stream text as it arrives
-        '--verbose',                         // REQUIRED by stream-json
+        '-p',
+        '--output-format', 'stream-json',
+        '--include-partial-messages',
+        '--verbose',
       ],
       stdinPrompt: prompt,
     };
@@ -167,18 +164,115 @@ const claudeProvider: ProviderConfig = {
   parseOutputLine(line: string): ParsedOutput | null {
     if (!line.trim()) return null;
 
-    // Claude stream-json format outputs newline-delimited JSON events
     try {
-      const json = JSON.parse(line);
+      const raw = JSON.parse(line);
+
+      // Claude stream-json wraps events in {"type":"stream_event","event":{...}}
+      const json = raw.type === 'stream_event' ? raw.event : raw;
       const type = json.type as string;
 
-      // ── System init — skip silently ──────────────────────────────
+      // ── System init — skip ──────────────────────────────────────
       if (type === 'system') return null;
 
       // ── User echo — skip ─────────────────────────────────────────
       if (type === 'user') return null;
 
-      // ── Assistant text (main content) ────────────────────────────
+      // ── Stream: message_start — skip ──────────────────────────────
+      if (type === 'message_start') return null;
+
+      // ── Stream: message_start — extract initial usage if present ─────
+      if (type === 'message_start') {
+        const usage = json.message?.usage;
+        if (usage && (usage.input_tokens || usage.cache_creation_input_tokens || usage.cache_read_input_tokens)) {
+          const inputTokens =
+            (usage.input_tokens || 0) +
+            (usage.cache_creation_input_tokens || 0) +
+            (usage.cache_read_input_tokens || 0);
+          const cacheTokens = (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+          return {
+            displayText: '',
+            usage: {
+              inputTokens,
+              outputTokens: usage.output_tokens || 0,
+              cacheTokens: cacheTokens || undefined,
+            },
+          };
+        }
+        return null;
+      }
+
+      // ── Stream: content_block_start ───────────────────────────────
+      if (type === 'content_block_start') {
+        const block = json.content_block;
+        if (block?.type === 'thinking') {
+          return { displayText: '', step: { type: 'step_start', content: 'Thinking...' } };
+        }
+        if (block?.type === 'tool_use') {
+          const name = block.name || 'unknown';
+          return {
+            displayText: `[TOOL_EXEC] [Tool: ${name}]`,
+            step: { type: 'tool_use', content: name },
+          };
+        }
+        return null;
+      }
+
+      // ── Stream: content_block_delta ───────────────────────────────
+      if (type === 'content_block_delta') {
+        const delta = json.delta;
+        if (!delta) return null;
+
+        if (delta.type === 'thinking_delta') {
+          return { displayText: '', thinking: delta.thinking || '' };
+        }
+
+        if (delta.type === 'text_delta') {
+          return {
+            displayText: delta.text || '',
+            step: { type: 'text', content: (delta.text || '').substring(0, 100) },
+          };
+        }
+
+        if (delta.type === 'input_json_delta') {
+          return null; // tool input streaming, skip
+        }
+
+        return null;
+      }
+
+      // ── Stream: content_block_stop — skip ─────────────────────────
+      if (type === 'content_block_stop') return null;
+
+      // ── Stream: message_delta (usage + stop reason) ───────────────
+      if (type === 'message_delta') {
+        const usage = json.usage;
+        const stopReason = json.delta?.stop_reason;
+        if (usage && (usage.input_tokens || usage.output_tokens)) {
+          // Claude 3-part input tokens: fresh + cache_creation + cache_read
+          const inputTokens =
+            (usage.input_tokens || 0) +
+            (usage.cache_creation_input_tokens || 0) +
+            (usage.cache_read_input_tokens || 0);
+          const cacheTokens = (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+          return {
+            displayText: '',
+            usage: {
+              inputTokens,
+              outputTokens: usage.output_tokens || 0,
+              cacheTokens: cacheTokens || undefined,
+            },
+          };
+        }
+        if (stopReason === 'end_turn' || stopReason === 'max_tokens') {
+          return { displayText: '', step: { type: 'complete', content: 'Done' } };
+        }
+        return null;
+      }
+
+      // ── Stream: message_stop ──────────────────────────────────────
+      if (type === 'message_stop') return null;
+
+      // ── Non-stream: Assistant text (main content) ────────────────
       if (type === 'assistant') {
         const content = json.message?.content ?? [];
         const texts: string[] = [];
@@ -202,7 +296,7 @@ const claudeProvider: ProviderConfig = {
         };
       }
 
-      // ── Tool result ──────────────────────────────────────────────
+      // ── Non-stream: Tool result ──────────────────────────────────
       if (type === 'tool_result') {
         const content = Array.isArray(json.content) ? json.content : [];
         const text = content.map((c: { text?: string }) => c.text || '').filter(Boolean).join('\n');
@@ -213,7 +307,7 @@ const claudeProvider: ProviderConfig = {
         };
       }
 
-      // ── Final result ─────────────────────────────────────────────
+      // ── Non-stream: Final result ─────────────────────────────────
       if (type === 'result') {
         const subtype = json.subtype as string;
         const cost = json.total_cost_usd ? ` ($${Number(json.total_cost_usd).toFixed(4)})` : '';
@@ -238,8 +332,6 @@ const claudeProvider: ProviderConfig = {
       return null;
 
     } catch {
-      // Not JSON — Claude might emit plain text in some edge cases
-      // Strip ANSI escape sequences before displaying
       const clean = line
         .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
         .trim();

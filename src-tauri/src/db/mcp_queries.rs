@@ -5,6 +5,8 @@
 //! - Runtime state management
 //! - Tool call history tracking
 
+#![allow(unused)]
+
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

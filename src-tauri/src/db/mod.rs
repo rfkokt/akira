@@ -127,6 +127,25 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute("ALTER TABLE tasks ADD COLUMN merged_to_branch TEXT", [])?;
     }
 
+    // Migration: Add worktree columns to tasks table
+    let has_worktree_path: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'worktree_path'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !has_worktree_path {
+        conn.execute("ALTER TABLE tasks ADD COLUMN worktree_path TEXT", [])?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN task_branch TEXT", [])?;
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN base_branch TEXT DEFAULT 'main'",
+            [],
+        )?;
+    }
+
     // Migration: Add diff columns to tasks table
     let has_diff_content: bool = conn
         .query_row(
