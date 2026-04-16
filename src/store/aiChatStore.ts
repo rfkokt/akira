@@ -190,6 +190,88 @@ async function getSkillListing(): Promise<string> {
   }
 }
 
+// ── Project Context Cache ───────────────────────────────────────────────
+
+let _projectContextCache: { context: string; cwd: string; cachedAt: number } | null = null;
+const PROJECT_CONTEXT_TTL = 2 * 60 * 1000; // 2 minutes
+
+/**
+ * Build a compact project structure for AI context awareness.
+ * Cached for 2 minutes to avoid re-scanning the filesystem every message.
+ */
+async function getProjectContext(): Promise<string> {
+  const cwd = getWorkspaceCwd();
+  if (!cwd) return '';
+
+  // Return cache if valid
+  if (_projectContextCache && _projectContextCache.cwd === cwd && Date.now() - _projectContextCache.cachedAt < PROJECT_CONTEXT_TTL) {
+    return _projectContextCache.context;
+  }
+
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+
+    const SKIP_DIRS = new Set([
+      'node_modules', 'dist', 'build', '.git', '.next', 'out', 'target',
+      'vendor', '.cache', '.turbo', 'coverage', '__pycache__', '.venv',
+      'venv', '.idea', '.vscode', '.akira', '.serena',
+    ]);
+
+    const entries = await invoke<Array<{ name: string; path: string; is_dir: boolean }>>('read_directory', { path: cwd });
+    const lines: string[] = [];
+
+    // Root-level files (config files only for brevity)
+    const rootFiles = entries
+      .filter(e => !e.is_dir && !e.name.startsWith('.'))
+      .map(e => e.name);
+    
+    const importantFiles = rootFiles.filter(f =>
+      f === 'package.json' || f === 'tsconfig.json' || f === 'Cargo.toml' ||
+      f === 'go.mod' || f === 'requirements.txt' || f === 'pyproject.toml' ||
+      f === 'tauri.conf.json' || f.includes('.config.') || f === 'vite.config.ts' ||
+      f === 'next.config.ts' || f === 'next.config.js' || f === 'README.md'
+    );
+
+    if (importantFiles.length > 0) {
+      lines.push(`Root: ${importantFiles.join(', ')}`);
+    }
+
+    // Top-level directories with their immediate children
+    const dirs = entries
+      .filter(e => e.is_dir && !e.name.startsWith('.') && !SKIP_DIRS.has(e.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const dir of dirs.slice(0, 15)) { // Max 15 top-level dirs
+      try {
+        const subEntries = await invoke<Array<{ name: string; is_dir: boolean }>>('read_directory', { path: dir.path });
+        const subItems = subEntries
+          .filter(e => !e.name.startsWith('.') && !SKIP_DIRS.has(e.name))
+          .slice(0, 12) // Max 12 items per folder
+          .map(e => e.is_dir ? `${e.name}/` : e.name);
+        
+        if (subItems.length > 0) {
+          const truncated = subEntries.length > 12 ? ` (+${subEntries.length - 12} more)` : '';
+          lines.push(`${dir.name}/: ${subItems.join(', ')}${truncated}`);
+        } else {
+          lines.push(`${dir.name}/`);
+        }
+      } catch {
+        lines.push(`${dir.name}/`);
+      }
+    }
+
+    const context = lines.length > 0
+      ? `[PROJECT STRUCTURE]\n${lines.join('\n')}`
+      : '';
+
+    _projectContextCache = { context, cwd, cachedAt: Date.now() };
+    return context;
+  } catch (err) {
+    console.warn('[AI] Failed to build project context:', err);
+    return '';
+  }
+}
+
 async function loadSkillForTask(skillName: string): Promise<{ name: string; content: string; location: string } | null> {
   try {
     const skills = useSkillStore.getState().installedSkills;
@@ -208,7 +290,7 @@ async function loadSkillForTask(skillName: string): Promise<{ name: string; cont
   }
 }
 
-function buildTaskPrompt(taskTitle: string, taskDescription?: string, skillListing?: string, invokedSkillsContent?: string): string {
+function buildTaskPrompt(taskTitle: string, taskDescription?: string, skillListing?: string, invokedSkillsContent?: string, projectContext?: string): string {
   const hasEmbeddedRules = taskDescription?.includes('<!-- auto-rules-embedded -->');
   
   let systemPrompt = '';
@@ -243,6 +325,11 @@ Please analyze and implement this task.`;
   // Add skills
   prompt += skillSection;
   prompt += invokedSkillsSection;
+  
+  // Add project structure context
+  if (projectContext) {
+    prompt += `\n\n${projectContext}`;
+  }
   
   // Add output format guidance
   prompt += `\n\n[OUTPUT FORMAT]
@@ -617,8 +704,9 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     
     updateTaskState(get, set, taskId, { status: 'running', startTime });
 
-    // Load skill listing and invoked skills
+    // Load skill listing, invoked skills, and project context
     const skillListing = await getSkillListing();
+    const projectContext = await getProjectContext();
     const invokedSkills = get().invokedSkills[taskId] || [];
     const invokedSkillsContent = invokedSkills.length > 0
       ? invokedSkills.map(s => `--- ${s.name} ---\n${s.content}`).join('\n\n')
@@ -630,7 +718,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       id: aiMessageId, taskId, role: 'assistant', content: '', timestamp: Date.now(),
     });
 
-    const prompt = buildTaskPrompt(taskTitle, cleanTaskDescription, skillListing, invokedSkillsContent);
+    const prompt = buildTaskPrompt(taskTitle, cleanTaskDescription, skillListing, invokedSkillsContent, projectContext);
     const cwd = getWorkspaceCwd();
     let responseContent = '';
 
@@ -692,7 +780,8 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
                 taskTitle,
                 cleanTaskDescription,
                 skillListing,
-                `${skillContent.name}\n${skillContent.content}`
+                `${skillContent.name}\n${skillContent.content}`,
+                projectContext
               );
               
               // Record cost for first response
@@ -909,6 +998,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     }
 
     const skillListing = !smallTalk ? await getSkillListing() : '';
+    const projectContext = !smallTalk ? await getProjectContext() : '';
     const invokedSkills = get().invokedSkills[taskId] || [];
     const invokedSkillsContent = !smallTalk && invokedSkills.length > 0
       ? invokedSkills.map(s => `--- ${s.name} ---\n${s.content}`).join('\n\n')
@@ -964,8 +1054,9 @@ ${previousChat ? `Recent History:\n${previousChat}\n\n` : ''}${miniIdentity} Bri
 
       const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
       const invokedSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
+      const projectSection = projectContext ? `\n\n${projectContext}` : '';
 
-      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}
+      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}${projectSection}
       
 ---
 
@@ -980,11 +1071,12 @@ Please implement the requested changes. Be concise and use 'rtk' for all termina
     } else {
       const skillSection = skillListing ? `\n\n[AVAILABLE SKILLS]\n${skillListing}` : '';
       const invokedSection = invokedSkillsContent ? `\n\n[ACTIVE SKILLS CONTEXT]\n${invokedSkillsContent}` : '';
+      const projectSection = projectContext ? `\n\n${projectContext}` : '';
       
       let sysPrompt = '';
       try { sysPrompt = useConfigStore.getState().getSystemPrompt(); } catch { /* */ }
 
-      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}
+      chatPrompt = `${sysPrompt ? sysPrompt + '\n' : ''}${GLOBAL_RTK_INSTRUCTION}${skillSection}${invokedSection}${projectSection}
 
 ---
 
