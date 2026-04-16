@@ -172,43 +172,45 @@ export async function sendGroqSummary(
       role: 'system',
       content: `You are a task extraction specialist. Analyze the conversation and extract coding tasks.
 
-CRITICAL: Group related changes into SINGLE task. AVOID over-splitting!
+MOST IMPORTANT RULE: ALWAYS prefer FEWER tasks. When in doubt, MERGE into ONE task.
 
-Output format - VALID JSON array only, no markdown:
+Output format - VALID JSON array only, no markdown, no explanation:
 [
   {
     "title": "Short clear title, max 80 chars",
-    "description": "Implementation requirements. Include: 1) All file paths with @ prefix, 2) Complete changes needed, 3) Technical requirements, 4) Expected behavior.",
+    "description": "All implementation details in one description. Include: file paths with @ prefix, all changes needed, technical requirements, expected behavior.",
     "priority": "high | medium | low",
     "recommendedSkills": ["skill-name-1", "skill-name-2"]
   }
 ]
 
-MERGE vs SPLIT GUIDELINES:
-→ MERGE into 1 task when:
-  - Same feature/component (e.g., "create login form" = 1 task)
-  - Related UI changes in same area
-  - CRUD operations on same entity
-  - Frontend + Backend for same API
-  
-→ SPLIT when:
-  - Completely different features
-  - Independent components
-  - Task dependencies exist
+MERGING RULES (STRICTLY ENFORCED):
+1. If the conversation discusses ONE file → ALWAYS 1 task. NEVER split changes to a single file.
+2. If the conversation discusses ONE feature/component → ALWAYS 1 task, even if multiple files are involved.
+3. Changes to the same area (e.g., same component, same module, same page) → 1 task.
+4. Frontend + Backend + Styling for the same feature → 1 task.
+5. Bug fix + related refactor in the same file → 1 task.
+6. Multiple small changes mentioned casually → 1 task with a combined description.
 
-Priority:
-- "high": Bug fixes, security
-- "medium": New features
-- "low": Documentation
+ONLY SPLIT into multiple tasks when:
+- The conversation EXPLICITLY discusses 2+ COMPLETELY UNRELATED features (e.g., "fix login bug" AND "add dark mode to settings page")
+- The features have ZERO overlap in files or functionality
 
-RULES:
-- If ONE feature described → return 1 task
-- If multiple independent features → return multiple
-- No tasks for: git, PRs, testing
-- If no tasks → return []
+NEVER split when:
+- Different aspects of the same file (e.g., "fix prompt" and "add validation" in same file = 1 task)
+- Sub-steps of the same feature (e.g., "create component", "add styles", "connect API" for one feature = 1 task)
+- Changes that are part of the same user request
 
-EXAMPLE (Single Feature - 1 Task):
-"Create UserProfile in @src/components/UserProfile.tsx with avatar, name, email. Use @components/Button.tsx. Style with Tailwind. Accept 'user' prop with TypeScript types."`,
+Priority: "high" = bugs/security, "medium" = features, "low" = docs/cosmetic
+
+BAD EXAMPLE (over-split - DO NOT DO THIS):
+Conversation about fixing a prompt in TaskCreatorChat.tsx:
+❌ Task 1: "Update system prompt" | Task 2: "Add validation logic" | Task 3: "Fix output format"
+✅ Task 1: "Optimize task summarization prompt in @TaskCreatorChat.tsx" (combines ALL changes into one description)
+
+GOOD EXAMPLE:
+Conversation about login + unrelated settings page:
+✅ Task 1: "Implement login form" | Task 2: "Add settings page theme toggle"`,
     },
     {
       role: 'user',
@@ -217,12 +219,12 @@ EXAMPLE (Single Feature - 1 Task):
 Conversation:
 ${conversationText}
 
-Extract tasks as JSON ONLY:`,
+Extract tasks as JSON array ONLY (prefer FEWER tasks, merge aggressively):`,
     },
   ], {
     model: 'llama-3.1-8b-instant',
     maxTokens: 2500,
-    temperature: 0.2,
+    temperature: 0.1,
   });
 
   return result?.content || null;
