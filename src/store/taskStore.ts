@@ -69,6 +69,8 @@ export const useTaskStore = create<TaskState>()(
             if (recentlyMovedToInProgress.has(task.id)) return false;
             // Check if AI is actually running this task
             const taskState = aiStore.taskStates[task.id];
+            // Skip tasks that are currently creating a PR (can take a while)
+            if (taskState?.creatingPR) return false;
             const isRunning = taskState?.status === 'running' || taskState?.status === 'queued';
             const isCurrentTask = aiStore.currentRunningTask === task.id;
             const isSavedTask = savedTask?.taskId === task.id;

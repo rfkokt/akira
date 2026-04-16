@@ -91,8 +91,15 @@ export function KanbanBoard() {
         console.log(`[Board] Creating revision PR for ${task.id} from base branch: ${baseBranch}`)
       }
       
-      // Create PR for manually moved task
-      const prResult = await autoCreatePR(task.id, task.title, workspacePath, { baseBranch })
+      // Create PR for manually moved task (with timeout to prevent hangs)
+      const PR_TIMEOUT_MS = 60_000; // 60 seconds
+      const prPromise = autoCreatePR(task.id, task.title, workspacePath, { baseBranch })
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), PR_TIMEOUT_MS))
+      const prResult = await Promise.race([prPromise, timeoutPromise])
+      
+      if (prResult === null) {
+        console.warn(`[Board] autoCreatePR timed out after ${PR_TIMEOUT_MS / 1000}s for task ${task.id}`)
+      }
       
       // Capture diff snapshot with cumulative history
       if (prResult?.branch && prResult?.baseBranch) {

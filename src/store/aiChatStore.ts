@@ -340,125 +340,143 @@ async function handleTaskCompletion(
   // Mark that we're creating PR
   updateTaskState(get, set, taskId, { creatingPR: true });
 
-  const cwd = getWorkspaceCwd();
-  if (!cwd) {
-    updateTaskState(get, set, taskId, { creatingPR: false });
-    await useTaskStore.getState().moveTask(taskId, 'review');
-    await notify('Task Ready for Review ✅', `"${taskTitle}" has been completed and is ready for review.`);
-    return;
-  }
-
-  // Check if task has been merged before - use merged_to_branch as base for revision
-  const tasks = useTaskStore.getState().tasks;
-  const task = tasks.find(t => t.id === taskId);
-  const baseBranch = task?.is_merged ? task.merged_to_branch || undefined : undefined;
-  
-  if (baseBranch) {
-    console.log(`[AI] Task ${taskId} revision - creating branch from ${baseBranch}`);
-  }
-
-  const prResult = await autoCreatePR(taskId, taskTitle, cwd, { baseBranch: baseBranch || undefined });
-
-  // Capture diff snapshot — use branch diff if we have a PR branch (isolated per task)
   try {
-    let newDiff = '';
-    let hasChanges = false;
-
-    if (prResult?.branch && prResult?.baseBranch) {
-      const baseBranch = prResult.baseBranch;
-
-      const diffResult = await invoke<{ diff: string; has_changes: boolean }>
-        ('git_get_branch_diff', { cwd, baseBranch, headBranch: prResult.branch });
-      if (diffResult.has_changes) {
-        newDiff = diffResult.diff;
-        hasChanges = true;
-      }
-    } else {
-      // Fallback: working directory diff
-      const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd });
-      if (diffResult.has_changes) {
-        newDiff = diffResult.diff;
-        hasChanges = true;
-      }
+    const cwd = getWorkspaceCwd();
+    if (!cwd) {
+      await useTaskStore.getState().moveTask(taskId, 'review');
+      await notify('Task Ready for Review ✅', `"${taskTitle}" has been completed and is ready for review.`);
+      return;
     }
 
-    if (hasChanges) {
-      // Get existing diff from task and append for cumulative history
-      const tasks = useTaskStore.getState().tasks;
-      const task = tasks.find(t => t.id === taskId);
-      const existingDiff = task?.diff_content || '';
-      
-      // Build cumulative diff with revision marker
-      let combinedDiff = '';
-      if (existingDiff && existingDiff.trim()) {
-        const timestamp = new Date().toISOString();
-        combinedDiff = `${existingDiff}\n\n${'='.repeat(60)}\n[REVISION ${timestamp}]\n${'='.repeat(60)}\n\n${newDiff}`;
+    // Check if task has been merged before - use merged_to_branch as base for revision
+    const tasks = useTaskStore.getState().tasks;
+    const task = tasks.find(t => t.id === taskId);
+    const baseBranch = task?.is_merged ? task.merged_to_branch || undefined : undefined;
+    
+    if (baseBranch) {
+      console.log(`[AI] Task ${taskId} revision - creating branch from ${baseBranch}`);
+    }
+
+    // Add timeout to prevent indefinite hangs from slow git operations
+    const PR_TIMEOUT_MS = 60_000; // 60 seconds
+    const prPromise = autoCreatePR(taskId, taskTitle, cwd, { baseBranch: baseBranch || undefined });
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), PR_TIMEOUT_MS));
+    
+    const prResult = await Promise.race([prPromise, timeoutPromise]);
+    
+    if (prResult === null) {
+      console.warn(`[AI] autoCreatePR timed out after ${PR_TIMEOUT_MS / 1000}s for task ${taskId}`);
+    }
+
+    // Capture diff snapshot — use branch diff if we have a PR branch (isolated per task)
+    try {
+      let newDiff = '';
+      let hasChanges = false;
+
+      if (prResult?.branch && prResult?.baseBranch) {
+        const baseBranch = prResult.baseBranch;
+
+        const diffResult = await invoke<{ diff: string; has_changes: boolean }>
+          ('git_get_branch_diff', { cwd, baseBranch, headBranch: prResult.branch });
+        if (diffResult.has_changes) {
+          newDiff = diffResult.diff;
+          hasChanges = true;
+        }
       } else {
-        combinedDiff = newDiff;
+        // Fallback: working directory diff
+        const diffResult = await invoke<{ diff: string; has_changes: boolean }>('git_get_diff', { cwd });
+        if (diffResult.has_changes) {
+          newDiff = diffResult.diff;
+          hasChanges = true;
+        }
       }
 
-      const diffLastCapturedAt = new Date().toISOString();
-      await dbService.updateTaskDiffInfo(taskId, combinedDiff, diffLastCapturedAt);
-      await useTaskStore.getState().fetchTasks();
-      
-      console.log(`[AI] Diff captured for ${taskId}: ${newDiff.length} chars new, ${combinedDiff.length} chars total`);
+      if (hasChanges) {
+        // Get existing diff from task and append for cumulative history
+        const tasks = useTaskStore.getState().tasks;
+        const task = tasks.find(t => t.id === taskId);
+        const existingDiff = task?.diff_content || '';
+        
+        // Build cumulative diff with revision marker
+        let combinedDiff = '';
+        if (existingDiff && existingDiff.trim()) {
+          const timestamp = new Date().toISOString();
+          combinedDiff = `${existingDiff}\n\n${'='.repeat(60)}\n[REVISION ${timestamp}]\n${'='.repeat(60)}\n\n${newDiff}`;
+        } else {
+          combinedDiff = newDiff;
+        }
+
+        const diffLastCapturedAt = new Date().toISOString();
+        await dbService.updateTaskDiffInfo(taskId, combinedDiff, diffLastCapturedAt);
+        await useTaskStore.getState().fetchTasks();
+        
+        console.log(`[AI] Diff captured for ${taskId}: ${newDiff.length} chars new, ${combinedDiff.length} chars total`);
+      }
+    } catch (e) {
+      console.error('[AI] Failed to capture diff:', e);
     }
-  } catch (e) {
-    console.error('[AI] Failed to capture diff:', e);
-  }
 
-  // Add result message
-  let resultContent = '';
+    // Add result message
+    let resultContent = '';
 
-  if (!prResult) {
-    resultContent = `⚠️ **Task completed but PR automation failed**\n\nAI finished the task but could not automatically commit/push to remote.\n\nYou can:\n1. Check git configuration\n2. Create branch and PR manually\n3. Or use "View Diff" to see changes\n\nTask moved to **Review** for manual handling.`;
-  } else if (prResult.error) {
-    resultContent = `⚠️ **Task completed but remote push failed**\n\nAI finished the task and created branch \`${prResult.branch}\` locally, but could not push to remote.\n\n**Error:**\n\`\`\`\n${prResult.error}\n\`\`\`\n\nYou can:\n1. Check git branch/remote settings\n2. Push the branch manually\n\nTask moved to **Review** for manual handling.`;
-  } else if (prResult.prUrl) {
-    const isRealPR = !prResult.prUrl.includes('/compare/');
-    if (isRealPR) {
-      resultContent = `✅ **Task completed! PR auto-created.**\n\nBranch: \`${prResult.branch}\`\n\n🔗 [View Pull Request](${prResult.prUrl})`;
+    if (!prResult) {
+      resultContent = `⚠️ **Task completed but PR automation failed**\n\nAI finished the task but could not automatically commit/push to remote.\n\nYou can:\n1. Check git configuration\n2. Create branch and PR manually\n3. Or use "View Diff" to see changes\n\nTask moved to **Review** for manual handling.`;
+    } else if (prResult.error) {
+      resultContent = `⚠️ **Task completed but remote push failed**\n\nAI finished the task and created branch \`${prResult.branch}\` locally, but could not push to remote.\n\n**Error:**\n\`\`\`\n${prResult.error}\n\`\`\`\n\nYou can:\n1. Check git branch/remote settings\n2. Push the branch manually\n\nTask moved to **Review** for manual handling.`;
+    } else if (prResult.prUrl) {
+      const isRealPR = !prResult.prUrl.includes('/compare/');
+      if (isRealPR) {
+        resultContent = `✅ **Task completed! PR auto-created.**\n\nBranch: \`${prResult.branch}\`\n\n🔗 [View Pull Request](${prResult.prUrl})`;
+      } else {
+        resultContent = `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: \`git checkout ${prResult.branch}\``;
+      }
     } else {
-      resultContent = `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\n[Click here to create PR](${prResult.prUrl})\n\nOr run: \`git checkout ${prResult.branch}\``;
+      resultContent = `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`;
     }
-  } else {
-    resultContent = `✅ **Task completed and branch pushed!**\n\nBranch: \`${prResult.branch}\`\n\nCreate PR manually from your git provider.`;
-  }
 
-  const newMessage = {
-    id: crypto.randomUUID(),
-    taskId,
-    role: 'system' as const,
-    content: resultContent,
-    timestamp: Date.now(),
-  };
+    const newMessage = {
+      id: crypto.randomUUID(),
+      taskId,
+      role: 'system' as const,
+      content: resultContent,
+      timestamp: Date.now(),
+    };
 
-  addMessage(get, set, taskId, newMessage);
+    addMessage(get, set, taskId, newMessage);
 
-  // Save the PR outcome system message to DB to persist logs across reloads
-  try {
-    await dbService.createChatMessage(taskId, 'system', resultContent, 'akira');
+    // Save the PR outcome system message to DB to persist logs across reloads
+    try {
+      await dbService.createChatMessage(taskId, 'system', resultContent, 'akira');
+    } catch (err) {
+      console.error('Failed to save completion message to DB:', err);
+    }
+
+    if (prResult) {
+      updateTaskState(get, set, taskId, {
+        prBranch: prResult.branch,
+        prUrl: prResult.prUrl,
+        prCreatedAt: Date.now(),
+      });
+    } else {
+      // PR creation failed completely
+      updateTaskState(get, set, taskId, {
+        prError: 'PR automation failed or timed out',
+      });
+    }
+
+    await useTaskStore.getState().moveTask(taskId, 'review');
+    await notify('Task Ready for Review ✅', `"${taskTitle}" has been completed and moved to review.`);
   } catch (err) {
-    console.error('Failed to save completion message to DB:', err);
+    console.error('[AI] handleTaskCompletion error:', err);
+    // Still move to review even if PR creation fails
+    try {
+      await useTaskStore.getState().moveTask(taskId, 'review');
+      await notify('Task Moved to Review', `"${taskTitle}" completed. PR creation encountered an error.`);
+    } catch { /* last resort */ }
+  } finally {
+    // ALWAYS reset creatingPR flag to prevent permanent stuck state
+    updateTaskState(get, set, taskId, { creatingPR: false });
   }
-
-  if (prResult) {
-    updateTaskState(get, set, taskId, {
-      prBranch: prResult.branch,
-      prUrl: prResult.prUrl,
-      prCreatedAt: Date.now(),
-      creatingPR: false,
-    });
-  } else {
-    // PR creation failed completely
-    updateTaskState(get, set, taskId, {
-      creatingPR: false,
-      prError: 'PR automation failed',
-    });
-  }
-
-  await useTaskStore.getState().moveTask(taskId, 'review');
-  await notify('Task Ready for Review ✅', `"${taskTitle}" has been completed and moved to review.`);
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────
