@@ -277,7 +277,7 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
   const [targetBranch, setTargetBranch] = useState('main');
   const [createTag, setCreateTag] = useState(false);
   const [deleteBranch, setDeleteBranch] = useState(true);
-  const [runBuildTest, setRunBuildTest] = useState(true);
+  const [runBuildTest, setRunBuildTest] = useState(false);
   const [latestTag, setLatestTag] = useState<string | null>(null);
   const [bumpType, setBumpType] = useState<'patch' | 'minor' | 'major'>('patch');
   const [calcNextTag, setCalcNextTag] = useState('alpha.0.0.1');

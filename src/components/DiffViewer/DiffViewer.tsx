@@ -58,7 +58,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
   const [error, setError] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [viewMode, setViewMode] = useState<'summary' | 'detail'>('summary');
+  const [viewMode, setViewMode] = useState<'summary' | 'inline' | 'split'>('summary');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
@@ -295,6 +295,8 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
 
       const lines = fileContent.split('\n');
       let currentHunk: ChangeHunk | null = null;
+      let oldCounter = 0;
+      let newCounter = 0;
 
       for (const line of lines) {
         if (line.startsWith('@@')) {
@@ -307,12 +309,15 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
             newStart: hunkMatch ? parseInt(hunkMatch[2]) : 0,
             lines: [],
           };
+          oldCounter = currentHunk.oldStart;
+          newCounter = currentHunk.newStart;
         } else if (line.startsWith('+') && !line.startsWith('+++')) {
           fileChange.additions++;
           if (currentHunk) {
             currentHunk.lines.push({
               type: 'added',
               content: line.slice(1),
+              newLineNum: newCounter++,
             });
           }
         } else if (line.startsWith('-') && !line.startsWith('---')) {
@@ -321,6 +326,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
             currentHunk.lines.push({
               type: 'removed',
               content: line.slice(1),
+              oldLineNum: oldCounter++,
             });
           }
         } else if (line.startsWith(' ') || (!line.startsWith('diff') && !line.startsWith('index') && !line.startsWith('---') && !line.startsWith('+++'))) {
@@ -328,6 +334,8 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
             currentHunk.lines.push({
               type: 'context',
               content: line.slice(1) || ' ',
+              oldLineNum: oldCounter++,
+              newLineNum: newCounter++,
             });
           }
         }
@@ -448,14 +456,25 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={() => setViewMode('detail')}
+                  onClick={() => setViewMode('inline')}
                   className={`rounded-md px-3 h-7 text-xs transition-all ${
-                    viewMode === 'detail' 
+                    viewMode === 'inline' 
                       ? 'bg-app-panel text-white shadow-sm border border-app-border' 
                       : 'text-neutral-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  Detail
+                  Sebaris
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setViewMode('split')}
+                  className={`rounded-md px-3 h-7 text-xs transition-all ${
+                    viewMode === 'split' 
+                      ? 'bg-app-panel text-white shadow-sm border border-app-border' 
+                      : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  Bandingkan
                 </Button>
               </div>
             )}
@@ -499,6 +518,7 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
                 expandedFiles={expandedFiles}
                 toggleFile={toggleFile}
                 showContext={showContext}
+                viewMode={viewMode}
               />
             )
           ) : (
@@ -666,11 +686,13 @@ function DetailView({
   expandedFiles,
   toggleFile,
   showContext,
+  viewMode,
 }: {
   parsedFiles: FileChange[];
   expandedFiles: Set<string>;
   toggleFile: (path: string) => void;
   showContext: boolean;
+  viewMode: 'inline' | 'split';
 }) {
   return (
     <div className="font-mono text-xs">
@@ -698,50 +720,137 @@ function DetailView({
 
           {expandedFiles.has(file.path) && (
             <div>
-              {file.hunks.map((hunk, hunkIdx) => (
-                <div key={hunkIdx}>
-                  <div className="px-3 py-1 bg-app-bg text-app-accent border-b border-app-border">
-                    @@ -{hunk.oldStart},... +{hunk.newStart},... @@
-                  </div>
-                  {hunk.lines.map((line, lineIdx) => {
-                    if (!showContext && line.type === 'context') return null;
-
-                    return (
-                      <div
-                        key={lineIdx}
-                        className={`
-                          flex px-0
-                          ${line.type === 'added' ? 'bg-green-500/10' : ''}
-                          ${line.type === 'removed' ? 'bg-red-500/10' : ''}
-                          ${line.type === 'context' && !showContext ? 'hidden' : ''}
-                        `}
-                      >
-                        <span className="w-12 shrink-0 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
-                          {line.oldLineNum || ''}
-                        </span>
-                        <span className="w-12 shrink-0 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
-                          {line.newLineNum || ''}
-                        </span>
-                        <span className="w-6 shrink-0 text-center py-0.5 text-neutral-600">
-                          {line.type === 'added' && <span className="text-green-500">+</span>}
-                          {line.type === 'removed' && <span className="text-red-500">-</span>}
-                          {line.type === 'context' && <span className="text-neutral-600"> </span>}
-                        </span>
-                        <span
-                          className={`
-                            flex-1 px-2 py-0.5 whitespace-pre-wrap break-all
-                            ${line.type === 'added' ? 'text-green-300' : ''}
-                            ${line.type === 'removed' ? 'text-red-300' : ''}
-                            ${line.type === 'context' ? 'text-neutral-300' : ''}
-                          `}
-                        >
-                          {line.content || ' '}
-                        </span>
+              {file.hunks.map((hunk, hunkIdx) => {
+                if (viewMode === 'inline') {
+                  return (
+                    <div key={hunkIdx}>
+                      <div className="px-3 py-1 bg-app-bg text-app-accent border-b border-app-border">
+                        @@ -{hunk.oldStart},... +{hunk.newStart},... @@
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
+                      {hunk.lines.map((line, lineIdx) => {
+                        if (!showContext && line.type === 'context') return null;
+
+                        return (
+                          <div
+                            key={lineIdx}
+                            className={`
+                              flex px-0
+                              ${line.type === 'added' ? 'bg-green-500/10' : ''}
+                              ${line.type === 'removed' ? 'bg-red-500/10' : ''}
+                              ${line.type === 'context' && !showContext ? 'hidden' : ''}
+                            `}
+                          >
+                            <span className="w-12 shrink-0 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
+                              {line.oldLineNum || ''}
+                            </span>
+                            <span className="w-12 shrink-0 text-right pr-3 py-0.5 text-neutral-600 select-none border-r border-app-border">
+                              {line.newLineNum || ''}
+                            </span>
+                            <span className="w-6 shrink-0 text-center py-0.5 text-neutral-600">
+                              {line.type === 'added' && <span className="text-green-500">+</span>}
+                              {line.type === 'removed' && <span className="text-red-500">-</span>}
+                              {line.type === 'context' && <span className="text-neutral-600"> </span>}
+                            </span>
+                            <span
+                              className={`
+                                flex-1 px-2 py-0.5 whitespace-pre-wrap break-all
+                                ${line.type === 'added' ? 'text-green-300' : ''}
+                                ${line.type === 'removed' ? 'text-red-300' : ''}
+                                ${line.type === 'context' ? 'text-neutral-300' : ''}
+                              `}
+                            >
+                              {line.content || ' '}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                } else {
+                  // Split view
+                  const splitRows: { left: ChangeLine | null; right: ChangeLine | null }[] = [];
+                  let i = 0;
+                  while (i < hunk.lines.length) {
+                    const line = hunk.lines[i];
+                    if (line.type === 'context') {
+                      splitRows.push({ left: line, right: line });
+                      i++;
+                    } else if (line.type === 'removed') {
+                      const removedGroup = [];
+                      const addedGroup = [];
+                      while (i < hunk.lines.length && hunk.lines[i].type === 'removed') {
+                        removedGroup.push(hunk.lines[i]);
+                        i++;
+                      }
+                      while (i < hunk.lines.length && hunk.lines[i].type === 'added') {
+                        addedGroup.push(hunk.lines[i]);
+                        i++;
+                      }
+                      const maxLen = Math.max(removedGroup.length, addedGroup.length);
+                      for (let j = 0; j < maxLen; j++) {
+                        splitRows.push({
+                          left: removedGroup[j] || null,
+                          right: addedGroup[j] || null,
+                        });
+                      }
+                    } else if (line.type === 'added') {
+                      const addedGroup = [];
+                      while (i < hunk.lines.length && hunk.lines[i].type === 'added') {
+                        addedGroup.push(hunk.lines[i]);
+                        i++;
+                      }
+                      for (let j = 0; j < addedGroup.length; j++) {
+                        splitRows.push({
+                          left: null,
+                          right: addedGroup[j],
+                        });
+                      }
+                    }
+                  }
+
+                  return (
+                    <div key={hunkIdx} className="w-full">
+                      <div className="px-3 py-1 bg-app-bg text-app-accent border-b border-app-border">
+                        @@ -{hunk.oldStart},... +{hunk.newStart},... @@
+                      </div>
+                      <div className="flex flex-col w-full">
+                        {splitRows.map((row, rowIdx) => {
+                          if (!showContext && row.left?.type === 'context' && row.right?.type === 'context') return null;
+                          return (
+                            <div key={rowIdx} className="flex flex-row w-full divide-x divide-app-border">
+                              {/* Left Side */}
+                              <div className={`flex-1 flex overflow-hidden min-w-0 ${row.left ? (row.left.type === 'removed' ? 'bg-red-500/10' : '') : 'bg-neutral-900/30'}`}>
+                                <span className="w-12 shrink-0 text-right pr-2 py-0.5 text-neutral-600 select-none border-r border-app-border bg-app-bg border-opacity-40">
+                                  {row.left?.oldLineNum || ''}
+                                </span>
+                                <span className="w-6 shrink-0 text-center py-0.5 text-neutral-600">
+                                  {row.left?.type === 'removed' ? <span className="text-red-500">-</span> : ' '}
+                                </span>
+                                <span className={`flex-1 px-2 py-0.5 whitespace-pre-wrap break-all ${row.left?.type === 'removed' ? 'text-red-300' : 'text-neutral-300'}`}>
+                                  {row.left?.content || ' '}
+                                </span>
+                              </div>
+                              
+                              {/* Right Side */}
+                              <div className={`flex-1 flex overflow-hidden min-w-0 ${row.right ? (row.right.type === 'added' ? 'bg-green-500/10' : '') : 'bg-neutral-900/30'}`}>
+                                <span className="w-12 shrink-0 text-right pr-2 py-0.5 text-neutral-600 select-none border-r border-app-border bg-app-bg border-opacity-40">
+                                  {row.right?.newLineNum || ''}
+                                </span>
+                                <span className="w-6 shrink-0 text-center py-0.5 text-neutral-600">
+                                  {row.right?.type === 'added' ? <span className="text-green-500">+</span> : ' '}
+                                </span>
+                                <span className={`flex-1 px-2 py-0.5 whitespace-pre-wrap break-all ${row.right?.type === 'added' ? 'text-green-300' : 'text-neutral-300'}`}>
+                                  {row.right?.content || ' '}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+              })}
             </div>
           )}
         </div>

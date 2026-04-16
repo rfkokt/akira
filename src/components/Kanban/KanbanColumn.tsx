@@ -1,4 +1,5 @@
-import { Plus, MoreHorizontal, Upload } from 'lucide-react'
+import { Plus, MoreHorizontal, Upload, RefreshCw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useSortable } from '@dnd-kit/sortable'
 import type { Task } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -10,6 +11,8 @@ interface KanbanColumnProps {
   children: React.ReactNode
   onAddTask?: () => void
   onImport?: () => void
+  onRefreshBranches?: () => void
+  isRefreshingBranches?: boolean
 }
 
 export function KanbanColumn({
@@ -18,6 +21,8 @@ export function KanbanColumn({
   children,
   onAddTask,
   onImport,
+  onRefreshBranches,
+  isRefreshingBranches
 }: KanbanColumnProps) {
   const { setNodeRef } = useSortable({
     id: column.id,
@@ -45,6 +50,11 @@ export function KanbanColumn({
         
         {column.id === 'todo' && (
           <div className="flex items-center gap-1">
+            {onRefreshBranches && (
+              <Button variant="ghost" size="icon" onClick={onRefreshBranches} title="Refresh Branches">
+                <RefreshCw className={cn("w-4 h-4", isRefreshingBranches && "animate-spin")} />
+              </Button>
+            )}
             {onImport && (
               <Button variant="ghost" size="icon" onClick={onImport} title="Import Tasks">
                 <Upload className="w-4 h-4" />

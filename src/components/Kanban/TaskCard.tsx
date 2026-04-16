@@ -1,16 +1,18 @@
+import { useState, useEffect } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Play, Loader2, CheckCircle, GitBranch, GitMerge, FileDiff, MessageSquare, RefreshCw, AlertCircle } from 'lucide-react'
 import type { Task } from '@/types'
 import type { AITaskState } from '@/store/aiChatStore'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AIActivityIndicator } from './AIActivityIndicator'
 import { PRIORITY_COLORS } from './constants'
 import { cn } from '@/lib/utils'
 
 interface TaskCardProps {
   task: Task
-  onStartAI: (task: Task) => void
+  onStartAI: (task: Task, baseBranch?: string) => void
   onViewDiff: (task: Task) => void
   onOpenChat: (task: Task) => void
   onComplete: (task: Task) => void
@@ -20,6 +22,7 @@ interface TaskCardProps {
   processingTasks: Set<string>
   taskStates: Record<string, AITaskState>
   mergeLoadingTasks: Set<string>
+  availableBranches?: string[]
 }
 
 export function TaskCard({ 
@@ -33,8 +36,19 @@ export function TaskCard({
   onAIReview,
   processingTasks,
   taskStates,
-  mergeLoadingTasks
+  mergeLoadingTasks,
+  availableBranches = []
 }: TaskCardProps) {
+  const [selectedBranch, setSelectedBranch] = useState<string>('main')
+
+  useEffect(() => {
+    if (availableBranches.length > 0 && !availableBranches.includes(selectedBranch)) {
+      if (availableBranches.includes('main')) setSelectedBranch('main')
+      else if (availableBranches.includes('master')) setSelectedBranch('master')
+      else setSelectedBranch(availableBranches[0])
+    }
+  }, [availableBranches, selectedBranch])
+
   const isAIWorking = taskStates[task.id]?.status === 'running' || 
                       taskStates[task.id]?.status === 'queued'
   
@@ -111,25 +125,45 @@ const style = {
       )}
 
       <div className="mt-4 flex items-center justify-end border-t border-app-border/30 pt-3">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 w-full">
           {task.status === 'todo' && (
-            <Button
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                onStartAI(task)
-              }}
-              disabled={processingTasks.has(task.id)}
-              className="bg-app-accent hover:bg-app-accent-hover disabled:opacity-50"
-              title="Start AI"
-            >
-              {processingTasks.has(task.id) ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Play className="w-3 h-3" />
-              )}
-              {processingTasks.has(task.id) ? 'Starting...' : 'Start'}
-            </Button>
+            <div className="flex items-center justify-between w-full h-8">
+              <div className="flex items-center gap-1.5 flex-1 max-w-[60%]" onClick={(e) => e.stopPropagation()}>
+                {availableBranches.length > 0 && (
+                  <Select value={selectedBranch} onValueChange={(val) => val && setSelectedBranch(val)}>
+                    <SelectTrigger className="h-8 text-xs bg-app-sidebar border-app-border focus:ring-1 focus:ring-app-accent hover:bg-app-panel text-neutral-300 w-full px-2" onClick={(e) => e.stopPropagation()}>
+                      <GitBranch className="w-3 h-3 mr-1.5 shrink-0 text-app-accent" />
+                      <SelectValue placeholder="Branch" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-app-panel border-app-border rounded-md shadow-xl max-h-40">
+                      {availableBranches.map(branch => (
+                        <SelectItem key={branch} value={branch} className="text-xs text-white focus:bg-white/10 cursor-pointer">
+                          {branch}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onStartAI(task, selectedBranch)
+                }}
+                disabled={processingTasks.has(task.id)}
+                className="bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 h-8 px-3 shrink-0 ml-2"
+                title="Start AI"
+              >
+                {processingTasks.has(task.id) ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5" />
+                )}
+                <span className="ml-1.5 font-medium">{processingTasks.has(task.id) ? 'Started' : 'Start'}</span>
+              </Button>
+            </div>
           )}
 
           {task.status === 'review' && (

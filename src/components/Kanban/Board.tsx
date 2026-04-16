@@ -56,6 +56,60 @@ export function KanbanBoard() {
     status: 'todo' as Task['status'],
   })
 
+  // Start AI Branch Context
+  const [availableBranches, setAvailableBranches] = useState<string[]>([])
+  const [isRefreshingBranches, setIsRefreshingBranches] = useState(false)
+
+  const fetchBranches = useCallback(async () => {
+    if (!activeWorkspace?.folder_path) return
+    setIsRefreshingBranches(true)
+    try {
+      // First, silently fetch from origin to get the actual latest branches
+      await invoke('run_shell_command', {
+        command: 'git',
+        args: ['fetch', '--prune'],
+        cwd: activeWorkspace.folder_path
+      }).catch(() => {})
+
+      const result = await invoke<{success: boolean, stdout: string}>('run_shell_command', {
+        command: 'git',
+        args: ['branch', '-a', '--format=%(refname:short)'],
+        cwd: activeWorkspace.folder_path
+      })
+      if (result.success) {
+        const rawBranches = result.stdout.trim().split('\n').filter(Boolean)
+        const cleanSet = new Set<string>()
+        
+        rawBranches.forEach(b => {
+           if (b.includes('HEAD') || b.startsWith('akira/')) return
+           const cleanName = b.replace(/^origin\//, '')
+           if (!cleanName.startsWith('akira/')) {
+             cleanSet.add(cleanName)
+           }
+        })
+        
+        // Put main/master/development at the top
+        const branches = Array.from(cleanSet).sort((a, b) => {
+          const isA_main = ['main', 'master', 'development'].includes(a)
+          const isB_main = ['main', 'master', 'development'].includes(b)
+          if (isA_main && !isB_main) return -1
+          if (!isA_main && isB_main) return 1
+          return a.localeCompare(b)
+        })
+        
+        setAvailableBranches(branches)
+      }
+    } catch (err) {
+      console.error('Failed to fetch branches:', err)
+    } finally {
+      setIsRefreshingBranches(false)
+    }
+  }, [activeWorkspace?.folder_path])
+
+  useEffect(() => {
+    fetchBranches()
+  }, [fetchBranches])
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 5 },
@@ -221,20 +275,38 @@ export function KanbanBoard() {
     }
   }
 
-  const handleStartAI = useCallback(async (task: Task) => {
+  const handleStartAI = useCallback(async (task: Task, baseBranch?: string) => {
     if (processingTasks.has(task.id)) return
     setProcessingTasks((prev) => new Set(prev).add(task.id))
-    await moveTask(task.id, 'in-progress')
+    
     try {
+      if (baseBranch && activeWorkspace) {
+        await invoke('run_shell_command', {
+          command: 'git',
+          args: ['checkout', baseBranch],
+          cwd: activeWorkspace.folder_path
+        })
+
+        // Auto-pull fast-forward to ensure the base branch is the absolute latest
+        // If there's no internet or error, we just proceed with the local branch
+        await invoke('run_shell_command', {
+          command: 'git',
+          args: ['pull', 'origin', baseBranch, '--ff-only'],
+          cwd: activeWorkspace.folder_path
+        })
+      }
+      
+      await moveTask(task.id, 'in-progress')
       await enqueueTask(task.id, task.title, task.description || undefined)
     } catch (error) {
+      console.error('[Board] Failed to start AI:', error)
       setProcessingTasks((prev) => {
         const next = new Set(prev)
         next.delete(task.id)
         return next
       })
     }
-  }, [processingTasks, moveTask, enqueueTask])
+  }, [activeWorkspace, processingTasks, moveTask, enqueueTask])
 
   const handleRetry = useCallback(async (task: Task) => {
     await moveTask(task.id, 'in-progress')
@@ -310,6 +382,8 @@ export function KanbanBoard() {
                   tasks={columnTasks} 
                   onAddTask={() => setShowAddModal(true)}
                   onImport={() => setShowImportModal(true)}
+                  onRefreshBranches={fetchBranches}
+                  isRefreshingBranches={isRefreshingBranches}
                 >
                   <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                     {columnTasks.map((task) => (
@@ -326,6 +400,7 @@ export function KanbanBoard() {
                         processingTasks={processingTasks}
                         taskStates={taskStates}
                         mergeLoadingTasks={mergeLoadingTasks}
+                        availableBranches={availableBranches}
                       />
                     ))}
                   </SortableContext>
