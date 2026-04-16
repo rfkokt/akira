@@ -452,26 +452,26 @@ const style = {
         </div>
       )}
 
-      {task.status === 'review' && taskStates[task.id]?.prBranch && (
+      {task.status === 'review' && (taskStates[task.id]?.prBranch || task.pr_branch) && (
         <div className="mt-2 pt-2 border-t border-green-500/20">
-          {taskStates[task.id]?.prUrl ? (
+          {(taskStates[task.id]?.prUrl || task.pr_url) ? (
             <Button
               variant="link"
               size="sm"
               onClick={async (e) => {
                 e.stopPropagation()
                 const { open } = await import('@tauri-apps/plugin-shell')
-                await open(taskStates[task.id].prUrl!)
+                await open(taskStates[task.id]?.prUrl || task.pr_url!)
               }}
               className="h-auto p-0 flex items-center justify-start gap-1.5 text-xs text-app-accent hover:text-app-accent-hover w-full overflow-hidden"
             >
               <GitBranch className="w-3 h-3 shrink-0" />
-              <span className="font-mono truncate leading-normal">{taskStates[task.id].prBranch}</span>
+              <span className="font-mono truncate leading-normal">{taskStates[task.id]?.prBranch || task.pr_branch}</span>
             </Button>
           ) : (
             <div className="flex items-center justify-start gap-1.5 text-xs text-green-400 w-full overflow-hidden">
               <GitBranch className="w-3 h-3 shrink-0" />
-              <span className="font-mono truncate leading-normal">{taskStates[task.id].prBranch}</span>
+              <span className="font-mono truncate leading-normal">{taskStates[task.id]?.prBranch || task.pr_branch}</span>
             </div>
           )}
         </div>
