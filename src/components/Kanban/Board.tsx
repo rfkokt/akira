@@ -63,16 +63,18 @@ export function KanbanBoard() {
   const [availableBranches, setAvailableBranches] = useState<string[]>([])
   const [isRefreshingBranches, setIsRefreshingBranches] = useState(false)
 
-  const fetchBranches = useCallback(async () => {
+  const fetchBranches = useCallback(async (forceRemote = false) => {
     if (!activeWorkspace?.folder_path) return
     setIsRefreshingBranches(true)
     try {
-      // First, silently fetch from origin to get the actual latest branches
-      await invoke('run_shell_command', {
-        command: 'git',
-        args: ['fetch', '--prune'],
-        cwd: activeWorkspace.folder_path
-      }).catch(() => {})
+      // Only fetch from remote when explicitly requested (refresh button)
+      if (forceRemote) {
+        await invoke('run_shell_command', {
+          command: 'git',
+          args: ['fetch', '--prune'],
+          cwd: activeWorkspace.folder_path
+        }).catch(() => {})
+      }
 
       const result = await invoke<{success: boolean, stdout: string}>('run_shell_command', {
         command: 'git',
@@ -405,7 +407,7 @@ export function KanbanBoard() {
                   tasks={columnTasks} 
                   onAddTask={() => setShowAddModal(true)}
                   onImport={() => setShowImportModal(true)}
-                  onRefreshBranches={fetchBranches}
+                  onRefreshBranches={() => fetchBranches(true)}
                   isRefreshingBranches={isRefreshingBranches}
                 >
                   <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>

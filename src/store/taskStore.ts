@@ -91,40 +91,42 @@ export const useTaskStore = create<TaskState>()(
             set({ tasks, isLoading: false });
           }
           
-          // Sync PR and merge info to AI chat store
+          // Sync PR and merge info to AI chat store (batched — single setState)
+          const currentTaskStates = aiStore.taskStates;
+          const updates: Record<string, any> = {};
+          
           tasks.forEach(task => {
             if (task.pr_branch || task.is_merged) {
-              const existingState = aiStore.taskStates[task.id];
-              // Always sync from DB if DB has pr_branch and memory either doesn't have it
-              // or has a different value (ensures consistency after app restart)
+              const existingState = currentTaskStates[task.id];
               const needsSync = task.pr_branch && existingState?.prBranch !== task.pr_branch;
               const needsMergeSync = task.is_merged && existingState?.isMerged !== task.is_merged;
               if (needsSync || needsMergeSync || !existingState) {
-                useAIChatStore.setState({
-                  taskStates: {
-                    ...useAIChatStore.getState().taskStates,
-                    [task.id]: {
-                      ...(existingState || {
-                        status: 'idle',
-                        startTime: null,
-                        endTime: null,
-                        errorMessage: null,
-                        lastResponse: null,
-                        queuePosition: null,
-                        currentFile: null,
-                        filesModified: [],
-                      }),
-                      prBranch: task.pr_branch || existingState?.prBranch,
-                      prUrl: task.pr_url || existingState?.prUrl,
-                      prCreatedAt: task.pr_created_at ? new Date(task.pr_created_at).getTime() : existingState?.prCreatedAt,
-                      isMerged: task.is_merged,
-                      mergeSourceBranch: task.merge_source_branch || existingState?.mergeSourceBranch,
-                    }
-                  }
-                });
+                updates[task.id] = {
+                  ...(existingState || {
+                    status: 'idle',
+                    startTime: null,
+                    endTime: null,
+                    errorMessage: null,
+                    lastResponse: null,
+                    queuePosition: null,
+                    currentFile: null,
+                    filesModified: [],
+                  }),
+                  prBranch: task.pr_branch || existingState?.prBranch,
+                  prUrl: task.pr_url || existingState?.prUrl,
+                  prCreatedAt: task.pr_created_at ? new Date(task.pr_created_at).getTime() : existingState?.prCreatedAt,
+                  isMerged: task.is_merged,
+                  mergeSourceBranch: task.merge_source_branch || existingState?.mergeSourceBranch,
+                };
               }
             }
           });
+          
+          if (Object.keys(updates).length > 0) {
+            useAIChatStore.setState({
+              taskStates: { ...currentTaskStates, ...updates }
+            });
+          }
         } catch (error) {
           console.error('[TaskStore] fetchTasks error:', error);
           set({ error: String(error), isLoading: false });
