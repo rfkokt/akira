@@ -10,7 +10,7 @@ pub struct ShellCommandResult {
 }
 
 #[tauri::command]
-pub fn run_shell_command(
+pub async fn run_shell_command(
     command: String,
     args: Vec<String>,
     cwd: String,

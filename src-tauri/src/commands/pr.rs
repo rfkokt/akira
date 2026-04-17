@@ -115,7 +115,7 @@ pub async fn create_pull_request(
 /// Get diff between base branch and head branch (PR-specific, isolated per task).
 /// Uses `git diff base...head` (3-dot) to show only commits in head not in base.
 #[tauri::command]
-pub fn git_get_branch_diff(
+pub async fn git_get_branch_diff(
     cwd: String,
     base_branch: String,
     head_branch: String,
