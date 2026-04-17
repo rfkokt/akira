@@ -295,11 +295,13 @@ export function GitPushFlow({ task, onClose, onComplete, workspacePath }: GitPus
 
   // Compute source branch for merge
   const sourceBranch = useMemo(() => {
-    if (task.is_merged && task.merged_to_branch) {
+    // If completed, we're likely doing a cascade merge (e.g. from rdev to main)
+    if (task.status === 'completed' && task.is_merged && task.merged_to_branch) {
       return task.merged_to_branch;
     }
-    return task.merge_source_branch || taskState?.prBranch || task.pr_branch || null;
-  }, [task.is_merged, task.merged_to_branch, task.merge_source_branch, task.pr_branch, taskState?.prBranch]);
+    // Otherwise (reviewing or fixing), ALWAYS use the AI's PR branch
+    return taskState?.prBranch || task.pr_branch || task.merge_source_branch || null;
+  }, [task.status, task.is_merged, task.merged_to_branch, task.pr_branch, task.merge_source_branch, taskState?.prBranch]);
 
   useEffect(() => {
     if (!workspacePath) return;
