@@ -1080,6 +1080,20 @@ Extract tasks from this conversation (prefer FEWER tasks, merge aggressively):`
     return points.slice(0, 8)
   }
 
+  const handleNewChat = useCallback(() => {
+    const newSessionId = Date.now().toString()
+    const newTaskId = `${baseTaskId}_${newSessionId}`
+    setChatSessionId(newSessionId)
+    try {
+      localStorage.setItem('akira-chat-session-id', newSessionId)
+    } catch { /* ignore */ }
+    setExecutionSteps([])
+    setShowProgress(true)
+    setConversationSummaries([])
+    clearMessages(newTaskId)
+    setSummarizedAtLength(-1)
+  }, [baseTaskId, clearMessages])
+
   const handleCreateTasks = async () => {
     if (conversationSummaries.length === 0 || !activeWorkspace?.folder_path) return
     
@@ -1104,9 +1118,7 @@ Extract tasks from this conversation (prefer FEWER tasks, merge aggressively):`
       }
       
       setCreatedSuccess(true)
-      setConversationSummaries([])
-      clearMessages(taskId)
-      setSummarizedAtLength(-1)
+      handleNewChat()
       
       setTimeout(() => setCreatedSuccess(false), 2000)
     } catch (err) {
@@ -1115,19 +1127,6 @@ Extract tasks from this conversation (prefer FEWER tasks, merge aggressively):`
       setIsCreating(false)
     }
   }
-
-  const handleNewChat = useCallback(() => {
-    const newSessionId = Date.now().toString()
-    const newTaskId = chatSessionId ? `${baseTaskId}_${newSessionId}` : baseTaskId
-    setChatSessionId(newSessionId)
-    try {
-      localStorage.setItem('akira-chat-session-id', newSessionId)
-    } catch { /* ignore */ }
-    setExecutionSteps([])
-    setShowProgress(true)
-    setConversationSummaries([])
-    clearMessages(newTaskId)
-  }, [baseTaskId, clearMessages])
 
   const handleToggleYoloMode = useCallback(() => {
     setYoloMode(prev => {
