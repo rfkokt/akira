@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { X, Loader2 } from 'lucide-react'
 import { useTaskStore, useAIChatStore, useWorkspaceStore } from '@/store'
 import type { Task } from '@/types'
 import { TaskImporter } from './TaskImporter'
@@ -55,6 +55,9 @@ export function KanbanBoard() {
     priority: 'medium' as Task['priority'],
     status: 'todo' as Task['status'],
   })
+
+  // Global loading overlay state
+  const [globalLoading, setGlobalLoading] = useState<{ active: boolean; message: string }>({ active: false, message: '' })
 
   // Start AI Branch Context
   const [availableBranches, setAvailableBranches] = useState<string[]>([])
@@ -281,11 +284,15 @@ export function KanbanBoard() {
     
     try {
       if (baseBranch && activeWorkspace) {
+        setGlobalLoading({ active: true, message: `Switching to branch ${baseBranch}...` })
+        
         await invoke('run_shell_command', {
           command: 'git',
           args: ['checkout', baseBranch],
           cwd: activeWorkspace.folder_path
         })
+
+        setGlobalLoading({ active: true, message: `Pulling latest from origin/${baseBranch}...` })
 
         // Auto-pull fast-forward to ensure the base branch is the absolute latest
         // If there's no internet or error, we just proceed with the local branch
@@ -297,6 +304,8 @@ export function KanbanBoard() {
           console.warn(`[Board] git pull --ff-only failed for ${baseBranch}, proceeding with local version`)
         })
       }
+
+      setGlobalLoading({ active: true, message: `Starting AI for "${task.title.substring(0, 40)}"...` })
       
       await moveTask(task.id, 'in-progress')
       await enqueueTask(task.id, task.title, task.description || undefined)
@@ -307,6 +316,8 @@ export function KanbanBoard() {
         next.delete(task.id)
         return next
       })
+    } finally {
+      setGlobalLoading({ active: false, message: '' })
     }
   }, [activeWorkspace, processingTasks, moveTask, enqueueTask])
 
@@ -371,6 +382,16 @@ export function KanbanBoard() {
 
   return (
     <div className="flex flex-1 min-h-0 h-full w-full overflow-x-auto overflow-y-hidden bg-app-bg relative">
+      {/* Global loading overlay */}
+      {globalLoading.active && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 bg-app-panel/95 border border-app-border rounded-xl px-8 py-6 shadow-2xl">
+            <Loader2 className="w-8 h-8 animate-spin text-app-accent" />
+            <p className="text-sm font-medium text-app-text">{globalLoading.message}</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col min-w-max h-full relative">
         <div className="flex-1 min-h-0">
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
