@@ -95,7 +95,7 @@ pub fn get_task_by_id(conn: &Connection, id: &str) -> Result<Option<Task>> {
 
 pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, NULL as diff_content, diff_captured_at, created_at, updated_at 
          FROM tasks WHERE status = ?1 ORDER BY created_at DESC"
     )?;
 
@@ -128,7 +128,7 @@ pub fn get_tasks_by_status(conn: &Connection, status: &str) -> Result<Vec<Task>>
 
 pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, NULL as diff_content, diff_captured_at, created_at, updated_at 
          FROM tasks ORDER BY created_at DESC"
     )?;
 
@@ -161,7 +161,7 @@ pub fn get_all_tasks(conn: &Connection) -> Result<Vec<Task>> {
 
 pub fn get_tasks_by_workspace(conn: &Connection, workspace_id: &str) -> Result<Vec<Task>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, diff_content, diff_captured_at, created_at, updated_at 
+        "SELECT id, title, description, status, priority, file_path, workspace_id, pr_branch, pr_url, pr_created_at, remote, is_merged, merge_source_branch, merged_to_branch, merged_at, NULL as diff_content, diff_captured_at, created_at, updated_at 
          FROM tasks WHERE workspace_id = ?1 ORDER BY created_at DESC"
     )?;
 

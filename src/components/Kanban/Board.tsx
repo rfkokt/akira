@@ -293,6 +293,8 @@ export function KanbanBoard() {
           command: 'git',
           args: ['pull', 'origin', baseBranch, '--ff-only'],
           cwd: activeWorkspace.folder_path
+        }).catch(() => {
+          console.warn(`[Board] git pull --ff-only failed for ${baseBranch}, proceeding with local version`)
         })
       }
       
