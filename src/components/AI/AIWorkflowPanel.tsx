@@ -11,6 +11,8 @@ import { dbService } from '@/lib/db';
 import { Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
 import { emit } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
+import { useTaskStore } from '@/store';
 import { toast } from 'sonner';
 
 interface AIWorkflowPanelProps {
@@ -455,10 +457,27 @@ ${execLog}
 
 Focus on fixing TypeScript errors, import issues, missing dependencies, or syntax errors that prevent the build from succeeding.`);
       
-      // Move task back to in-progress so AI can work on it
-      await dbService.updateTaskStatus(task.id, 'in-progress');
+      // 1. We must checkout the feature branch first! 
+      // The aborted merge left the repository on the targetBranch (e.g. main)
+      setExecLog(prev => prev + '\n[Checking out feature branch...]\n');
+      await invoke('run_shell_command', {
+        command: 'git',
+        args: ['checkout', sourceBranch],
+        cwd: workspacePath
+      });
+
+      // 2. Merge targetBranch into feature branch so AI can actually see and fix the semantic conflicts
+      setExecLog(prev => prev + `[Merging ${targetBranch} into ${sourceBranch} to replicate build errors...]\n`);
+      await invoke('run_shell_command', {
+        command: 'git',
+        args: ['merge', targetBranch, '-m', `Merge ${targetBranch} into ${sourceBranch} for AI fix`],
+        cwd: workspacePath
+      });
       
-      toast.success('AI is now fixing build errors. Task moved to In Progress.');
+      // 3. Move task back to in-progress using the store to update Kanban UI immediately
+      await useTaskStore.getState().moveTask(task.id, 'in-progress');
+      
+      toast.success('AI is now fixing build errors on branch ' + sourceBranch);
       
       setTimeout(() => {
         onClose();
