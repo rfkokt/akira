@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { X, Loader2 } from 'lucide-react'
 import { useTaskStore, useAIChatStore, useWorkspaceStore } from '@/store'
 import type { Task } from '@/types'
