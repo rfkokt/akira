@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle, Sparkles, MessageSquarePlus } from 'lucide-react'
+import { Check, ChevronDown, Send, Square, Loader2, History, X, FileIcon, ChevronLeft, Terminal, FileText, Wrench, Zap, CheckCircle2, AlertCircle, Sparkles, MessageSquarePlus, Copy } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAIChatStore, useEngineStore, useTaskStore, useWorkspaceStore, useSkillStore } from '@/store'
@@ -137,6 +137,25 @@ function MarkdownContent({ content }: { content: string }) {
     >
       {filteredContent}
     </ReactMarkdown>
+  );
+}
+
+function CopyMessageButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-2 right-2 p-1.5 rounded-md bg-app-panel/80 border border-app-border/80 text-app-text-muted hover:text-white hover:bg-app-panel opacity-0 group-hover:opacity-100 transition-opacity"
+      title="Copy message"
+    >
+      {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+    </button>
   );
 }
 
@@ -1385,16 +1404,17 @@ onClick={() => {
                   <div
                     key={idx}
                     className={cn(
-                      "flex w-full",
+                      "flex w-full group relative",
                       msg.role === 'user' ? 'justify-end' : 'justify-start'
                     )}
                   >
                     <div className={cn(
-                      "max-w-[85%] px-4 py-2.5 text-xs leading-relaxed",
+                      "relative max-w-[85%] px-4 py-2.5 text-xs leading-relaxed",
                       msg.role === 'user' 
                         ? 'bg-app-accent/15 border border-app-accent/20 rounded-2xl rounded-br-md text-app-text shadow-sm' 
                         : 'bg-app-surface-2 border border-app-border rounded-2xl rounded-bl-md text-app-text shadow-sm'
                     )}>
+                      <CopyMessageButton content={displayContent} />
                       {isGroqMessage && msg.role === 'assistant' && (
                         <div className="mb-2">
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-500/10 text-green-400 text-2xs rounded border border-green-500/20">

@@ -165,6 +165,25 @@ const MarkdownContent = memo(function MarkdownContent({ content }: { content: st
   );
 });
 
+function CopyMessageButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-2 right-2 p-1.5 rounded-md bg-app-panel/80 border border-app-border/80 text-app-text-muted hover:text-white hover:bg-app-panel opacity-0 group-hover:opacity-100 transition-opacity"
+      title="Copy message"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
 interface TaskChatBoxProps {
   task: Task;
   isOpen: boolean;
@@ -208,11 +227,11 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
 
   return (
     <div
-      className={`flex flex-col gap-1 ${
+      className={`group relative flex flex-col gap-1 ${
         msg.role === 'user' ? 'items-end' : 'items-start'
       }`}
     >
-      <div className={`px-4 py-3 max-w-[90%] rounded-2xl shadow-sm border ${
+      <div className={`relative px-4 py-3 max-w-[90%] rounded-2xl shadow-sm border ${
         msg.role === 'user'
           ? 'bg-app-accent/15 border border-app-accent/20 text-blue-50 rounded-tr-sm'
           : msg.role === 'system'
@@ -221,6 +240,7 @@ const MessageItem = memo(function MessageItem({ msg, currentStreamingId }: Messa
               ? 'bg-green-500/5 border-green-500/20 text-app-text rounded-tl-sm'
               : 'bg-app-bg/50 border-app-border text-app-text rounded-tl-sm'
       }`}>
+        <CopyMessageButton content={displayContent} />
         {msg.role === 'assistant' && isGroqMessage && (
           <div className="flex items-center gap-1 mb-1.5">
             <Zap className="w-3 h-3 text-green-400" />
