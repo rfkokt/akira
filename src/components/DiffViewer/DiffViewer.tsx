@@ -190,26 +190,39 @@ export function DiffViewer({ task, isOpen, onClose, onDiscard, diffContent, work
           setLoadingMessage(`Mengambil diff dari branch: ${branch}...`);
 
           try {
-            // Detect base branch (what this feature branch was created from)
-            const baseBranchResult = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
-              command: 'git',
-              args: ['rev-parse', '--abbrev-ref', `${branch}@{upstream}^1`],
-              cwd: workspacePath,
-            }).catch(() => null);
+            // Detect base branch by finding the closest merge-base among common branches
+            const candidateBases = ['main', 'master', 'development', 'develop'];
+            let baseBranch = 'main'; // ultimate fallback
+            let bestDistance = Infinity;
 
-            let baseBranch = baseBranchResult?.stdout?.trim();
-            if (!baseBranch || baseBranch.startsWith('fatal')) {
-              // Priority 3: Fallback reliably to main or master without relying on reflog
-              const mainCheck = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
-                command: 'git', args: ['show-ref', '--verify', '--quiet', 'refs/heads/main'], cwd: workspacePath,
-              }).catch(() => null);
-              
-              if (mainCheck?.success) {
-                baseBranch = 'main';
-              } else {
-                baseBranch = 'master'; // default fallback
-              }
+            for (const candidate of candidateBases) {
+              try {
+                // Check if the candidate branch exists locally
+                const exists = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+                  command: 'git', args: ['show-ref', '--verify', '--quiet', `refs/heads/${candidate}`], cwd: workspacePath,
+                }).catch(() => null);
+                if (!exists?.success) continue;
+
+                // Find the merge-base between candidate and the task branch
+                const mergeBase = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+                  command: 'git', args: ['merge-base', candidate, branch], cwd: workspacePath,
+                }).catch(() => null);
+                if (!mergeBase?.success || !mergeBase.stdout.trim()) continue;
+
+                // Count how many commits between merge-base and the task branch
+                const distance = await invoke<{ success: boolean; stdout: string }>('run_shell_command', {
+                  command: 'git', args: ['rev-list', '--count', `${mergeBase.stdout.trim()}..${branch}`], cwd: workspacePath,
+                }).catch(() => null);
+                
+                const dist = parseInt(distance?.stdout?.trim() || '999', 10);
+                if (dist < bestDistance) {
+                  bestDistance = dist;
+                  baseBranch = candidate;
+                }
+              } catch { /* skip candidate */ }
             }
+
+            console.log(`[DiffViewer] Detected base branch: ${baseBranch} (distance: ${bestDistance} commits)`)
 
             const branchDiff = await invoke<GitDiffResult>('git_get_branch_diff', {
               cwd: workspacePath,
