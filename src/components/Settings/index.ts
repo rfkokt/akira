@@ -1,1 +1,1 @@
-export { McpSettings } from './McpSettings';
+export { ModelSelector } from './ModelSelector';

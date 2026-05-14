@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Bot, Play, CheckCircle, GitBranch, MessageSquare, FileDiff, X } from 'lucide-react';
 import type { Task } from '@/types';
-import { useEngineStore } from '@/store/engineStore';
+import { usePiStore } from '@/store/piStore';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -34,7 +34,7 @@ export function AIWorkflowPanel({
   onAIReview,
   onComplete 
 }: AIWorkflowPanelProps) {
-  const { activeEngine } = useEngineStore();
+  const piStatus = usePiStore(state => state.piStatus);
   const taskStates = useAIChatStore((state) => state.taskStates);
   const [showGitFlow, setShowGitFlow] = useState(false);
 
@@ -56,16 +56,16 @@ export function AIWorkflowPanel({
               </div>
               <Button
                 onClick={onStartAI}
-                disabled={!activeEngine}
+                disabled={piStatus !== 'connected'}
                 className="bg-app-accent hover:bg-app-accent-hover"
               >
                 <Play className="w-4 h-4" />
                 Start
               </Button>
             </div>
-            {!activeEngine && (
+            {piStatus !== 'connected' && (
               <p className="text-xs text-yellow-500 text-center">
-                Please select an AI engine first
+                Please connect to Pi first
               </p>
             )}
           </div>

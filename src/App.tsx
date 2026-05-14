@@ -1,15 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Settings, Cpu, LayoutList, FolderOpen, Folder, ArrowLeftRight, Zap, ZoomIn, ZoomOut, Terminal, X, File, MessageSquare } from 'lucide-react'
+import { Settings, LayoutList, FolderOpen, Folder, ArrowLeftRight, ZoomIn, ZoomOut, Terminal, X, File, MessageSquare } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
-import { useEngineStore, useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
-import { useMcpStore } from '@/store/mcpStore'
-import { dbService } from '@/lib/db'
-import { initializeInternalServers, ensureSerenaServer, checkUvInstalled } from '@/lib/mcp'
+import { useWorkspaceStore, useTaskStore, useZoomStore, useTerminalStore } from '@/store'
+import { usePiStore } from '@/store/piStore'
 import { SettingsPage } from './components/Settings/SettingsPage'
 import { WelcomeScreen } from '@/components/Workspaces/WelcomeScreen'
 import { KanbanBoard } from './components/Kanban/Board'
-import { TaskCreatorChat } from './components/Kanban/TaskCreatorChat'
 import { FileTree } from './components/Editor/FileTree'
 import { FileViewer } from './components/Editor/FileViewer'
 import { GitSourceControl } from './components/Git/GitSourceControl'
@@ -19,13 +16,8 @@ import { GitBranchSelector } from './components/Git/GitBranchSelector'
 import { RecoveryModal } from './components/RecoveryModal'
 import { TerminalPanel } from './components/TerminalPanel'
 import { getSavedRunningTask, useAIChatStore } from './store/aiChatStore'
+import { TaskCreationDialog } from './components/Kanban/TaskCreationDialog'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
@@ -43,7 +35,6 @@ interface CommitDiff {
 }
 
 function App() {
-  const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const [showRecovery, setShowRecovery] = useState(false)
   const [showGlobalChat, setShowGlobalChat] = useState(true)
@@ -57,17 +48,12 @@ function App() {
   const [selectedGitFile, setSelectedGitFile] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'normal' | 'diff' | 'commitDiff'>('normal')
   const [commitDiffInfo, setCommitDiffInfo] = useState<CommitDiff | null>(null)
-  const { engines, activeEngine, setActiveEngine, fetchEngines, seedDefaultEngines, isLoading } = useEngineStore()
   const { activeWorkspace, loadActiveWorkspace, loadWorkspaces } = useWorkspaceStore()
   const { setCurrentWorkspace } = useTaskStore()
   const { moveTask, tasks } = useTaskStore()
   const { enqueueTask } = useAIChatStore()
   const { scale, zoomIn, zoomOut, resetZoom } = useZoomStore()
   const { createSession, sessions, isPanelOpen, setActiveSession, setPanelOpen } = useTerminalStore()
-  
-  // RTK Status
-  const [rtkInstalled, setRtkInstalled] = useState(false)
-  const [rtkStats, setRtkStats] = useState<{ total_saved: number; avg_savings: number } | null>(null)
 
   // Resizable Panels Handlers
   useEffect(() => {
@@ -160,23 +146,8 @@ function App() {
       await loadActiveWorkspace()
       console.log('[App] loadWorkspaces...');
       await loadWorkspaces()
-      console.log('[App] Calling initializeInternalServers...');
-      // Initialize internal MCP servers (task, project, skill tools)
-      initializeInternalServers()
-      console.log('[App] initializeInternalServers complete');
     }
     init()
-
-    // Cleanup on unmount
-    return () => {
-      try {
-        const { clearAllWorkspaceServers } = require('@/lib/mcp/servers/workspaceServer')
-        clearAllWorkspaceServers()
-        console.log('[App] Cleaned up Dynamic MCP servers')
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-    }
   }, [loadActiveWorkspace, loadWorkspaces])
 
   // Show welcome screen if no active workspace and set current workspace for tasks
@@ -190,19 +161,16 @@ function App() {
     }
   }, [activeWorkspace, setCurrentWorkspace])
 
-  // Auto-provision Serena MCP server when workspace changes.
-  // We load all MCP servers first so ensureSerenaServer can find existing records
-  // without trying to create a duplicate.
+  // Ensure .akira and .serena are in .gitignore when workspace changes
   useEffect(() => {
     if (!activeWorkspace) return
 
     const provisionWorkspace = async () => {
       const cwd = activeWorkspace.folder_path
 
-      // 0. Ensure .akira and .serena are in .gitignore (silently)
+      // Ensure .akira and .serena are in .gitignore (silently)
       try {
         const ENTRIES = ['.akira', '.serena']
-        // Read current .gitignore (may not exist)
         let existing = ''
         try {
           existing = await invoke<string>('read_file', { path: `${cwd}/.gitignore` })
@@ -221,21 +189,6 @@ function App() {
       } catch (e) {
         console.warn('[App] Could not update .gitignore:', e)
       }
-
-      // 1. Populate the MCP store so ensureSerenaServer can find the existing server
-      const mcpStore = useMcpStore.getState()
-      await mcpStore.loadServers(activeWorkspace.id)
-
-      // 2. Check uv/uvx
-      const uvVersion = await checkUvInstalled()
-      if (!uvVersion) {
-        console.warn('[App] uv/uvx not found — Serena will not be provisioned')
-        return
-      }
-
-      // 3. Ensure Serena is connected (updates stale config + connects)
-      const result = await ensureSerenaServer(activeWorkspace.id, activeWorkspace.folder_path)
-      console.log('[App] Serena provisioning result:', result)
     }
 
     provisionWorkspace()
@@ -258,51 +211,25 @@ function App() {
     }
   }, [activeWorkspace?.id])
 
-  // Fetch engines on mount, seed defaults if empty
+  // Pi initialization: discover binary and check auth after workspace loads
   useEffect(() => {
-    const loadEngines = async () => {
-      await fetchEngines()
-      // Sync engines to router for cost tracking
-      try {
-        await dbService.syncEnginesToRouter()
-        console.log('✓ Engines synced to router')
-      } catch (err) {
-        console.log('Note: Router sync not available yet')
-      }
-    }
-    loadEngines()
-  }, [])
+    if (!activeWorkspace) return
 
-  // Auto-seed defaults when engines are empty (run once after initial fetch)
-  const hasSeeded = useRef(false)
-  useEffect(() => {
-    const autoSeed = async () => {
-      if (!hasSeeded.current && engines.length === 0 && !isLoading) {
-        hasSeeded.current = true
-        console.log('No engines found, seeding defaults...')
-        await seedDefaultEngines()
-      }
-    }
-    autoSeed()
-  }, [engines.length, isLoading])
-
-  // Check RTK status on mount
-  useEffect(() => {
-    const checkRTK = async () => {
+    const initPi = async () => {
       try {
-        const status = await invoke<{ installed: boolean }>('check_rtk_status')
-        setRtkInstalled(status.installed)
-        
-        if (status.installed) {
-          const stats = await invoke<{ total_saved: number; avg_savings: number }>('get_rtk_gain_stats', { days: 7 })
-          setRtkStats(stats)
-        }
+        await invoke('pi_discover_binary')
       } catch (e) {
-        console.error('RTK check failed:', e)
+        console.warn('[App] Pi binary discovery failed:', e)
+      }
+      try {
+        await usePiStore.getState().checkAuth()
+      } catch (e) {
+        console.warn('[App] Pi auth check failed:', e)
       }
     }
-    checkRTK()
-  }, [])
+
+    initPi()
+  }, [activeWorkspace?.id])
 
   // Zoom keyboard shortcuts (Cmd+=/+, Cmd+-, Cmd+0)
   useEffect(() => {
@@ -325,21 +252,11 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [zoomIn, zoomOut, resetZoom])
 
-  useEffect(() => {
-    const handleClickOutside = () => setShowEngineDropdown(false)
-    if (showEngineDropdown) {
-      setTimeout(() => window.addEventListener('click', handleClickOutside), 0)
-      return () => window.removeEventListener('click', handleClickOutside)
-    }
-  }, [showEngineDropdown])
-
   const handleDrag = () => {
     const appWindow = getCurrentWindow()
     appWindow.startDragging()
   }
 
-  const enabledEngines = engines.filter(e => e.enabled)
-  
   // Helper to get filename from path
   const getFileName = (path: string) => path.split('/').pop() || path
   
@@ -520,34 +437,8 @@ function App() {
           )}
         </div>
         
-        {/* Right: Engine & Settings */}
+        {/* Right: Settings & Controls */}
         <div className="flex items-center gap-1 pr-4 relative z-10" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* Engine Selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-7 px-2 text-xs rounded-md hover:bg-accent hover:text-accent-foreground">
-              <Cpu className="size-3.5" />
-              <span className="capitalize">{activeEngine?.alias || 'Engine'}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              {enabledEngines.length === 0 ? (
-                <DropdownMenuItem disabled>No engines</DropdownMenuItem>
-              ) : (
-                enabledEngines.map(engine => (
-                  <DropdownMenuItem
-                    key={engine.id}
-                    onClick={() => setActiveEngine(engine)}
-                    className={activeEngine?.id === engine.id ? 'bg-accent' : ''}
-                  >
-                    <span className="capitalize">{engine.alias}</span>
-                    {activeEngine?.id === engine.id && (
-                      <span className="ml-auto text-green-500">●</span>
-                    )}
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          
           {/* Switch Workspace */}
           {activeWorkspace && (
             <Button
@@ -583,21 +474,6 @@ function App() {
           )}
 
           <Separator orientation="vertical" className="h-4" />
-
-          {/* RTK Status Indicator */}
-          {rtkInstalled && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 text-xs text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10"
-              onClick={() => setCurrentPage('settings')}
-            >
-              <Zap className="size-3.5" />
-              {rtkStats && rtkStats.total_saved > 0 && (
-                <span className="font-mono">{rtkStats.avg_savings.toFixed(0)}%</span>
-              )}
-            </Button>
-          )}
 
           {/* Zoom Controls */}
           <div className="flex items-center gap-0.5">
@@ -702,13 +578,13 @@ function App() {
           <div className="flex-1" />
         </nav>
 
-        {/* Global Chat Panel */}
+        {/* Global Chat Panel (Left Sidebar) */}
         {showGlobalChat && (
           <div 
             style={{ width: `${chatWidth}px` }}
             className="shrink-0 h-full z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] bg-app-bg border-r border-app-border relative flex flex-col"
           >
-            <TaskCreatorChat onHide={() => setShowGlobalChat(false)} />
+            <TaskCreationDialog onHide={() => setShowGlobalChat(false)} />
             
             {/* Resizer Handle */}
             <div 

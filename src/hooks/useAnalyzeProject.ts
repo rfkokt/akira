@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useEngineStore } from '@/store'
+import { usePiStore } from '@/store/piStore'
 import { useConfigStore } from '@/store/configStore'
 import { useAIChatStore } from '@/store'
 import { invoke } from '@tauri-apps/api/core'
@@ -222,16 +222,16 @@ interface AnalyzeResult {
 }
 
 export function useAnalyzeProject() {
-  const { activeEngine } = useEngineStore()
+  const piStatus = usePiStore(state => state.piStatus)
   const { config, updateField, saveConfig } = useConfigStore()
 
   const analyzeProject = useCallback(async (
     cwd: string,
     onStatus?: (status: string) => void
   ): Promise<AnalyzeResult> => {
-    const engine = useEngineStore.getState().activeEngine
-    if (!engine) {
-      return { success: false, error: 'No active engine selected.' }
+    const isConnected = usePiStore.getState().piStatus === 'connected'
+    if (!isConnected) {
+      return { success: false, error: 'Pi is not connected. Please check Pi Connection in Settings.' }
     }
 
     const { sendSimpleMessage, clearMessages } = useAIChatStore.getState()
@@ -331,6 +331,6 @@ ${structure.substring(0, 2000)}
 
   return {
     analyzeProject,
-    activeEngine,
+    activeEngine: piStatus === 'connected' ? { alias: 'pi' } : null,
   }
 }

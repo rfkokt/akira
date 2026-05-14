@@ -6,7 +6,15 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import type { Skill } from '@/store/skillStore';
+
+// Skill type (previously from @/store/skillStore)
+export interface Skill {
+  id: string;
+  name: string;
+  description?: string;
+  skill_path: string;
+  workspace_id?: string;
+}
 
 export interface SkillContent {
   name: string;

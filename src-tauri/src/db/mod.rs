@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
 
-pub mod mcp_queries;
+pub mod pi_queries;
 pub mod queries;
 
 /// Initialize database with all required tables
@@ -203,6 +203,38 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 
     // Migration: Upgrade project_mcps table for full MCP support
     upgrade_mcps_table(conn)?;
+
+    // Migration: Add pi_sessions table for Pi session-per-task tracking
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pi_sessions (
+            id              TEXT PRIMARY KEY,
+            task_id         TEXT NOT NULL UNIQUE,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pi_sessions_task ON pi_sessions(task_id)",
+        [],
+    )?;
+
+    // Migration: Add base_branch and task_branch columns to tasks table
+    let has_base_branch: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'base_branch'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !has_base_branch {
+        conn.execute("ALTER TABLE tasks ADD COLUMN base_branch TEXT", [])?;
+        conn.execute("ALTER TABLE tasks ADD COLUMN task_branch TEXT", [])?;
+    }
 
     Ok(())
 }

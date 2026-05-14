@@ -14,12 +14,20 @@ Wrench,
   ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { parseToolName } from '@/lib/mcp'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+
+// Inline helper (previously from @/lib/mcp)
+function parseToolName(fullName: string): { name: string; source: 'internal' | 'external'; serverId?: string } {
+  if (fullName.startsWith('ext:')) {
+    const parts = fullName.split(':')
+    return { name: parts.slice(2).join(':') || parts[1], source: 'external', serverId: parts[1] }
+  }
+  return { name: fullName, source: 'internal' }
+}
 
 export interface ToolCallDisplay {
   id: string;

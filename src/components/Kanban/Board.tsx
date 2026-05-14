@@ -6,12 +6,14 @@ import { TaskImporter } from './TaskImporter'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { TaskChatBox } from '@/components/Chat/TaskChatBox'
+import { TaskChat, SessionStatsBar } from '@/components/Chat'
 import { DiffViewer } from '@/components/DiffViewer/DiffViewer'
 import { DescriptionWithFileTag } from '@/components/DescriptionWithFileTag'
 import { TaskCard } from './TaskCard'
 import { TaskDetailModal } from './TaskDetailModal'
 import { CodeReviewModal } from './CodeReviewModal'
+import { BranchSelectionDialog } from './BranchSelectionDialog'
+import { MergePromptDialog } from './MergePromptDialog'
 import { GitPushFlow } from '@/components/AI/AIWorkflowPanel'
 import { KanbanColumn } from './KanbanColumn'
 import { COLUMNS, PRIORITY_COLORS } from './constants'
@@ -268,6 +270,34 @@ export function KanbanBoard() {
     }
 
     if (task.status !== newStatus) {
+      // Intercept transition to "in-progress": show branch selection dialog if no base_branch stored
+      if (newStatus === 'in-progress' && activeWorkspace) {
+        try {
+          const branchInfo = await invoke<{ base_branch: string; task_branch: string } | null>(
+            'pi_get_task_branches',
+            { taskId: task.id }
+          )
+          if (branchInfo?.task_branch) {
+            // Task already has a branch (re-entering in-progress) — just checkout and move
+            await invoke('pi_checkout_task_branch', { taskId: task.id, cwd: activeWorkspace.folder_path })
+            await moveTask(taskId, newStatus)
+          } else {
+            // No branch stored — show branch selection dialog
+            setBranchSelectionTask(task)
+          }
+        } catch {
+          // If pi_get_task_branches fails, show the dialog anyway
+          setBranchSelectionTask(task)
+        }
+        return
+      }
+
+      // Intercept transition to "done": show merge prompt dialog
+      if (newStatus === 'done' && activeWorkspace) {
+        setMergePromptTask(task)
+        return
+      }
+
       await moveTask(taskId, newStatus)
       
       // Trigger PR creation when manually moving from "in-progress" to "review"
@@ -346,6 +376,12 @@ export function KanbanBoard() {
 
   const [mergeTask, setMergeTask] = useState<Task | null>(null)
 
+  // Branch selection dialog state (shown on todo → in-progress when no base_branch stored)
+  const [branchSelectionTask, setBranchSelectionTask] = useState<Task | null>(null)
+
+  // Merge prompt dialog state (shown on task → done)
+  const [mergePromptTask, setMergePromptTask] = useState<Task | null>(null)
+
   const handleCompleteTask = async (task: Task) => {
     setMergeTask(task)
   }
@@ -361,6 +397,24 @@ export function KanbanBoard() {
       })
       await moveTask(taskId, 'done')
     }
+  }
+
+  // Branch selection dialog: user confirmed a base branch
+  const handleBranchSelectionConfirm = async (taskId: string, _branchName: string) => {
+    setBranchSelectionTask(null)
+    await moveTask(taskId, 'in-progress')
+  }
+
+  // Merge prompt dialog: user chose to merge
+  const handleMergePromptComplete = async (taskId: string) => {
+    setMergePromptTask(null)
+    await moveTask(taskId, 'done')
+  }
+
+  // Merge prompt dialog: user chose to skip merge
+  const handleMergePromptSkip = async (taskId: string) => {
+    setMergePromptTask(null)
+    await moveTask(taskId, 'done')
   }
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -513,12 +567,33 @@ export function KanbanBoard() {
           />
         )}
 
-        {chatTask && (
-          <TaskChatBox
-            task={chatTask}
-            isOpen={!!chatTask}
-            onClose={() => setChatTask(null)}
-          />
+        {chatTask && activeWorkspace && (
+          <div 
+            className="fixed z-[60] bg-app-panel/95 backdrop-blur-2xl border border-app-border/60 rounded-2xl shadow-2xl overflow-hidden shadow-black/40 bottom-6 right-6 w-[450px] h-[550px] flex flex-col transition-all"
+          >
+            <div className="flex items-center justify-between px-4 py-3 bg-app-sidebar/40 border-b border-app-border/40 select-none">
+              <div>
+                <h3 className="text-sm font-semibold text-app-text tracking-wide">
+                  Task AI Assistant
+                </h3>
+                <p className="text-xs text-app-text-muted truncate max-w-[280px] mt-0.5">
+                  {chatTask.title}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setChatTask(null)}
+                className="h-7 w-7 rounded-lg text-app-text-muted hover:text-red-400 hover:bg-red-400/10"
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <TaskChat taskId={chatTask.id} workspacePath={activeWorkspace.folder_path} />
+            </div>
+            <SessionStatsBar taskId={chatTask.id} />
+          </div>
         )}
 
         {diffTask && activeWorkspace && (
@@ -568,6 +643,27 @@ export function KanbanBoard() {
             onViewDiff={handleViewDiff}
             onOpenChat={handleOpenChat}
             onComplete={handleCompleteTask}
+          />
+        )}
+
+        {branchSelectionTask && activeWorkspace && (
+          <BranchSelectionDialog
+            task={branchSelectionTask}
+            isOpen={!!branchSelectionTask}
+            onClose={() => setBranchSelectionTask(null)}
+            onConfirm={handleBranchSelectionConfirm}
+            workspacePath={activeWorkspace.folder_path}
+          />
+        )}
+
+        {mergePromptTask && activeWorkspace && (
+          <MergePromptDialog
+            task={mergePromptTask}
+            isOpen={!!mergePromptTask}
+            onClose={() => setMergePromptTask(null)}
+            onMergeComplete={handleMergePromptComplete}
+            onSkip={handleMergePromptSkip}
+            workspacePath={activeWorkspace.folder_path}
           />
         )}
       </div>

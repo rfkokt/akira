@@ -103,25 +103,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         activeWorkspace: workspace || null,
       }));
 
-      // Auto-load skills, config, and MCP tools for workspace
+      // Auto-load config for workspace
       if (workspace) {
-        // Load skills
-        const { loadInstalledSkills } = await import('./skillStore').then(m => m.useSkillStore.getState());
-        loadInstalledSkills(id);
-        
-        // Load config
         const { loadConfig } = await import('./configStore').then(m => m.useConfigStore.getState());
         loadConfig(id);
-        
-        // Initialize Dynamic MCP tools for workspace
-        try {
-          const { initializeWorkspaceServer } = await import('@/lib/mcp/servers/workspaceServer');
-          await initializeWorkspaceServer(id, workspace.folder_path);
-          console.log(`[WorkspaceStore] Dynamic MCP tools initialized for workspace ${id}`);
-        } catch (mcpError) {
-          console.error('[WorkspaceStore] Failed to initialize Dynamic MCP:', mcpError);
-          // Don't throw - workspace can still function without dynamic tools
-        }
       }
     } catch (error) {
       console.error('Failed to set active workspace:', error);
@@ -131,15 +116,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   deleteWorkspace: async (id: string) => {
     try {
       await invoke('delete_workspace', { id });
-      
-      // Clear workspace MCP tools
-      try {
-        const { useToolRegistry } = await import('@/lib/mcp/registry');
-        useToolRegistry.getState().clearWorkspaceTools(id);
-        console.log(`[WorkspaceStore] Cleared Dynamic MCP tools for workspace ${id}`);
-      } catch (mcpError) {
-        console.error('[WorkspaceStore] Failed to clear Dynamic MCP tools:', mcpError);
-      }
       
       set((state) => {
         const newWorkspaces = state.workspaces.filter(w => w.id !== id);
@@ -160,26 +136,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     return get().workspaces.find(w => w.id === id);
   },
 
-  rescanWorkspaceTools: async (workspaceId?: string) => {
-    const id = workspaceId || get().activeWorkspace?.id;
-    if (!id) {
-      console.error('[WorkspaceStore] No workspace to rescan');
-      return;
-    }
-    
-    const workspace = get().workspaces.find(w => w.id === id);
-    if (!workspace) {
-      console.error('[WorkspaceStore] Workspace not found:', id);
-      return;
-    }
-    
-    try {
-      const { getWorkspaceServer } = await import('@/lib/mcp/servers/workspaceServer');
-      const server = getWorkspaceServer(id, workspace.folder_path);
-      await server.rescan();
-      console.log(`[WorkspaceStore] Rescanned Dynamic MCP tools for workspace ${id}`);
-    } catch (error) {
-      console.error('[WorkspaceStore] Failed to rescan Dynamic MCP tools:', error);
-    }
+  rescanWorkspaceTools: async (_workspaceId?: string) => {
+    // Legacy MCP tool scanning removed — now handled by Pi backend
+    console.log('[WorkspaceStore] rescanWorkspaceTools is a no-op (legacy MCP removed)');
   },
 }));

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { X, Send, Loader2, Copy, Check, MessageSquare, FileIcon, Zap } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
-import { useAIChatStore, useEngineStore, useConfigStore, useWorkspaceStore } from '@/store'
+import { useAIChatStore, useConfigStore, useWorkspaceStore } from '@/store'
+import { usePiStore } from '@/store/piStore'
 import { useImageAnalysis, buildMessageWithImageAnalysis } from '@/hooks/useImageAnalysis'
 import type { Task, ChatMessage as DbChatMessage } from '@/types'
 import type { ChatMessage } from '@/store/aiChatStore'
@@ -575,7 +576,7 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   const taskMessages = useAIChatStore(
     useCallback(state => state.messages[task.id] ?? EMPTY_ARRAY, [task.id])
   )
-  const { activeEngine } = useEngineStore()
+  const piConnected = usePiStore(state => state.piStatus === 'connected')
   const { activeWorkspace } = useWorkspaceStore()
   const config = useConfigStore(state => state.config)
   const hasApiKey = !!config?.google_api_key
@@ -663,17 +664,17 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
   }, [taskMessages, isTaskStreaming])
 
   const handleSend = useCallback(async (msg: string) => {
-    if (!activeEngine) return
+    if (!piConnected) return
     
     try {
-      await dbService.createChatMessage(task.id, 'user', msg, activeEngine.alias)
+      await dbService.createChatMessage(task.id, 'user', msg, 'pi')
       console.log('[TaskChatBox] Saved user message to DB')
     } catch (err) {
       console.error('Failed to save user message:', err)
     }
     
     await sendMessage(task.id, msg)
-  }, [task.id, activeEngine, sendMessage])
+  }, [task.id, piConnected, sendMessage])
 
   if (!isOpen) return null
 
@@ -702,9 +703,9 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
 
       <div className="px-4 py-2 bg-app-sidebar/20 border-b border-app-border/30">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${activeEngine ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'bg-red-400'}`} />
+          <div className={`w-2 h-2 rounded-full ${piConnected ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'bg-red-400'}`} />
           <span className="text-xs text-app-text-muted font-mono uppercase tracking-wider">
-            {activeEngine ? activeEngine.alias : 'No engine selected'}
+            {piConnected ? 'Pi Connected' : 'Pi Disconnected'}
           </span>
         </div>
       </div>
@@ -738,8 +739,8 @@ export function TaskChatBox({ task, isOpen, onClose }: TaskChatBoxProps) {
       <ChatInput 
         onSend={handleSend}
         isStreaming={isTaskStreaming}
-        hasEngine={!!activeEngine}
-        placeholder={activeEngine ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Select an AI engine first"}
+        hasEngine={piConnected}
+        placeholder={piConnected ? (task.status === 'review' ? "Describe what to revise..." : "Ask AI about this task...") : "Connect to Pi first"}
         hasApiKey={hasApiKey}
         files={files}
         onFetchFiles={fetchFiles}

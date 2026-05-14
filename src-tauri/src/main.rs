@@ -1,21 +1,19 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Manager, RunEvent};
 
-mod cli_router;
-mod cli_router_core;
 mod db;
 mod pty_manager;
 
 // New modules
 mod commands;
 mod models;
+mod pi;
 mod state;
-mod mcp;
 
-use cli_router_core::CliRouter;
 use pty_manager::PtyManager;
 use state::AppState;
 
@@ -65,14 +63,18 @@ fn main() {
 
             let conn = db::init_db(&app_dir).expect("Failed to initialize database");
 
-            let cli_router = Arc::new(CliRouter::new());
             let mut pty_manager = PtyManager::new();
             pty_manager.set_app_handle(app.handle().clone());
 
             let db_conn = Arc::new(std::sync::Mutex::new(conn));
-            let mcp_manager = Arc::new(mcp::McpConnectionManager::new(db_conn.clone()));
+
+            // Initialize PiProcessManager with a placeholder path (will be set after discovery)
+            let pi_manager = Arc::new(pi::PiProcessManager::new(
+                PathBuf::from("pi"), // placeholder; real path set by pi_discover_binary command
+                app.handle().clone(),
+            ));
             
-            app.manage(AppState::new(db_conn, cli_router, pty_manager, mcp_manager));
+            app.manage(AppState::new(db_conn, pty_manager, pi_manager));
 
             Ok(())
         })
@@ -89,12 +91,7 @@ fn main() {
             commands::tasks::update_task_pr_info,
             commands::tasks::update_task_merge_info,
             commands::tasks::update_task_diff_info,
-            // Engines
-            commands::engines::create_engine,
-            commands::engines::get_all_engines,
-            commands::engines::update_engine_enabled,
-            commands::engines::delete_engine,
-            commands::engines::seed_default_engines,
+
             // Workspaces
             commands::workspaces::create_workspace,
             commands::workspaces::get_all_workspaces,
@@ -156,49 +153,45 @@ fn main() {
             commands::rtk::init_rtk,
             commands::rtk::run_rtk_command,
             commands::rtk::get_rtk_gain_stats,
-            // Skills
-            commands::skills::get_installed_skills,
-            commands::skills::install_skill,
-            commands::skills::uninstall_skill,
-            commands::skills::fetch_marketplace_skills,
-            commands::skills::read_skill_content,
-            commands::skills::detect_engine_skills,
-            commands::skills::import_engine_skill,
+
             // Shell
             commands::shell::run_shell_command,
-            // CLI
-            commands::cli::run_cli,
-            commands::cli::stop_cli,
-            // CLI Router
-            commands::router::get_router_providers,
-            commands::router::sync_engines_to_router,
-            commands::router::get_router_config,
-            commands::router::save_router_config,
-            commands::router::record_cli_cost,
-            commands::router::get_provider_costs,
-            // Agents
-            commands::agents::run_agent,
-            commands::agents::stop_agent,
-            commands::agents::get_agent_status,
             // PTY
             commands::pty::spawn_pty_session,
             commands::pty::pty_write,
             commands::pty::pty_resize,
             commands::pty::pty_kill,
-            // MCP (Model Context Protocol)
-            mcp::commands::mcp_add_server,
-            mcp::commands::mcp_list_servers,
-            mcp::commands::mcp_get_server,
-            mcp::commands::mcp_update_server,
-            mcp::commands::mcp_delete_server,
-            mcp::commands::mcp_connect_server,
-            mcp::commands::mcp_disconnect_server,
-            mcp::commands::mcp_test_connection,
-            mcp::commands::mcp_call_tool,
-            mcp::commands::mcp_read_resource,
-            mcp::commands::mcp_get_tool_calls,
-            mcp::commands::mcp_clear_all_runtime,
+
+            // Pi (pi.dev integration)
+            commands::pi::pi_discover_binary,
+            commands::pi::pi_check_auth,
+            commands::pi::pi_spawn,
+            commands::pi::pi_terminate,
+            commands::pi::pi_send_prompt,
+            commands::pi::pi_send_steer,
+            commands::pi::pi_abort,
+            commands::pi::pi_get_models,
+            commands::pi::pi_set_model,
+            commands::pi::pi_get_session_stats,
+            commands::pi::pi_new_session,
+            commands::pi::pi_compact,
+            commands::pi::pi_get_task_session,
+            commands::pi::pi_create_task_session,
+            commands::pi::pi_create_task_branch,
+            commands::pi::pi_checkout_task_branch,
+            commands::pi::pi_get_task_branches,
+            commands::pi::pi_get_rules,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::Exit = event {
+                // Terminate all active Pi subprocesses on app shutdown
+                let state = app_handle.state::<AppState>();
+                let pi_manager = state.pi_manager.clone();
+                tauri::async_runtime::block_on(async {
+                    pi_manager.terminate_all().await;
+                });
+            }
+        });
 }
